@@ -59,12 +59,15 @@ except ImportError:
     try:
         from rlm_ux_utils import resolve_flexipage_sources, SALES_TXN_LINE_EDITOR_IDENTIFIER
     except ImportError as _root_utils_err:
+        # Python deletes the `as` name when the except block exits, so it
+        # cannot be referenced from a closure defined here and called later.
+        _root_utils_import_error = _root_utils_err
         SALES_TXN_LINE_EDITOR_IDENTIFIER = "runtime_rca_salesTxnLineTable"
         def resolve_flexipage_sources(*args, **kwargs):  # type: ignore[misc]
             raise ImportError(
                 "Unable to import resolve_flexipage_sources from "
                 "'tasks.rlm_ux_utils' or 'rlm_ux_utils'."
-            ) from _root_utils_err
+            ) from _root_utils_import_error
 
 ET.register_namespace("", SF_NS)
 

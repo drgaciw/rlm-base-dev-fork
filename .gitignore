@@ -43,6 +43,11 @@ $RECYCLE.BIN/
 
 # Local environment variables
 .env
+.env.*
+
+# Credentials and private keys, regardless of where they land in the tree
+*.key
+*.pem
 
 # Python Salesforce Functions
 **/__pycache__/
@@ -111,14 +116,26 @@ agents256*/**
 unpackaged/*bak/**
 # Demo data generator runtime manifests (one per run; not source)
 scripts/txn_data_harness/out/
-# Cross-repo skill manifest, shared slash commands and skill links are tracked;
-# everything else under .claude/ (settings.local.json, worktrees/, launch.json)
-# stays local. Pattern is .claude/* (not .claude/) so the negations below work —
-# git refuses to re-include a file whose parent directory itself is ignored.
+# Cross-repo skill manifest, shared slash commands, skill links, shared settings,
+# rules, subagents and hooks are tracked; everything else under .claude/
+# (settings.local.json, worktrees/, launch.json) stays local. Pattern is .claude/*
+# (not .claude/) so the negations below work — git refuses to re-include a file
+# whose parent directory itself is ignored.
 .claude/*
 !.claude/skill-manifest.yml
 !.claude/commands/
 !.claude/skills/
+!.claude/settings.json
+!.claude/rules/
+!.claude/agents/
+!.claude/hooks/
+# GitNexus writes its skill-discovery block here on a local `gitnexus analyze`
+# run. It is a per-developer tool, not project policy (ARCHITECT_REVIEW.md A4),
+# and the doubly-nested path would otherwise ship via the !.claude/skills/ negation.
+.claude/skills/gitnexus/
+
+# GitNexus's local code-intelligence index. Per-developer, not project source.
+.gitnexus/
 datasets/sfdmu/reconcile/**
 datasets/sfdmu/extractions/**
 # Raw, unmodified org metadata/data extractions for drift comparison (never committed)

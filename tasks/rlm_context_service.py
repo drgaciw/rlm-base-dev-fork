@@ -10,13 +10,20 @@ import os
 from abc import abstractmethod
 from typing import Any, Dict, List, Optional
 
-import requests
+from tasks import rlm_rest_base
 
-from cumulusci.core.keychain import BaseProjectKeychain
-from cumulusci.tasks.sfdx import SFDXBaseTask
-from cumulusci.core.exceptions import TaskOptionsError
+try:
+    from cumulusci.core.keychain import BaseProjectKeychain
+    from cumulusci.tasks.sfdx import SFDXBaseTask
+    from cumulusci.core.exceptions import TaskOptionsError
+except ImportError:
+    BaseProjectKeychain = object
+    SFDXBaseTask = object
+    TaskOptionsError = Exception
 
-_REQUEST_TIMEOUT = 30  # seconds — prevents hangs on slow networks or CI
+# Context Definition APIs can take 5-10 minutes to complete server-side.
+_CONNECT_TIMEOUT = 30
+_READ_TIMEOUT = 600
 
 
 class ManageContextDefinition(SFDXBaseTask):
@@ -84,7 +91,9 @@ class ManageContextDefinition(SFDXBaseTask):
         self.instance_url = self.options.get(
             "instance_url", self.org_config.instance_url
         )
-        self.api_version = self.project_config.project__package__api_version
+        self.api_version = rlm_rest_base.api_version(
+            org_config=self.org_config, project_config=self.project_config
+        )
 
     def _run_task(self):
         self._prep_runtime()
@@ -474,19 +483,16 @@ class ManageContextDefinition(SFDXBaseTask):
                         node_id_by_name[node_name] = node_id
 
     def _build_url_and_headers(self, endpoint: str):
-        url = f"{self.instance_url}/services/data/v{self.api_version}/{endpoint}"
-        headers = {
-            "Authorization": f"Bearer {self.access_token}",
-            "Content-Type": "application/json",
-        }
+        url = f"{rlm_rest_base.base_url(self.instance_url, self.api_version)}/{endpoint}"
+        headers = rlm_rest_base.headers(self.access_token)
         return url, headers
 
     def _make_request(self, method, url, dry_run=False, **kwargs) -> Optional[Dict[str, Any]]:
         if dry_run:
             self.logger.info(f"[dry-run] {method.upper()} {url} {kwargs.get('json')}")
             return {}
-        kwargs.setdefault("timeout", _REQUEST_TIMEOUT)
-        response = requests.request(method, url, **kwargs)
+        kwargs.setdefault("timeout", (_CONNECT_TIMEOUT, _READ_TIMEOUT))
+        response = rlm_rest_base.request(method, url, **kwargs)
         if response.ok:
             if response.text:
                 return response.json()

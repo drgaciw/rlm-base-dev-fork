@@ -117,7 +117,8 @@ class ManageFlows(BaseTask):
             
             # Use requests library for Tooling API calls (like refresh_decision_table task)
             import requests
-            
+            from tasks import rlm_rest_base
+
             # Get access token and instance URL
             access_token = self.org_config.access_token
             instance_url = self.org_config.instance_url
@@ -131,7 +132,7 @@ class ManageFlows(BaseTask):
                 "Content-Type": "application/json"
             }
             
-            describe_response = requests.get(describe_url, headers=headers)
+            describe_response = requests.get(describe_url, headers=headers, timeout=rlm_rest_base.DEFAULT_TIMEOUT)
             if describe_response.ok:
                 describe_data = describe_response.json()
                 field_names = [f['name'] for f in describe_data.get('fields', [])]
@@ -153,7 +154,7 @@ class ManageFlows(BaseTask):
             self.logger.debug(f"Query URL: {url}")
             self.logger.debug(f"Query params: {params}")
             
-            response = requests.get(url, headers=headers, params=params)
+            response = requests.get(url, headers=headers, params=params, timeout=rlm_rest_base.DEFAULT_TIMEOUT)
             
             if not response.ok:
                 self.logger.error(f"Tooling API query failed: {response.status_code} - {response.text}")
@@ -263,10 +264,10 @@ class ManageFlows(BaseTask):
             try:
                 self._update_flow_status(flow_id, 'Active')
                 success_count += 1
-                self.logger.info(f"✅ Successfully activated '{definition_id}'")
+                self.logger.info(f"✅ Successfully activated '{developer_name}'")
             except Exception as e:
                 fail_count += 1
-                self.logger.error(f"❌ Failed to activate '{definition_id}': {e}")
+                self.logger.error(f"❌ Failed to activate '{developer_name}': {e}")
         
         self.logger.info(f"Activation Summary: {success_count} succeeded, {fail_count} failed")
         
@@ -293,10 +294,10 @@ class ManageFlows(BaseTask):
             try:
                 self._update_flow_status(flow_id, 'Inactive')
                 success_count += 1
-                self.logger.info(f"✅ Successfully deactivated '{definition_id}'")
+                self.logger.info(f"✅ Successfully deactivated '{developer_name}'")
             except Exception as e:
                 fail_count += 1
-                self.logger.error(f"❌ Failed to deactivate '{definition_id}': {e}")
+                self.logger.error(f"❌ Failed to deactivate '{developer_name}': {e}")
         
         self.logger.info(f"Deactivation Summary: {success_count} succeeded, {fail_count} failed")
         
@@ -335,7 +336,8 @@ class ManageFlows(BaseTask):
         
         # Use Tooling API REST endpoint to update Flow
         import requests
-        
+        from tasks import rlm_rest_base
+
         access_token = self.org_config.access_token
         instance_url = self.org_config.instance_url
         # Get API version from project config or org config
@@ -349,7 +351,7 @@ class ManageFlows(BaseTask):
         payload = {"Status": status}
         
         try:
-            response = requests.patch(url, headers=headers, json=payload)
+            response = requests.patch(url, headers=headers, json=payload, timeout=rlm_rest_base.DEFAULT_TIMEOUT)
             if response.status_code in [200, 204]:
                 return True
             else:

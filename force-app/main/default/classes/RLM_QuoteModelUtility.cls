@@ -1,4 +1,4 @@
-public class RLM_QuoteModelUtility {
+public with sharing class RLM_QuoteModelUtility {
     @InvocableMethod(label='Convert Quote to Context String' description='Converts a Single Quote to SalesTranscationModel for context' category='RLM SE TAT')
     public static List<String> CreateQuoteContextString(List<Id> quoteId){
         Quote q = getQuote(quoteId);

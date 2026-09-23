@@ -585,7 +585,7 @@ def read_dataset_associations(dataset_dir):
         return {}
 
     associations_by_model = {}
-    with open(esc_path, newline="") as handle:
+    with open(esc_path, newline="", encoding="utf-8") as handle:
         reader = csv.DictReader(handle)
         for row in reader:
             model_name = row.get("ExpressionSet.Name", "").strip()
@@ -609,7 +609,7 @@ def infer_expression_set_name(cml_path, dataset_dirs):
         expr_path = os.path.join(dataset_dir, "ExpressionSet.csv")
         if not os.path.exists(expr_path):
             continue
-        with open(expr_path, newline="") as handle:
+        with open(expr_path, newline="", encoding="utf-8") as handle:
             reader = csv.DictReader(handle)
             for row in reader:
                 name = (row.get("Name") or "").strip()

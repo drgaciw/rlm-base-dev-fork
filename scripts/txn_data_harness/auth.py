@@ -70,7 +70,7 @@ def _run_sf(args: list[str]) -> dict:
     CLI's own stored org auth, keyed by ``--target-org <alias>``.
     """
     cmd = ["sf", *args, "--json"]
-    proc = subprocess.run(cmd, capture_output=True, text=True)
+    proc = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8")
     if proc.returncode != 0:
         raise SfCliError(
             f"`{' '.join(cmd)}` failed (exit {proc.returncode}): "
@@ -263,13 +263,13 @@ class SfRestClient:
         if method != "GET":
             args += ["--method", method]
         if body is not None:
-            tmp = tempfile.NamedTemporaryFile("w", suffix=".json", delete=False)
+            tmp = tempfile.NamedTemporaryFile("w", suffix=".json", delete=False, encoding="utf-8")
             json.dump(body, tmp)
             tmp.flush()
             tmp.close()
             args += ["--body", f"@{tmp.name}"]
         try:
-            proc = subprocess.run(args, capture_output=True, text=True)
+            proc = subprocess.run(args, capture_output=True, text=True, encoding="utf-8")
         finally:
             if tmp is not None:
                 os.unlink(tmp.name)

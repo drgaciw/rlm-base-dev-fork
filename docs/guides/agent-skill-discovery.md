@@ -59,13 +59,37 @@ unless you deliberately want it available across repositories.
 
 ## Windows, downloads, and missing skills
 
-Git must check out the adapters as symbolic links. Some Windows environments
-and archive extraction tools instead produce small text files containing the
+Git must check out the skill adapters (`.agents/skills/<name>`,
+`.claude/skills/<name>`) as symbolic links. Many Windows environments and
+archive extraction tools instead produce small text files containing the
 link target. Those files do not provide native discovery. Windows symlink
 checkout requires OS support/permission as well as Git's `core.symlinks`
 setting; changing the setting alone does not repair an existing checkout.
-Use a fresh clone in a symlink-capable environment (such as WSL), or use the
-fallback below. Windows and archive extraction have not been client-tested.
+(`CLAUDE.md` itself is a regular tracked file that imports `AGENTS.md` via
+`@AGENTS.md` — see the [official Windows guidance](https://code.claude.com/docs/en/memory)
+— so it needs no symlink repair.)
+
+**Fix it in place — no admin rights or Developer Mode required:**
+
+```sh
+python scripts/ai/link_skills.py --fix
+```
+
+This replaces the stub files under `.agents/skills/` and `.claude/skills/`
+with directory junctions on Windows (or symlinks elsewhere) and marks the
+64 link entries themselves `skip-worktree`, so plain `git status` stays
+clean. `skip-worktree` does **not** cover the files a junction resolves
+into: `git status -uall` (and therefore `git add -A`) shows those as
+untracked, so stage skill changes by editing under `.cursor/skills/`
+directly rather than through a `.claude/skills/`/`.agents/skills/` path, and
+avoid `git add -A`/`git add .` from the repository root after running
+`--fix`. Restart the agent session afterward. Run
+`python scripts/ai/link_skills.py --check` any time to detect stubs without
+changing anything; a project `SessionStart` hook runs this automatically and
+prints a one-line hint when it finds one.
+
+If you would rather avoid per-checkout repair, use a fresh clone in a
+symlink-capable environment (such as WSL), or use the catalog fallback below.
 
 From the repository root, verify the shape of one link:
 
@@ -73,11 +97,12 @@ From the repository root, verify the shape of one link:
 ls -ld .agents/skills/odt-authoring .claude/skills/odt-authoring
 ```
 
-Both should be directory links to `../../.cursor/skills/odt-authoring`, and
-`SKILL.md` should be readable through either path. If the client still omits
-the skill, restart its session and check its project-skill settings. In
-Claude Code, excluding `project` from `--setting-sources` also excludes these
-project skills in the tested version.
+Both should be directory links (or, after `link_skills.py --fix` on Windows,
+junctions) to `../../.cursor/skills/odt-authoring`, and `SKILL.md` should be
+readable through either path. If the client still omits the skill, restart
+its session and check its project-skill settings. In Claude Code, excluding
+`project` from `--setting-sources` also excludes these project skills in the
+tested version.
 
 ### Catalog fallback — works without native discovery
 
@@ -93,3 +118,45 @@ The [skill catalog](../../.cursor/skills/README.md) and canonical files remain
 usable when links are unavailable. Private maintainer artifacts are not
 required to browse the public skills; workflows such as the private todo
 tracker have their own access requirements.
+
+## Optional: Salesforce DX MCP (opt-in)
+
+The [`@salesforce/mcp`](https://github.com/salesforcecli/mcp) server exposes
+Salesforce DX tooling (deploy, query, org/test/devops operations) as MCP
+tools. This repository does **not** commit a root `.mcp.json` for it: `claude
+-p`, the Agent SDK and `claude-code-action` all load project-scoped MCP
+servers **without prompting**, so a committed server would spawn in CI on
+every run. Add it yourself, locally, in **local scope** (`.claude/settings.local.json`,
+which is git-ignored) or with `claude mcp add --scope local`:
+
+```json
+{ "mcpServers": { "salesforce": { "command": "npx",
+  "args": ["-y", "@salesforce/mcp@0.30.15", "--orgs", "DEFAULT_TARGET_ORG",
+           "--toolsets", "data", "--tools", "run_apex_test,list_all_orgs",
+           "--no-telemetry"] } } }
+```
+
+Prefer an explicit org alias over `DEFAULT_TARGET_ORG` whenever a production
+org could be the default — the server reuses `sf` CLI auth, and several of
+its tools (`deploy_metadata`, `assign_permission_set`, `retrieve_metadata`,
+the devops and NON-GA scratch-org tools) mutate an org or overwrite local
+files. The project `.claude/settings.json` already denies
+`mcp__salesforce__deploy_metadata`, `mcp__salesforce__assign_permission_set`
+and `mcp__salesforce__delete_org`. Add denies in your own settings for any
+other mutating tool you enable.
+
+Those denies are a **backstop, not the security boundary**. Hiding a tool
+limits what the agent can ask for. It does not limit what the authenticated
+Salesforce user is allowed to do. Authorize the server's org as a
+**dedicated, least-privilege integration user**, not a personal admin login.
+Grant that user only the permissions the enabled toolsets need, and avoid
+Modify All Data, Author Apex and Modify Metadata unless a workflow truly
+requires them.
+
+If a bare `npx` invocation fails to launch under a stdio client on Windows,
+wrap it — `"command": "cmd", "args": ["/c", "npx", "-y", "@salesforce/mcp@0.30.15", …]`
+— but keep that wrapped form in **local scope only**: it breaks the same
+config on macOS and Linux, so it must never land in a project-scoped or
+committed file. Because unattended runs (CI, `-p`, `claude-code-action`) load
+project-scoped servers silently, never promote this server out of local
+scope, and never add a root `.mcp.json` for it.

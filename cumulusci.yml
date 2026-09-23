@@ -2238,7 +2238,10 @@ tasks:
       "change password at next login" flag. Prevents the frontdoor login used by
       Robot setup steps (sf org open --url-only) from being redirected to the
       "Change Your Password" screen, which would otherwise break prepare_docgen
-      and other UI-toggle steps. Scratch-org only.
+      and other UI-toggle steps. Scratch-org only. To set a specific password
+      instead of the random default, pass it base64-encoded via
+      `-o param1 "$(printf '%s' 'MyP@ss1!' | base64)"` (see
+      scripts/apex/setScratchOrgPassword.apex for why it must be base64).
     class_path: cumulusci.tasks.apex.anon.AnonymousApexTask
     options:
       path: scripts/apex/setScratchOrgPassword.apex

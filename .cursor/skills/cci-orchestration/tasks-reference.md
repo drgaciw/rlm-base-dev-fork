@@ -5,6 +5,19 @@
 
 **286 tasks** across **10 groups**.
 
+**Groups:**
+
+- [Data Maintenance](#data-maintenance) (8)
+- [Data Management - Currency](#data-management---currency) (2)
+- [Data Management - Extract](#data-management---extract) (24)
+- [Data Management - Idempotency](#data-management---idempotency) (21)
+- [Documentation](#documentation) (29)
+- [E2E Testing](#e2e-testing) (5)
+- [Partner Relationship Management](#partner-relationship-management) (2)
+- [Revenue Lifecycle Management](#revenue-lifecycle-management) (164)
+- [UX Personalization](#ux-personalization) (5)
+- [Uncategorized](#uncategorized) (26)
+
 ---
 
 ## Data Maintenance
@@ -3284,7 +3297,7 @@
 
 ### `set_scratch_org_password`
 
-**Description:** Set a permanent password for the scratch-org admin user and clear the "change password at next login" flag. Prevents the frontdoor login used by Robot setup steps (sf org open --url-only) from being redirected to the "Change Your Password" screen, which would otherwise break prepare_docgen and other UI-toggle steps. Scratch-org only.
+**Description:** Set a permanent password for the scratch-org admin user and clear the "change password at next login" flag. Prevents the frontdoor login used by Robot setup steps (sf org open --url-only) from being redirected to the "Change Your Password" screen, which would otherwise break prepare_docgen and other UI-toggle steps. Scratch-org only. To set a specific password instead of the random default, pass it base64-encoded via `-o param1 "$(printf '%s' 'MyP@ss1!' | base64)"` (see scripts/apex/setScratchOrgPassword.apex for why it must be base64).
 
 **Class:** `cumulusci.tasks.apex.anon.AnonymousApexTask`
 

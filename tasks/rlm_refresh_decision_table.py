@@ -1,5 +1,7 @@
 from abc import abstractmethod
 
+from tasks import rlm_rest_base
+
 # ⚠ Guarded, matching tasks/rlm_apex_file.py and the pattern
 # cci-orchestration/custom-task-authoring.md prescribes. Without this the module cannot
 # be imported without CumulusCI installed, which broke the offline suite in
@@ -234,6 +236,7 @@ class RefreshDecisionTable(SFDXBaseTask):
 
     # Make an HTTP request using the requests library and handle the response
     def _make_request(self, method, url, **kwargs):
+        kwargs.setdefault("timeout", rlm_rest_base.DEFAULT_TIMEOUT)
         response = requests.request(method, url, **kwargs)
         if response.ok:
             return response.json()

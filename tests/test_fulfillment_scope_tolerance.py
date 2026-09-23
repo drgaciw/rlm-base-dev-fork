@@ -760,7 +760,7 @@ def check_verification_failure_does_not_replace_the_real_error(_):
 def check_cumulusci_wiring(_):
     import yaml
 
-    cci = yaml.safe_load((REPO / "cumulusci.yml").read_text())
+    cci = yaml.safe_load((REPO / "cumulusci.yml").read_text(encoding="utf-8"))
     task_default = (
         cci["tasks"]["manage_fulfillment_scope_cnfg"]["options"]
         .get("on_invalid_context_tag")

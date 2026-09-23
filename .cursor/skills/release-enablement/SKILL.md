@@ -1,13 +1,12 @@
 ---
 name: release-enablement
 description: >-
-  Author and maintain Revenue Cloud (Agentforce Revenue Management) Hands-On
-  Enablement Exercises per release. Use when updating exercises for a new
-  release (260, 262, …), authoring the journey map index document, indexing
-  release-note features per functional area, or implementing the auto-gen
-  pipeline that produces distribution artifacts. Catalog target lives at
-  docs/enablement/{version}/. Per-release source PDFs and feature indexes
-  live at docs/salesforce/{version}/.
+  Author and maintain Revenue Cloud Hands-On Enablement Exercises per release.
+  Use when updating exercises for a new release, authoring the journey map
+  index document, indexing release-note features per functional area, or
+  implementing the auto-gen pipeline that produces distribution artifacts.
+  Catalog target lives at docs/enablement/{version}/. Per-release source PDFs
+  and feature indexes live at docs/salesforce/{version}/.
 ---
 
 # Release Enablement
@@ -249,8 +248,3 @@ The project already establishes a two-workstation pattern (personal + Salesforce
 - [`revenue-cloud-data-model`](../revenue-cloud-data-model/SKILL.md) — for object/field references in exercise step-by-step instructions
 - [`sfdmu-data-plans`](../sfdmu-data-plans/SKILL.md) — for understanding what QuantumBit catalog records exist when authoring walkthroughs
 - [`doc-consistency`](../doc-consistency/SKILL.md) — pre-merge checks when exercises are updated
-
-## Change Log
-
-- **2026-05-06** — Skill created during 260 Salesforce Pricing pilot. Captured workflow, source inventory pattern, frontmatter schema, Chrome MCP shadow-walk for Help portal extraction.
-- **2026-05-06** — Restructured for Two-Tier Model after 260 catalog completion (10 area drafts done). Master exercises become source of truth at `docs/enablement/master/`; per-release extracts are filtered views. Added QB Scenario Reference as a required authoring input. Customer accounts canonicalized to `scratch_data` (Infinitech + Global Media). Pricing-feature mapping (Bundle/Attribute/Volume) onto QB-COMPLETE and constraint-engine semantics (Port/Type) for QB-QRack-750 documented in QB Scenario Reference.

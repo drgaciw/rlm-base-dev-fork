@@ -163,7 +163,7 @@ def _cmd_rate(args: argparse.Namespace) -> int:
         )
         proc = subprocess.run(
             ["sf", "apex", "run", "--target-org", args.org, "--file", tmp_path],
-            capture_output=True, text=True,
+            capture_output=True, text=True, encoding="utf-8",
         )
     finally:
         Path(tmp_path).unlink(missing_ok=True)

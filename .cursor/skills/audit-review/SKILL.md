@@ -32,7 +32,8 @@ description: >-
 4. **Group duplicates:** Codex and Copilot often flag the same issue on different
    lines/files. Fix once; reply to each thread.
 5. **One cohesive follow-up commit** per review round; re-run deploy + tests; never
-   stage `cumulusci.yml` (local-only flags) or internal-reference docs.
+   stage local-only flag flips in `cumulusci.yml` (legitimate task/flow edits are
+   committed per `AGENTS.md` "`cumulusci.yml` and CCI tasks") or internal-reference docs.
 6. **Reply in-thread, react, and resolve.** Document the resolution (and the commit SHA)
    on each thread; 👍 valid comments; then **resolve the thread** (GraphQL — REST can't).
    **Every review round ends with zero unresolved threads** — that is the audit trail.
@@ -187,7 +188,7 @@ branch diverged. This is the "swept-in file" risk mentioned in AGENTS.md
 ### Step −1 — Confirm the branch owns every commit on it (cheapest check; run before anything else)
 
 ```bash
-python scripts/ai/check_branch_scope.py --pr <n>     # or: --base origin/264 --head <branch>
+python scripts/ai/check_branch_scope.py --pr <n>     # or: --base origin/main --head <branch>
 ```
 
 A branch cut from a **composed integration branch** — one built by stacking
@@ -377,5 +378,6 @@ was touched).
   across all pages).
 - Each valid class was swept feature-wide (show the search, not just the one fix).
 - Deploy clean + tests green on the new commit.
-- `git diff --cached --name-only` excludes `cumulusci.yml` and internal-reference docs.
+- `git diff --cached --name-only` excludes local-only flag flips in `cumulusci.yml`
+  and internal-reference docs.
 - Re-review round on the new SHA surfaces no new instance of an addressed class.

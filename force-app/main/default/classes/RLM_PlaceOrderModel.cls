@@ -1,4 +1,4 @@
-global class RLM_PlaceOrderModel {
+global inherited sharing class RLM_PlaceOrderModel {
     global string pricingPref;
     global string configurationInput;
     global Map<String, Boolean> configurationOptions;

@@ -1,6 +1,6 @@
 ---
 description: SFDMU v5 export.json editing rules — externalId format, operation selection, deleteOldData safety, object ordering
-globs: **/export.json
+globs: datasets/sfdmu/**/export.json
 alwaysApply: false
 ---
 

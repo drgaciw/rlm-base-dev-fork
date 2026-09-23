@@ -1,4 +1,4 @@
-public class RLM_DocumentGenerationMerge {
+public with sharing class RLM_DocumentGenerationMerge {
     @InvocableMethod(label='Build a PDF file from Ids and return the merge id' description='Accepts a list of Ids and a DocTitle.' category='Document Generation')
     public static List<Response> MergeDocuments(List<Request> requests) {
         if (requests == null || requests.isEmpty()) {

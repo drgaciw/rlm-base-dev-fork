@@ -34,7 +34,7 @@ def _get_running_user_id() -> str:
         ["sf", "org", "display", "--json"],
         capture_output=True,
         text=True,
-        timeout=30,
+        timeout=30, encoding="utf-8",
     )
     if result.returncode != 0:
         raise RuntimeError(f"sf org display failed: {result.stderr or result.stdout}")
@@ -53,7 +53,7 @@ def _run_sf_query(query: str) -> str:
         ["sf", "data", "query", "--query", query, "--result-format", "csv"],
         capture_output=True,
         text=True,
-        timeout=60,
+        timeout=60, encoding="utf-8",
     )
     if result.returncode != 0:
         raise RuntimeError(f"sf data query failed: {result.stderr or result.stdout}")

@@ -205,7 +205,7 @@ class PostmanCollectionValidator:
     def validate(self) -> Tuple[bool, Dict]:
         """Run all validation checks. Returns (is_valid, stats)."""
         try:
-            with open(self.path, "r") as f:
+            with open(self.path, "r", encoding="utf-8") as f:
                 self.collection = json.load(f)
         except json.JSONDecodeError as e:
             self.issues.append(
@@ -627,7 +627,7 @@ def auto_fix_hardcoded_versions(collection_path: Path) -> int:
     """Auto-fix hardcoded API versions by replacing with {{version}}."""
     print(f"\n🔧 Auto-fixing {collection_path.name}...")
 
-    with open(collection_path, "r") as f:
+    with open(collection_path, "r", encoding="utf-8") as f:
         collection = json.load(f)
 
     fixed_count = 0
@@ -652,7 +652,7 @@ def auto_fix_hardcoded_versions(collection_path: Path) -> int:
         fix_items(folder.get("item", []))
 
     if fixed_count > 0:
-        with open(collection_path, "w") as f:
+        with open(collection_path, "w", encoding="utf-8") as f:
             json.dump(collection, f, indent=2)
         print(cls._colorize(f"✅ Fixed {fixed_count} hardcoded versions", "GREEN"))
     else:

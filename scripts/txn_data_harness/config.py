@@ -358,7 +358,7 @@ class InvoiceIngestionScenarioSpec:
 def _load_file(path: str) -> dict:
     if not os.path.exists(path):
         raise ConfigError(f"config file not found: {path}")
-    with open(path) as f:
+    with open(path, encoding="utf-8") as f:
         text = f.read()
     # JSON is a YAML subset; PyYAML parses both, but only import it when needed.
     try:

@@ -37,13 +37,13 @@ step 30) → `deploy_post_inapp` (metadata `unpackaged/post_inapp`) + `load_inap
 5. **Validate before every commit:** `python scripts/validate_sfdmu_v5_datasets.py
    --dataset datasets/sfdmu/inapp` and `python scripts/ai/check_plan_readme_consistency.py
    --strict datasets/sfdmu/inapp` — both must pass.
-6. **Verify behavioral changes on a live scratch org** (CLAUDE.md DO NOT #9): deploy +
+6. **Verify behavioral changes on a live scratch org** (CLAUDE.md DO NOT #7): deploy +
    `load_inapp_dataset`, confirm `RLM_Learning_SectionBlockController.getSectionsWithBlocksByType`
    returns resolved data, and render-check the Learning Home in a browser.
 7. **Read the data-plan README** (`datasets/sfdmu/inapp/README.md`) for the externalId
    scheme, the 4 live-load fixes, and image re-host details — it is the committed companion
    to this skill. The maintainer report at `.agents/artifacts/in-app-framework-262-integration-report.md`
-   (gitignored) holds the full redesign POV.
+   (private tracker; may be absent) holds the full redesign POV.
 
 ## DO NOT
 
@@ -136,7 +136,7 @@ cci flow run prepare_inapp --org <alias>
 sf project deploy start --source-dir unpackaged/post_inapp --target-org <user> --ignore-conflicts
 cci task run load_inapp_dataset --org <alias>          # Insert+deleteOldData junction = idempotent
 ```
-Then verify (CLAUDE.md DO NOT #9 — no dryrun-only claims): the controller returns resolved data, and
+Then verify (CLAUDE.md DO NOT #7 — no dryrun-only claims): the controller returns resolved data, and
 the Learning Home renders in a browser. The `RLM_Learning` permset grants the objects/fields/classes/
 tabs/recordtypes **and** the `RLM_Learning_Home` app (`applicationVisibilities`); after assigning it,
 Lightning caches tab/app visibility per session — a hard refresh (or Chrome restart) clears it.

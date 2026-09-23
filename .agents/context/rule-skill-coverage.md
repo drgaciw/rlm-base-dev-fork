@@ -5,10 +5,10 @@
 
 ## Summary
 
-- Cursor rule files found: **12**
+- Cursor rule files found: **14**
 - Rules not listed in `.cursor/skills/README.md`: **0**
 - Recommended skill rules still missing: **6**
-- High-risk AGENTS.md paths lacking both a rule and analyzer check: **4**
+- High-risk AGENTS.md paths lacking both a rule and analyzer check: **2**
 
 ## Rule Matrix
 
@@ -21,10 +21,12 @@
 | `.cursor/rules/cci-task-definitions.mdc` | `cumulusci.yml` | `cci-orchestration/SKILL.md` | Yes | Yes | CCI Orchestration |
 | `.cursor/rules/context-plans.mdc` | `datasets/context_plans/**/*.json` | `context-service/SKILL.md` | Yes | Yes | Context Service |
 | `.cursor/rules/doc-review.mdc` | `cumulusci.yml`<br>`tasks/**/*.py`<br>`datasets/sfdmu/**/export.json`<br>`datasets/sfdmu/**/*.csv`<br>`robot/**/*.robot`<br>`.cursor/skills/**/*.md` | `doc-consistency/SKILL.md` | No | Yes | Doc Consistency |
+| `.cursor/rules/docs-conventions.mdc` | `docs/**/*.md` | (stand-alone) | No | Yes | Doc Consistency |
 | `.cursor/rules/lwc-components.mdc` | `unpackaged/**/lwc/**/*.html`<br>`unpackaged/**/lwc/**/*.js`<br>`force-app/**/lwc/**/*.html`<br>`force-app/**/lwc/**/*.js` | (stand-alone) | Yes | Yes | Lightning Web Components |
+| `.cursor/rules/protected-metadata.mdc` | `force-app/**/profiles/**`<br>`force-app/**/*.object-meta.xml`<br>`templates/profiles/**`<br>`templates/objects/**`<br>`templates/flexipages/**`<br>`unpackaged/**/networks/rlm.network-meta.xml` | (stand-alone) | Yes | Yes | Repository Integration |
 | `.cursor/rules/robot-tests.mdc` | `robot/**/*.robot`<br>`robot/**/*.py` | `robot-testing/SKILL.md` | Yes | Yes | Robot Testing |
 | `.cursor/rules/sfdmu-csv-data.mdc` | `datasets/sfdmu/**/*.csv` | `sfdmu-data-plans/SKILL.md` | Yes | Yes | SFDMU Data Plans |
-| `.cursor/rules/sfdmu-export-json.mdc` | `**/export.json` | `sfdmu-data-plans/SKILL.md` | Yes | Yes | SFDMU Data Plans |
+| `.cursor/rules/sfdmu-export-json.mdc` | `datasets/sfdmu/**/export.json` | `sfdmu-data-plans/SKILL.md` | Yes | Yes | SFDMU Data Plans |
 | `.cursor/rules/ux-templates.mdc` | `templates/**` | `repo-integration/SKILL.md` | Yes | Yes | UX Assembly |
 
 ## Flags
@@ -49,9 +51,7 @@
 | Path | Owner/domain | AGENTS.md source | Expected rule | Explicit analyzer check | Reason |
 |---|---|---|---|---|---|
 | `unpackaged/post_ux/**` | UX Assembly | AGENTS.md DO NOT #1 and Repository Layout | `post-ux-generated-output.mdc` | — | Generated UX output must not be edited directly. |
-| `force-app/**/profiles/*.profile-meta.xml` | UX Assembly / Profiles | AGENTS.md DO NOT #2 | `force-app-profile-safety.mdc` | — | Force-app profiles should stay classAccesses-only; layout/application visibility belongs in templates. |
-| `force-app/**/*.object-meta.xml` | UX Assembly / Objects | AGENTS.md DO NOT #3 | `force-app-object-safety.mdc` | — | Object actionOverrides/compact layout assignment belong in templates, not force-app objects. |
-| `**/rlm.network-meta.xml` | PRM Network | AGENTS.md DO NOT #7 | `network-email-safety.mdc` | — | Network metadata must keep placeholder emails; deploy tasks patch/revert real values. |
+| `**/rlm.network-meta.xml` | PRM Network | AGENTS.md DO NOT #5 | `network-email-safety.mdc` | — | Network metadata must keep placeholder emails; deploy tasks patch/revert real values. |
 
 ## Notes
 

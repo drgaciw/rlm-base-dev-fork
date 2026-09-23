@@ -91,7 +91,7 @@ def load_currency_table(plan):
     if not os.path.isfile(path):
         sys.exit(f"error: {path} not found — cannot read conversion rates.")
     rates, whole = {}, set()
-    with open(path, newline="") as fh:
+    with open(path, newline="", encoding="utf-8") as fh:
         for r in csv.DictReader(fh):
             rates[r["IsoCode"]] = Decimal(r["ConversionRate"])
             if int(r["DecimalPlaces"]) == 0:
@@ -169,9 +169,9 @@ def process(plan, fname, money_col, pred, base, targets, rates, whole, step, app
     if not os.path.isfile(path):
         print(f"  {fname:34s} (absent — skipped)")
         return 0
-    raw = open(path, newline="").read().splitlines()
+    raw = open(path, newline="", encoding="utf-8").read().splitlines()
     header_line, data_raw = raw[0], [l for l in raw[1:] if l != ""]
-    with open(path, newline="") as fh:
+    with open(path, newline="", encoding="utf-8") as fh:
         reader = csv.DictReader(fh)
         fieldnames = reader.fieldnames
         rows = list(reader)
@@ -192,7 +192,7 @@ def process(plan, fname, money_col, pred, base, targets, rates, whole, step, app
                 if money_col and len(sample) < 2 and t in ("GBP", "JPY"):
                     sample.append((row.get(money_col), t, v[money_col]))
     if apply:
-        open(path, "w", newline="").write("\n".join(out) + "\n")
+        open(path, "w", newline="", encoding="utf-8").write("\n".join(out) + "\n")
     added = base_count * len(targets)
     # Count the actual output rows: with a --currencies subset, non-target rows are
     # preserved in `out` and a base*(targets+1) formula silently undercounts them.

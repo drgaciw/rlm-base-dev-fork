@@ -39,7 +39,7 @@ GIT_ENV.update(GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_SYSTEM=os.devnull,
 
 def git(cwd, *args):
     proc = subprocess.run(["git"] + list(args), cwd=cwd, capture_output=True,
-                          text=True, env=GIT_ENV)
+                          text=True, env=GIT_ENV, encoding="utf-8")
     if proc.returncode != 0:
         raise AssertionError(f"git {' '.join(args)} failed in {cwd}:\n{proc.stderr}")
     return proc.stdout.strip()
@@ -60,18 +60,18 @@ def _new_synthetic_repo(root):
 
     tracked_no_readme = sfdmu / "tracked-no-readme"
     tracked_no_readme.mkdir(parents=True)
-    (tracked_no_readme / "export.json").write_text(json.dumps({"objectSets": []}))
+    (tracked_no_readme / "export.json").write_text(json.dumps({"objectSets": []}), encoding="utf-8")
 
     tracked_with_readme = sfdmu / "tracked-with-readme"
     tracked_with_readme.mkdir(parents=True)
-    (tracked_with_readme / "export.json").write_text(json.dumps({"objectSets": []}))
-    (tracked_with_readme / "README.md").write_text("# Doc\n")
+    (tracked_with_readme / "export.json").write_text(json.dumps({"objectSets": []}), encoding="utf-8")
+    (tracked_with_readme / "README.md").write_text("# Doc\n", encoding="utf-8")
 
     untracked_scratch = sfdmu / "untracked-scratch"
     untracked_scratch.mkdir(parents=True)
-    (untracked_scratch / "export.json").write_text(json.dumps({"objectSets": []}))
+    (untracked_scratch / "export.json").write_text(json.dumps({"objectSets": []}), encoding="utf-8")
 
-    (pathlib.Path(root) / ".gitignore").write_text("datasets/sfdmu/untracked-scratch/**\n")
+    (pathlib.Path(root) / ".gitignore").write_text("datasets/sfdmu/untracked-scratch/**\n", encoding="utf-8")
 
     git(root, "init", "--quiet", "-b", "base")
     git(root, "config", "user.email", "t@example.com")
@@ -120,7 +120,7 @@ def _case_explicit_target_outside_repo_reports_cleanly():
 
         outside_plan = pathlib.Path(outside) / "not-in-repo"
         outside_plan.mkdir()
-        (outside_plan / "export.json").write_text(json.dumps({"objectSets": []}))
+        (outside_plan / "export.json").write_text(json.dumps({"objectSets": []}), encoding="utf-8")
         with_readme, no_readme = mod.find_plan_dirs([str(outside_plan)])
         return with_readme, no_readme
 

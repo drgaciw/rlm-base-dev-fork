@@ -23,8 +23,11 @@ import sys
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
+import tasks.rlm_extend_stdctx as extend_stdctx_module  # noqa: E402
 from tasks.rlm_extend_stdctx import (  # noqa: E402
     ExtendStandardContext,
+    _CONNECT_TIMEOUT,
+    _READ_TIMEOUT,
     _RECOVER_BUDGET_SECONDS,
     _RECOVER_MAX_INTERVAL,
     _MAX_RETRIES,
@@ -168,6 +171,58 @@ def test_probe_timeout_is_capped_to_the_remaining_budget():
         "the final probe's timeout is capped well below the default 600s read timeout",
         seen[-1][1][1] < 600,
     )
+
+
+class _FakeHttpResponse:
+    """Stand-in for a `requests.Response`, matching what `_make_request` reads."""
+
+    def __init__(self, status_code=200, json_body=None, text=None):
+        self.status_code = status_code
+        self.ok = 200 <= status_code < 300
+        self._json_body = json_body if json_body is not None else {}
+        self.text = text if text is not None else "{}"
+
+    def json(self):
+        return self._json_body
+
+
+def test_make_request_passes_a_single_timeout_to_requests():
+    """A-C1 regression: `_make_request` set a default timeout via
+    `kwargs.setdefault("timeout", ...)` and then ALSO passed `timeout=(10, 120)`
+    explicitly to `requests.request(**kwargs, timeout=...)`. Since `kwargs`
+    already contained `timeout`, every real call raised
+    `TypeError: got multiple values for keyword argument 'timeout'` and the
+    existing tests never caught it because they fake `_make_request` itself
+    rather than exercising it. This calls the REAL `_make_request` with
+    `requests.request` patched, so the bug would reproduce here.
+    """
+    t = _new_task()
+    calls = []
+
+    def fake_requests_request(method, url, **kwargs):
+        calls.append((method, url, kwargs))
+        return _FakeHttpResponse(status_code=200, json_body={"ok": True})
+
+    original_request = extend_stdctx_module.requests.request
+    extend_stdctx_module.requests.request = fake_requests_request
+    result = None
+    raised = None
+    try:
+        result = t._make_request("get", "https://example/connect/context-definitions/1")
+    except TypeError as exc:
+        raised = exc
+    finally:
+        extend_stdctx_module.requests.request = original_request
+
+    check("no TypeError raised (duplicate 'timeout' keyword)", raised is None)
+    check("requests.request was called exactly once", len(calls) == 1)
+    check("the call returned the parsed JSON body", result == {"ok": True})
+    if calls:
+        _, _, kwargs = calls[0]
+        check(
+            "timeout equals (_CONNECT_TIMEOUT, _READ_TIMEOUT)",
+            kwargs.get("timeout") == (_CONNECT_TIMEOUT, _READ_TIMEOUT),
+        )
 
 
 def test_failure_messages_are_distinct_and_carry_the_right_guidance():

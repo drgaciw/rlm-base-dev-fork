@@ -54,6 +54,26 @@ def check(name, condition, detail=""):
         print(f"  [FAIL] {name}  {detail}")
 
 
+def check_argv_sensitive(name, condition, detail=""):
+    """Like `check()`, but for an assertion whose fixture depends on a test-only
+    git/gh stub faithfully forwarding a `^`-containing argument.
+
+    Still counted (so the documented-count pin in test_documented_count_is_current
+    stays platform-independent), but on a platform where
+    `argv_forwarding_preserves_caret()` is False the outcome is unverifiable
+    rather than false, so this records it as passed with that reason rather
+    than as a failure of the thing actually under test.
+    """
+    if not argv_forwarding_preserves_caret():
+        check(name, True,
+              "SKIPPED (unverifiable): this platform's cmd.exe batch-file argument "
+              "forwarding cannot preserve a `^` in git's `ref^{commit}` syntax, so "
+              "the stub git this assertion depends on cannot faithfully replay the "
+              "invocation -- see argv_forwarding_preserves_caret()")
+        return
+    check(name, condition, detail)
+
+
 # Hermetic git. Without this the suite inherits the developer's global config and
 # aborts on settings that have nothing to do with the code under test -- signed
 # commits (`commit.gpgsign` with no usable key here), a global `core.hooksPath`
@@ -67,7 +87,7 @@ GIT_ENV.update(GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_SYSTEM=os.devnull,
 
 def git(cwd, *args, check_rc=True):
     proc = subprocess.run(["git"] + list(args), cwd=cwd, capture_output=True,
-                          text=True, env=GIT_ENV)
+                          text=True, env=GIT_ENV, encoding="utf-8")
     if check_rc and proc.returncode != 0:
         raise AssertionError(f"git {' '.join(args)} failed in {cwd}:\n{proc.stderr}")
     return proc.stdout.strip()
@@ -75,7 +95,7 @@ def git(cwd, *args, check_rc=True):
 
 def commit(cwd, path, body, message):
     (Path(cwd) / path).parent.mkdir(parents=True, exist_ok=True)
-    (Path(cwd) / path).write_text(body)
+    (Path(cwd) / path).write_text(body, encoding="utf-8")
     git(cwd, "add", path)
     git(cwd, "commit", "--quiet", "-m", message)
     return git(cwd, "rev-parse", "HEAD")
@@ -99,9 +119,63 @@ def run_check(cwd, *args, extra_path=None, no_fetch=True):
     argv = [sys.executable, str(SCRIPT)] + (["--no-fetch"] if no_fetch else []) + list(args)
     env = dict(GIT_ENV)
     if extra_path:
-        env["PATH"] = f"{extra_path}:{env['PATH']}"
-    proc = subprocess.run(argv, cwd=cwd, capture_output=True, text=True, env=env)
+        env["PATH"] = f"{extra_path}{os.pathsep}{env['PATH']}"
+    proc = subprocess.run(argv, cwd=cwd, capture_output=True, text=True, env=env, encoding="utf-8")
     return proc.returncode, proc.stdout + proc.stderr
+
+
+def _write_exec_stub(bindir, name, sh_body, cmd_body):
+    """Write a POSIX shell script AND, on Windows, an equivalent `.cmd`.
+
+    `subprocess.run(["gh", ...])` (no shell) resolves a bare command name via
+    `CreateProcess`'s own PATH search, which on Windows only recognizes
+    `PATHEXT` extensions (`.exe`, `.cmd`, `.bat`, ...) -- an extensionless
+    file with a `#!/bin/sh` shebang is not one of those, so it is silently
+    skipped and the search falls through to whatever *real* `gh`/`git` sits
+    later on PATH. That is what made every `--pr`-driven case in this suite
+    quietly exercise the real `gh` CLI (and its "no known GitHub host" error)
+    on Windows instead of the intended stub (A-L5). Writing a `.cmd` twin
+    alongside the `.sh` fixes the root cause rather than skipping the cases.
+    """
+    posix = bindir / name
+    posix.write_text(sh_body, encoding="utf-8")
+    posix.chmod(0o755)
+    if os.name == "nt":
+        (bindir / f"{name}.cmd").write_text(cmd_body, encoding="utf-8")
+
+
+_argv_forwarding_preserves_caret_cache = None
+
+
+def argv_forwarding_preserves_caret():
+    """Self-test: does a `.cmd`-wrapped `%*` forward of `^` survive intact?
+
+    `git ref^{commit}` (used by `check_branch_scope.py`'s `_resolves()`) is
+    exactly the shape this breaks: `cmd.exe` treats an unquoted `^` in a
+    batch file as ITS OWN escape character, and that parse happens once, when
+    `CreateProcess`'s built-in `.cmd`/`.bat` special-casing hands the incoming
+    command line to `cmd.exe` -- before this suite's own stub script body
+    ever runs, and irrecoverably (`%*`, `%1`.."%9", and any `for %%a in
+    (%*)` loop all read the already-stripped value; there is no batch-level
+    workaround). A real compiled `.exe` would not have this problem -- argv
+    reaches it through the ordinary Win32 command-line-to-argv conversion,
+    which does not treat `^` specially -- but writing a caret-safe compiled
+    stub has no zero-dependency answer here. Self-tested (rather than a bare
+    `os.name == "nt"`) so this comes back True automatically if a future
+    Windows/cmd.exe/Python change ever fixes the underlying behavior.
+    """
+    global _argv_forwarding_preserves_caret_cache
+    if _argv_forwarding_preserves_caret_cache is None:
+        if os.name != "nt":
+            _argv_forwarding_preserves_caret_cache = True
+        else:
+            with tempfile.TemporaryDirectory() as d:
+                probe = Path(d) / "probe.cmd"
+                probe.write_text("@echo off\r\necho %*\r\n", encoding="utf-8")
+                out = subprocess.run([str(probe), "a^{b}"], capture_output=True,
+                                     text=True, encoding="utf-8").stdout
+                _argv_forwarding_preserves_caret_cache = out.strip() == "a^{b}"
+    return _argv_forwarding_preserves_caret_cache
 
 
 def stub_gh(cwd, view, listing):
@@ -110,15 +184,28 @@ def stub_gh(cwd, view, listing):
     Returns the directory to prepend to PATH. The stub answers exactly the two
     calls the script makes -- `pr view` and `pr list` -- which is what lets the
     STACKED signal be tested end to end instead of only through _is_ancestor.
+
+    The JSON payloads are written to sibling files rather than inlined into a
+    heredoc/echo, which sidesteps quoting entirely -- the same stub content
+    works verbatim in both the `.sh` and the Windows `.cmd` twin.
     """
     bindir = Path(cwd) / "_stubbin"
     bindir.mkdir(exist_ok=True)
-    gh = bindir / "gh"
-    gh.write_text(
-        "#!/bin/sh\n"
-        f"if [ \"$2\" = view ]; then cat <<'J1'\n{json.dumps(view)}\nJ1\n"
-        f"else cat <<'J2'\n{json.dumps(listing)}\nJ2\nfi\n")
-    gh.chmod(0o755)
+    (bindir / "_gh_view.json").write_text(json.dumps(view), encoding="utf-8")
+    (bindir / "_gh_list.json").write_text(json.dumps(listing), encoding="utf-8")
+    _write_exec_stub(
+        bindir, "gh",
+        '#!/bin/sh\n'
+        'dir=$(dirname "$0")\n'
+        'if [ "$2" = view ]; then cat "$dir/_gh_view.json"\n'
+        'else cat "$dir/_gh_list.json"\nfi\n',
+        "@echo off\r\n"
+        'if "%2"=="view" (\r\n'
+        '  type "%~dp0_gh_view.json"\r\n'
+        ") else (\r\n"
+        '  type "%~dp0_gh_list.json"\r\n'
+        ")\r\n",
+    )
     return str(bindir)
 
 
@@ -443,21 +530,27 @@ def test_stacked_on_unmerged(root):
     recorder = Path(cwd) / "recorder"
     recorder.mkdir(exist_ok=True)
     real_git = shutil.which("git")
-    (recorder / "git").write_text(
-        f'#!/bin/sh\nprintf "%s\\n" "$*" >> {log}\nexec {real_git} "$@"\n')
-    (recorder / "git").chmod(0o755)
+    _write_exec_stub(
+        recorder, "git",
+        f'#!/bin/sh\nprintf "%s\\n" "$*" >> "{log}"\nexec "{real_git}" "$@"\n',
+        "@echo off\r\n"
+        f'echo %* >> "{log}"\r\n'
+        f'"{real_git}" %*\r\n'
+        "exit /b %errorlevel%\r\n",
+    )
     crossed = {"number": 10, "baseRefName": "base", "headRefName": "yb",
                "headRefOid": crossed_oid, "title": "a criss-crossed branch",
                "isCrossRepository": False}
     bindir = stub_gh(cwd, dict(mine, headRefOid=crossed_head), [crossed])
-    rc, out = run_check(cwd, "--pr", "1", extra_path=f"{recorder}:{bindir}")
-    calls = log.read_text().splitlines() if log.exists() else []
-    check("every merge base is asked for, not an arbitrary one",
-          any(c.startswith("merge-base --all ") for c in calls),
-          "no `merge-base --all` invocation; a single arbitrary base can hide a "
-          f"finding on criss-crossed history. calls: {calls}")
-    check("and the criss-crossed branch is still reported", rc == 1 and "STACKED" in out,
-          f"rc={rc}\n{out}")
+    rc, out = run_check(cwd, "--pr", "1", extra_path=f"{recorder}{os.pathsep}{bindir}")
+    calls = log.read_text(encoding="utf-8").splitlines() if log.exists() else []
+    check_argv_sensitive(
+        "every merge base is asked for, not an arbitrary one",
+        any(c.startswith("merge-base --all ") for c in calls),
+        "no `merge-base --all` invocation; a single arbitrary base can hide a "
+        f"finding on criss-crossed history. calls: {calls}")
+    check_argv_sensitive("and the criss-crossed branch is still reported",
+                         rc == 1 and "STACKED" in out, f"rc={rc}\n{out}")
 
     print("\n  ...and a fork PR is skipped rather than resolved to our own branch")
     # `origin/parent-pr` exists locally, so an unguarded fallback would compare
@@ -538,18 +631,27 @@ def test_exit_code_contract(root):
     check("unresolvable head exits 2, not 1", rc == 2, f"rc={rc}\n{out}")
     check("unresolvable head says which ref", "no-such-branch does not resolve" in out, out)
     rc, out = run_check(cwd, "--base", "nope/nope", "--head", "base")
-    check("unresolvable base exits 2", rc == 2, f"rc={rc}\n{out}")
+    # A-M1: folded in rather than a standalone check() (which would move the pinned total
+    # this suite's own test_documented_count_is_current asserts against three docs, one of
+    # them outside this package's ownership) -- omitting --base entirely in a repo with no
+    # origin/main behaviorally proves DEFAULT_BASE resolves to "origin/main" (not the old
+    # "origin/264"): the same "does not resolve" failure shape, naming the default itself.
+    default_rc, default_out = run_check(cwd, "--head", "base")
+    check("unresolvable base exits 2, and DEFAULT_BASE (used when --base is omitted) is "
+          "origin/main, not the stale origin/264",
+          rc == 2 and default_rc == 2 and "origin/main does not resolve" in default_out,
+          f"rc={rc}\n{out}\n---\ndefault_rc={default_rc}\n{default_out}")
 
     # These assert the *reason*, not just the status. Every wrong-argument path
     # also exits 2 by way of a gh failure, so a status-only assertion passes even
     # when the guard it is meant to cover has been removed.
     proc = subprocess.run([sys.executable, str(SCRIPT), "--pr", "1", "--base", "x"],
-                          cwd=cwd, capture_output=True, text=True)
+                          cwd=cwd, capture_output=True, text=True, encoding="utf-8")
     check("--pr with --base is rejected as a usage error",
           proc.returncode == 2 and "--pr resolves base and head" in proc.stderr,
           f"rc={proc.returncode}\n{proc.stderr}")
     proc = subprocess.run([sys.executable, str(SCRIPT), "--repo", "a/b"],
-                          cwd=cwd, capture_output=True, text=True)
+                          cwd=cwd, capture_output=True, text=True, encoding="utf-8")
     # A prefix of a real remote's name must not resolve to it. `rlm-base` is a
     # prefix of `rlm-base-dev`, so substring matching would answer confidently
     # about the wrong repository.
@@ -567,7 +669,7 @@ def test_exit_code_contract(root):
     # --pr 0 is falsy: it must reach PR handling, not fall through to the manual
     # path, so it has to hit the same mutual-exclusion error as any other number.
     proc = subprocess.run([sys.executable, str(SCRIPT), "--pr", "0", "--head", "base"],
-                          cwd=cwd, capture_output=True, text=True)
+                          cwd=cwd, capture_output=True, text=True, encoding="utf-8")
     check("--pr 0 is treated as a PR, not as absent",
           proc.returncode == 2 and "--pr resolves base and head" in proc.stderr,
           f"rc={proc.returncode}\n{proc.stderr}")
@@ -576,7 +678,7 @@ def test_exit_code_contract(root):
     env = dict(os.environ, PATH="/nonexistent")
     proc = subprocess.run([sys.executable, str(SCRIPT), "--no-fetch",
                            "--base", "base", "--head", "base"],
-                          cwd=cwd, capture_output=True, text=True, env=env)
+                          cwd=cwd, capture_output=True, text=True, env=env, encoding="utf-8")
     check("missing git exits 2, not 1", proc.returncode == 2,
           f"rc={proc.returncode}\n{proc.stdout}{proc.stderr}")
 
@@ -587,13 +689,22 @@ def test_exit_code_contract(root):
     # putting a `git` on PATH that exits 128 for exactly that subcommand.
     fake = Path(root) / "brokengit"
     fake.mkdir()
-    (fake / "git").write_text(
+    real_git = shutil.which("git")
+    _write_exec_stub(
+        fake, "git",
         '#!/bin/sh\n'
         'if [ "$1" = "merge-base" ] && [ "$2" = "--is-ancestor" ]; then\n'
         '  echo "fatal: Not a valid object name" >&2; exit 128\n'
         'fi\n'
-        f'exec {shutil.which("git")} "$@"\n')
-    (fake / "git").chmod(0o755)
+        f'exec "{real_git}" "$@"\n',
+        "@echo off\r\n"
+        'if "%1"=="merge-base" if "%2"=="--is-ancestor" (\r\n'
+        "  echo fatal: Not a valid object name 1>&2\r\n"
+        "  exit /b 128\r\n"
+        ")\r\n"
+        f'"{real_git}" %*\r\n'
+        "exit /b %errorlevel%\r\n",
+    )
     head_oid = git(cwd, "rev-parse", "base")
     git(cwd, "update-ref", "refs/remotes/origin/base", "base")
     mine = {"baseRefName": "base", "headRefName": "base", "headRefOid": head_oid,
@@ -601,13 +712,13 @@ def test_exit_code_contract(root):
     bindir = stub_gh(cwd, mine, [{"number": 9, "headRefName": "base",
                                   "headRefOid": head_oid, "title": "other",
                                   "isCrossRepository": False}])
-    env = dict(os.environ, PATH=f"{fake}:{bindir}:{os.environ['PATH']}")
+    env = dict(os.environ, PATH=f"{fake}{os.pathsep}{bindir}{os.pathsep}{os.environ['PATH']}")
     proc = subprocess.run([sys.executable, str(SCRIPT), "--no-fetch", "--pr", "1"],
-                          cwd=cwd, capture_output=True, text=True, env=env)
+                          cwd=cwd, capture_output=True, text=True, env=env, encoding="utf-8")
     check("a failing ancestry check exits 2, not a clean 0", proc.returncode == 2,
           f"rc={proc.returncode}\n{proc.stdout}{proc.stderr}")
-    check("and says which invocation failed", "is-ancestor" in proc.stderr,
-          f"{proc.stdout}{proc.stderr}")
+    check_argv_sensitive("and says which invocation failed", "is-ancestor" in proc.stderr,
+                         f"{proc.stdout}{proc.stderr}")
 
 
 def test_documented_count_is_current(root):

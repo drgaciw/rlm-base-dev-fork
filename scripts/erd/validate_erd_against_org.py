@@ -105,7 +105,7 @@ def describe_sobject(org_alias: str, object_name: str) -> Optional[dict]:
         result = subprocess.run(
             ["sf", "sobject", "describe", "--sobject", object_name,
              "--target-org", org_alias, "--json"],
-            capture_output=True, text=True, timeout=30
+            capture_output=True, text=True, timeout=30, encoding="utf-8"
         )
         if result.returncode != 0:
             return None
@@ -410,7 +410,7 @@ def main():
         sys.exit(1)
 
     # Load ERD data
-    with open(erd_path) as f:
+    with open(erd_path, encoding="utf-8") as f:
         erd_data = json.load(f)
 
     objects = erd_data["objects"]
@@ -485,7 +485,7 @@ def main():
     if args.patch and (new_fields > 0 or new_rels > 0):
         print(f"\nPatching {erd_path}...")
         fa, ra, fr = patch_erd(erd_data, diffs)
-        with open(erd_path, "w") as f:
+        with open(erd_path, "w", encoding="utf-8") as f:
             json.dump(erd_data, f, indent=2)
         print(f"  Added {fa} fields, {ra} relationships")
         print(f"  Run `python scripts/erd/build_erds.py` to rebuild the HTML ERD")
@@ -495,7 +495,7 @@ def main():
         report = generate_report(diffs)
         report_path = repo_root / args.report
         report_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(report_path, "w") as f:
+        with open(report_path, "w", encoding="utf-8") as f:
             f.write(report)
         print(f"\nReport written to {report_path}")
 

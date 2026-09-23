@@ -1,18 +1,12 @@
 ---
 name: revenue-cloud-docs
 description: >-
-  Ground product claims about Salesforce Revenue Cloud (Agentforce Revenue
-  Management) — Billing, Pricing, Quoting, Orders, Contracts, Assets, Usage,
-  DRO — against the captured Salesforce Help portal snapshots at
-  `docs/salesforce/{release}/help/`. Use before authoring or accepting any
-  Trailhead module passage, enablement exercise, internal doc, or SME review
-  response that asserts how a Revenue Cloud feature works. Use when verifying
-  object names, field labels, feature behavior, or terminology against the
-  current release's Help articles. Use when refreshing the snapshot for a new
-  Salesforce release (264 and later) via the `snapshot_{area}_help_{release}`
-  CCI tasks. The snapshot replaces the unwieldy per-release PDF compendiums
-  with grep-friendly, diffable per-article markdown that AI agents can read
-  surgically.
+  Ground product claims about Salesforce Revenue Cloud (Billing, Pricing,
+  Quoting, Orders, Contracts, Assets, Usage, DRO) against the captured
+  Salesforce Help snapshot at `docs/salesforce/{release}/help/`. Use before
+  authoring or accepting Trailhead, enablement, or internal-doc content
+  asserting how a feature works, or when refreshing the snapshot via the
+  `snapshot_{area}_help_{release}` CCI tasks.
 ---
 
 # Revenue Cloud Help Snapshot — AI Grounding Source
@@ -341,8 +335,3 @@ $(pipx environment --value PIPX_LOCAL_VENVS)/cumulusci/bin/python -m playwright 
 ```
 
 See `tasks/rlm_snapshot_help.py` module docstring for full options and alternate setup paths.
-
-## Change log
-
-- **2026-09-07** — Added the glued-link/duplicated-label text-artifact known limitation and `scripts/ai/check_help_corpus_text_artifacts.py` spot-check (todo 184). Carved a narrow exception into DO NOT #2 (hand-edit prohibition) for this artifact class, since a refresh cannot fix an upstream typo (PR #412 review).
-- **2026-05-11** — Skill created. Initial 262 Billing snapshot covers 171 articles (~440 KB).

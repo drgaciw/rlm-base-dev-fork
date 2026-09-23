@@ -17,7 +17,7 @@ alwaysApply: false
   subprocess / imports `tasks.robot_utils`). Dryrun never launches a browser — verify in a
   **live scratch org** first (robot_* tasks reject `--org`, issue #320 — `cci org default
   <alias>` then `cci task run <robot_task>`), or keep the PR
-  blocked (`blocked: needs-live-verification`). See AGENTS.md DO NOT #9 and
+  blocked (`blocked: needs-live-verification`). See AGENTS.md DO NOT #7 and
   `robot-testing/SKILL.md` → Verification.
 
 ## Base Class Selection

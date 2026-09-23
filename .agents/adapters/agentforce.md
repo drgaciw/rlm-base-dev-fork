@@ -7,9 +7,9 @@ instructions instead of introducing a parallel guidance stack.
 
 - **Primary instructions:** read repo-root `AGENTS.md` first and treat it as the
   canonical safety and project contract.
-- **Task-specific skills:** use `AGENTS.md` to select relevant
-  `.cursor/skills/**` Markdown files. The skills are tool-neutral and are not
-  limited to Cursor.
+- **Task-specific skills:** use [`.cursor/skills/README.md`](../../.cursor/skills/README.md),
+  linked from `AGENTS.md`, to select relevant `.cursor/skills/**` Markdown
+  files. The skills are tool-neutral and are not limited to Cursor.
 - **File-specific guidance:** read applicable `.cursor/rules/*.mdc` files for
   reusable file-pattern guidance, while recognizing that Cursor-specific
   auto-injection does not apply to Agentforce.

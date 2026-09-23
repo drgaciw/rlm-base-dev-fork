@@ -114,7 +114,7 @@ def _safe_git_sha() -> str:
             cwd=str(REPO_ROOT),
             capture_output=True,
             text=True,
-            timeout=5,
+            timeout=5, encoding="utf-8",
         )
     except Exception:
         return ""
@@ -1196,7 +1196,7 @@ class BuildManagerApp(App[None]):
                 cwd=str(REPO_ROOT),
                 capture_output=True,
                 text=True,
-                timeout=CCI_UI_COMMAND_TIMEOUT_SECONDS,
+                timeout=CCI_UI_COMMAND_TIMEOUT_SECONDS, encoding="utf-8",
             )
         except subprocess.TimeoutExpired:
             self.notify(

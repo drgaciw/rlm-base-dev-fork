@@ -2,6 +2,10 @@
   "$schema": "../schemas/project-memory.schema.json",
   "schema_version": "1.0.0",
   "last_updated_utc": "2026-08-13T23:00:00Z",
+  "release_active": "264",
+  "release_prior_ga": "262",
+  "api_version_active": "v68.0",
+  "pr_base_branch": "main",
   "repository": {
     "name": "rlm-base-dev",
     "project_name": "rlm-base",

@@ -111,7 +111,7 @@ def validate_against_transform(tokens, odt_name, org):
     query = f"SELECT Id FROM OmniDataTransform WHERE Name = '{escaped_name}'"
     result = subprocess.run(
         ["sf", "data", "query", "-q", query, "--target-org", org, "--json"],
-        capture_output=True, text=True,
+        capture_output=True, text=True, encoding="utf-8",
     )
     try:
         data = json.loads(result.stdout)
@@ -132,7 +132,7 @@ def validate_against_transform(tokens, odt_name, org):
     )
     result = subprocess.run(
         ["sf", "data", "query", "-q", query, "--target-org", org, "--json"],
-        capture_output=True, text=True,
+        capture_output=True, text=True, encoding="utf-8",
     )
     try:
         data = json.loads(result.stdout)

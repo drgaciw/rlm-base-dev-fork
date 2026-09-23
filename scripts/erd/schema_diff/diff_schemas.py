@@ -38,7 +38,7 @@ import repo_paths  # noqa: E402
 
 def load_schema(path: str) -> dict:
     """Load a schema JSON file."""
-    with open(path) as f:
+    with open(path, encoding="utf-8") as f:
         return json.load(f)
 
 
@@ -289,7 +289,7 @@ def find_impacted_plans(diff: dict) -> dict:
             # File is outside sfdmu_dir (shouldn't happen, but be defensive)
             continue
         try:
-            with open(export_json) as f:
+            with open(export_json, encoding="utf-8") as f:
                 plan = json.load(f)
         except (json.JSONDecodeError, OSError):
             continue
@@ -544,7 +544,7 @@ def main():
 
     if args.report:
         Path(args.report).parent.mkdir(parents=True, exist_ok=True)
-        with open(args.report, "w") as f:
+        with open(args.report, "w", encoding="utf-8") as f:
             f.write(report)
         print(f"\nReport written to {args.report}")
     else:
@@ -556,7 +556,7 @@ def main():
         if impacts:
             output["impacts"] = impacts
         Path(args.json_output).parent.mkdir(parents=True, exist_ok=True)
-        with open(args.json_output, "w") as f:
+        with open(args.json_output, "w", encoding="utf-8") as f:
             json.dump(output, f, indent=2)
         print(f"JSON diff written to {args.json_output}")
 

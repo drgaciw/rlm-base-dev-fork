@@ -196,7 +196,7 @@ class ValidateSetup(BaseTask):
         label = "Node.js"
         try:
             result = subprocess.run(
-                ["node", "--version"], capture_output=True, text=True, timeout=10
+                ["node", "--version"], capture_output=True, text=True, encoding="utf-8", timeout=10
             )
             if result.returncode == 0:
                 return self._ok(label, result.stdout.strip())
@@ -215,7 +215,7 @@ class ValidateSetup(BaseTask):
         label = "Salesforce CLI (sf)"
         try:
             result = subprocess.run(
-                ["sf", "--version"], capture_output=True, text=True, timeout=20
+                ["sf", "--version"], capture_output=True, text=True, encoding="utf-8", timeout=20
             )
             if result.returncode != 0:
                 detail = (result.stderr or result.stdout or "").strip()
@@ -481,6 +481,7 @@ class ValidateSetup(BaseTask):
                 ["pipx", "inject", "--force", "cumulusci", f"urllib3>={MIN_URLLIB3_STR}"],
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
                 timeout=180,
             )
             if result.returncode != 0:
@@ -547,6 +548,7 @@ class ValidateSetup(BaseTask):
                 ["pipx", "inject", "cumulusci", "--force", "-r", requirements_path],
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
                 timeout=300,
             )
             if result.returncode != 0:
@@ -578,6 +580,7 @@ class ValidateSetup(BaseTask):
                 ["sf", "plugins", "--json"],
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
                 timeout=30,
             )
             if result.returncode == 0:
@@ -585,8 +588,11 @@ class ValidateSetup(BaseTask):
                 for plugin in plugins:
                     if "sfdmu" in plugin.get("name", "").lower():
                         return plugin.get("version")
-        except Exception:
-            pass
+        except Exception as exc:
+            self.logger.warning(
+                "Could not read SFDMU version via 'sf plugins --json'; "
+                "falling back to plain-text output: %s", exc,
+            )
 
         # Fall back to plain text output
         try:
@@ -594,6 +600,7 @@ class ValidateSetup(BaseTask):
                 ["sf", "plugins"],
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
                 timeout=30,
             )
             if result.returncode == 0:
@@ -602,8 +609,8 @@ class ValidateSetup(BaseTask):
                         match = re.search(r"(\d+\.\d+\.\d+)", line)
                         if match:
                             return match.group(1)
-        except Exception:
-            pass
+        except Exception as exc:
+            self.logger.warning("Could not read SFDMU version via 'sf plugins': %s", exc)
 
         return None
 
@@ -615,6 +622,7 @@ class ValidateSetup(BaseTask):
                 ["sf", "plugins", "install", "sfdmu"],
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
                 timeout=180,
             )
             if result.returncode != 0:

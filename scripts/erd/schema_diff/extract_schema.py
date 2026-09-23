@@ -85,7 +85,7 @@ SYSTEM_FIELDS = {
 
 def get_erd_objects() -> list:
     """Load object names from erd-data.json."""
-    with open(ERD_DATA) as f:
+    with open(ERD_DATA, encoding="utf-8") as f:
         data = json.load(f)
     return sorted(data["objects"].keys())
 
@@ -98,7 +98,7 @@ def query_tooling(org_alias: str, soql: str) -> list:
          "--target-org", org_alias,
          "--use-tooling-api",
          "--json"],
-        capture_output=True, text=True, timeout=60
+        capture_output=True, text=True, timeout=60, encoding="utf-8"
     )
     if result.returncode != 0:
         error = result.stderr or result.stdout
@@ -116,7 +116,7 @@ def describe_sobject(org_alias: str, object_name: str) -> Optional[dict]:
              "--sobject", object_name,
              "--target-org", org_alias,
              "--json"],
-            capture_output=True, text=True, timeout=30
+            capture_output=True, text=True, timeout=30, encoding="utf-8"
         )
         if result.returncode != 0:
             return None
@@ -237,7 +237,7 @@ def main():
     # diff_schemas.py has no way to know that from the object list alone.
     if args.objects:
         object_selection = f"--objects {args.objects}"
-        with open(args.objects) as f:
+        with open(args.objects, encoding="utf-8") as f:
             objects = [line.strip() for line in f if line.strip() and not line.startswith("#")]
     elif args.all_objects:
         object_selection = "--all-objects (EntityDefinition)"
@@ -323,7 +323,7 @@ def main():
 
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(output_path, "w") as f:
+    with open(output_path, "w", encoding="utf-8") as f:
         json.dump(output, f, indent=2, sort_keys=True)
     print(f"\nSchema written to {output_path}")
     print(f"  Objects: {output['metadata']['object_count']}")

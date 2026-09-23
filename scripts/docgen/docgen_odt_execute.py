@@ -45,7 +45,7 @@ def execute_odt(odt_name, record_id, org, api_version="v68.0", input_file=None):
 
     if input_file:
         try:
-            with open(input_file) as f:
+            with open(input_file, encoding="utf-8") as f:
                 body = json.load(f)
         except FileNotFoundError:
             print(f"ERROR: Input file not found: {input_file}", file=sys.stderr)
@@ -59,7 +59,7 @@ def execute_odt(odt_name, record_id, org, api_version="v68.0", input_file=None):
     tmp_path = None
     try:
         with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".json", delete=False
+            mode="w", suffix=".json", delete=False, encoding="utf-8"
         ) as f:
             json.dump(body, f)
             tmp_path = f.name
@@ -72,7 +72,7 @@ def execute_odt(odt_name, record_id, org, api_version="v68.0", input_file=None):
                 endpoint,
                 "--target-org", org,
             ],
-            capture_output=True, text=True,
+            capture_output=True, text=True, encoding="utf-8",
         )
     finally:
         if tmp_path:

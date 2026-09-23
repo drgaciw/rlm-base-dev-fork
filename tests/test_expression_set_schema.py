@@ -140,7 +140,7 @@ def test_real_export_passes():
     if not os.path.exists(path):
         print(f"  [SKIP] real export not present at {path}")
         return
-    r = validate_definition(json.load(open(path)))
+    r = validate_definition(json.load(open(path, encoding="utf-8")))
     check("real export validates with 0 errors", r.passed and not r.errors)
     check(
         "real export carries HTML-entity warnings (raw GET output)",
@@ -268,7 +268,7 @@ def test_shipped_map_line_item_passes():
     if not os.path.exists(path):
         print("  [SKIP] map_line_item.json not present")
         return
-    r = validate_overlay(json.load(open(path)))
+    r = validate_overlay(json.load(open(path, encoding="utf-8")))
     check("shipped map_line_item.json validates clean", r.passed and not r.errors)
 
 
@@ -279,7 +279,7 @@ def test_shipped_discount_distribution_passes():
     if not os.path.exists(path):
         print("  [SKIP] discount_distribution.json not present")
         return
-    r = validate_overlay(json.load(open(path)))
+    r = validate_overlay(json.load(open(path, encoding="utf-8")))
     check("shipped discount_distribution.json validates clean", r.passed and not r.errors)
 
 
@@ -291,7 +291,7 @@ def test_shipped_discount_distribution_ships_constants():
     if not os.path.exists(path):
         print("  [SKIP] discount_distribution.json not present")
         return
-    ov = json.load(open(path))
+    ov = json.load(open(path, encoding="utf-8"))
     names = {v.get("name") for v in ov.get("addVariables", [])}
     expected = {
         "Constant_DDS_Amount", "Constant_DDS_NetUnitPrice",
@@ -314,7 +314,7 @@ def test_reference_facility_quantity_example_passes():
     if not os.path.exists(path):
         print("  [SKIP] facility-quantity example not present")
         return
-    r = validate_overlay(json.load(open(path)))
+    r = validate_overlay(json.load(open(path, encoding="utf-8")))
     check("reference facility-quantity example validates clean", r.passed and not r.errors)
 
 
@@ -436,7 +436,7 @@ def test_shipped_overlays_declare_their_external_dependencies():
     # against re-introducing an undocumented external dependency.
     import glob
     for path in sorted(glob.glob("datasets/expression_set_overlays/*.json")):
-        ov = json.load(open(path))
+        ov = json.load(open(path, encoding="utf-8"))
         r = validate_overlay(ov)
         leftover = [w.message for w in r.warnings if "custom reference" in w.message]
         check(

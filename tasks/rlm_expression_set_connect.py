@@ -262,7 +262,11 @@ class ExpressionSetConnectBase(BaseSalesforceTask):
                 definition = self._get_expression_set_via_connect(es_id)
             versions = definition.get("versions", [])
             get_api = versions[0].get("apiName") if versions else None
-        except Exception:
+        except Exception as exc:
+            self.logger.warning(
+                "Could not run the version-name consistency check for "
+                "ExpressionSet %s: %s", es_id, exc,
+            )
             return
         sobject_api = esv.get("ApiName")
         if get_api and sobject_api and get_api != sobject_api:
@@ -350,8 +354,11 @@ class ExpressionSetConnectBase(BaseSalesforceTask):
                 detail = (
                     f"{body.get('errorCode', '')}: {body.get('message', detail)}"
                 ).strip(": ")
-        except Exception:
-            pass
+        except Exception as exc:
+            self.logger.warning(
+                "Could not parse Connect error response body as JSON for "
+                "%s %s: %s", verb, es_id, exc,
+            )
         return TaskOptionsError(
             f"{verb} expression set {es_id} failed ({resp.status_code}): {detail}"
         )

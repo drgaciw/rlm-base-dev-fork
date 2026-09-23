@@ -5,8 +5,9 @@
 # from the other without forking or duplicating.
 #
 # This file is meant to ship IDENTICALLY in both Foundations (rlm-base-dev)
-# and PMOS (pmos-revenue-cloud) once Phase 6.3 lands. Today it lives only
-# in Foundations as the v0 reference; Sandy will mirror to PMOS.
+# and PMOS (pmos-revenue-cloud) once cross-repo mirroring lands. Today it
+# lives only in Foundations as the v0 reference; mirroring to PMOS is an
+# open item with no owner or date assigned yet.
 #
 # Resolution mechanism:
 #   1. Consumers call load_manifest() from scripts/ai/skill_manifest.py to read
@@ -22,8 +23,9 @@
 #      --resolve <repo>/<kind>/<key>` exposes the same surface for diagnostics
 #
 # When this file changes:
-#   - regenerate via cci task run generate_skill_manifest (TBD — Phase 6.3)
-#   - ensure both repos commit the same file (CI gate planned for Phase 6.3.5)
+#   - regenerate via cci task run generate_skill_manifest (not implemented yet;
+#     this file is hand-maintained until it lands)
+#   - ensure both repos commit the same file (no CI gate exists yet; planned)
 #
 # References:
 #   - Schema doc: .agents/artifacts/ssot-comparison.md §6
@@ -44,10 +46,12 @@ salesforce_release_active: "264"
 salesforce_release_prior_ga: "262"
 api_version_active: "v68.0"
 api_version_prior_ga: "v67.0"
-# ⚠ "active" here is the BRANCH TARGET, not the verified-corpus release. 264 is
-# pre-GA: the grounding artifacts below (help_corpus_active, erd_data) are still
-# 262/v67.0 captures and are labeled as such. Do not infer that a 264 corpus
-# exists because api_version_active says v68.0.
+# ⚠ "active" here is the BRANCH TARGET. 264 is preview/pre-GA, but its ERD
+# (docs/erds/erd-data.json) and Salesforce Help corpus (docs/salesforce/264/help/)
+# have both now been captured, so help_corpus_active and erd_data below are
+# 264/v68.0 captures too. help_corpus_prior_ga holds the previously-captured
+# 262/v67.0 corpus. Re-verify this comment against the grounding entries below
+# whenever release_active changes — a captured corpus does not update itself.
 
 # ─── Foundations (this repo) ────────────────────────────────────────────────
 foundations:
@@ -107,11 +111,11 @@ foundations:
 
     - id: rlm-business-apis
       path: .cursor/skills/rlm-business-apis/SKILL.md
-      purpose: "204 RC business API endpoints across 9 domains"
+      purpose: "149 RC business API endpoints across 9 domains"
       consumed_by_pmos: [spec, technical-review, prd]
-      provenance: manual extraction from per-release PDF
+      provenance: manual extraction from per-release PDF; re-extracted to Release 264 / v68.0 (PR #459)
       caveats:
-        - "Skill banner is v67.0 / Release 262 (PR #176), but underlying Postman collections at postman/docs/ were extracted from v66.0 — payload examples should be re-extracted from v67.0 collections before being cited verbatim"
+        - "Skill banner and postman/docs/ reference markdown are now v68.0 / Release 264 (PR #459), but the downloadable Postman collection JSON under postman/ is still the prior v66.0 baseline and is being regenerated against a live 264 org — payload examples in the collection JSON, not the reference docs, are what's stale"
         - "Skill self-describes as 'reference, not source of truth'"
 
     - id: ramped-quotes
@@ -153,7 +157,7 @@ foundations:
       path: .cursor/skills/qb-demo-script/SKILL.md
       purpose: "Generate the QuantumBit demo-script canvas per Salesforce release"
       output_template: docs/enablement/{release}/qb-demo-script.md
-      consumed_by_pmos: []  # PMOS demo-script may later supplement narrative voice via Phase 6.3+
+      consumed_by_pmos: []  # PMOS demo-script may later supplement narrative voice once cross-repo mirroring lands (no owner or date assigned)
       grounding_inputs:
         - foundations.grounding.qb_scenario       # canonical demo data
         - foundations.grounding.feature_index_active
@@ -359,7 +363,7 @@ foundations:
     - id: pmos-integration
       path: .cursor/skills/pmos-integration/SKILL.md
       purpose: "Cross-repo skill-manifest pattern connecting Foundations and PMOS; explains the temporal split (PMOS = future state, Foundations = current state), resolver mechanics, and per-skill opt-in"
-      consumed_by_pmos: []  # PMOS-side mirror authored by Sandy when PMOS adopts the manifest (Phase 6.3+)
+      consumed_by_pmos: []  # PMOS-side mirror not yet authored; no owner or date assigned
       tooling:
         - scripts/ai/skill_manifest.py
       governs: .claude/skill-manifest.yml
@@ -436,42 +440,45 @@ foundations:
   # Grounding artifacts (referenced by skills above; here for direct lookup)
   grounding:
     help_corpus_active:
-      # ⚠ Still a 262 capture. 264 is pre-GA and its Help articles have not
-      # published, so this remains the newest captured corpus even though
-      # salesforce_release_active is 264. Refresh via snapshot_salesforce_help
-      # against a 264 org once 264 Help publishes, then add a 264 entry.
+      # 264 Help published (captured 2026-09-04, commit 13719e57), so this now
+      # points at the 264 corpus. The previously-active 262 capture moved to
+      # help_corpus_prior_ga below rather than being discarded.
+      path: docs/salesforce/264/help/articles/
+      manifest: docs/salesforce/264/help/manifest.json
+      index: docs/salesforce/264/help/index.md
+      article_count: 1131  # = manifest.json stats.captured = files on disk, verified 2026-09-22 (3 of 1134 discovered errored, see stats.errored); becomes generator-computed when generate_skill_manifest lands (todo 132)
+      release: "264"
+      season: "Winter '27"
+      api_version: v68.0
+      refresh_task: snapshot_salesforce_help
+
+    help_corpus_prior_ga:
+      # The 262 corpus captured while it was help_corpus_active; kept as the
+      # prior-GA reference now that 264 has superseded it above. 260 was never
+      # captured (see docs/salesforce/260/, which holds only feature-index.md
+      # and release-notes-pricing.md) and has no grounding entry.
       path: docs/salesforce/262/help/articles/
       manifest: docs/salesforce/262/help/manifest.json
       index: docs/salesforce/262/help/index.md
-      article_count: 935  # = len(manifest.json articles) = files on disk, verified 2026-08-16; becomes generator-computed when generate_skill_manifest lands (todo 132)
+      article_count: 935  # = len(manifest.json articles) = files on disk, verified 2026-08-16
       release: "262"
       season: "Summer '26"
       api_version: v67.0
       refresh_task: snapshot_salesforce_help
 
-    help_corpus_prior_ga:
-      # ⚠ NOT CAPTURED. This advertised docs/salesforce/260/help/{articles,manifest.json}
-      # until 2026-07-26; neither path has ever existed, on main or on release/260 or
-      # anywhere in history. A consumer resolving it got a miss, not prior-GA content.
-      # docs/salesforce/260/ holds only feature-index.md and release-notes-pricing.md.
-      # Run snapshot_salesforce_help against a 260 org to populate it, then restore the
-      # path/manifest keys.
-      status: not_captured
-      release: "260"
-      partial: docs/salesforce/260/feature-index.md
-
     erd_data:
-      # ⚠ Still a 262 / v67.0 capture — deliberately NOT bumped with the branch.
-      # release/apiVersion here are provenance of the source org, not a version
-      # pin. Regenerate only from a verified 264 org (see docs/erds/README.md).
+      # Refreshed to the 264 / v68.0 capture (see docs/erds/README.md and
+      # scripts/erd/schema_diff/262-vs-264-diff.md for the 262->264 delta).
+      # release/apiVersion here are provenance of the source org, not a
+      # version pin; regenerate only from a verified org, not by hand-bumping.
       path: docs/erds/erd-data.json
       query_cli: scripts/ai/query_erd.py
       object_count: 263
-      field_count: 4190
+      field_count: 4252
       relationship_count: 674
-      api_version: v67.0
-      release: "262"
-      refresh_pr: "feat/262-erd-refresh-and-schema-diff-tooling (PR #179)"
+      api_version: v68.0
+      release: "264"
+      refresh_pr: "dual-org 264 extraction, lastRefreshedOn 2026-08-15 (see docs/erds/erd-data.json metadata); prior baseline was feat/262-erd-refresh-and-schema-diff-tooling (PR #179)"
 
     qb_scenario:
       path: docs/enablement/master/qb-scenario-reference.md
@@ -490,7 +497,7 @@ foundations:
       produced_by_skill: qb-demo-script
       release: "262"
       status: draft  # awaits SME pass for Setup-UI, Known Bugs, image capture, Slack publish
-      consumed_by_pmos: []  # PMOS narrative-polish pass is Phase 6.3+, opt-in
+      consumed_by_pmos: []  # PMOS narrative-polish pass is opt-in, not yet scheduled
 
     feature_index_active:
       path: docs/salesforce/262/feature-index.md

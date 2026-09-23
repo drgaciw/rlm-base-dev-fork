@@ -85,6 +85,7 @@ Choose the setup path that fits your workstation:
 | Containerized toolchain or VS Code / Cursor devcontainer | [Docker environment](docker/README.md) |
 | Install tools locally and authenticate | [Local installation](docs/guides/local-installation.md) |
 | Maintain or replicate an existing local toolchain | [Developer environment](docs/guides/dev-environment-setup.md) |
+| Windows workstation (junctions instead of symlinks, UTF-8, dev dependencies) | [Windows dev setup](docs/guides/windows-dev-setup.md) |
 
 Building requires a Salesforce org with Revenue Cloud licenses and appropriate
 metadata-deployment permissions; scratch-org creation also requires a Dev Hub.
@@ -100,6 +101,24 @@ with progress reporting and resume support, use the [build harness](docs/guides/
 Follow the [local installation guide](docs/guides/local-installation.md#macos-environment-setup-homebrew--pyenv--nvm)
 for the step-by-step macOS setup referenced by the contributing guide.
 
+### Claude Code setup
+
+The repository ships a shared Claude Code configuration so every checkout gets
+the same guardrails:
+
+- `CLAUDE.md` is a regular file that imports `AGENTS.md`; path-scoped rules live
+  in `.claude/rules/` and are generated from `.cursor/rules/`.
+- `.claude/settings.json` carries permission rules (secret reads and force-pushes
+  denied, org deploys ask first) and two hooks: one blocks edits to generated
+  metadata, one checks the skill links at session start.
+- Two project subagents in `.claude/agents/`: `rlm-reviewer` (applies
+  `REVIEW.md` to a diff) and `sfdmu-plan-auditor` (checks SFDMU data plans).
+- On Windows, run `python scripts/ai/link_skills.py --fix` once so the 32 skills
+  resolve; see the [skill discovery guide](docs/guides/agent-skill-discovery.md),
+  which also covers the optional Salesforce DX MCP server.
+- GitNexus users: `.gitnexusrc` stops `gitnexus analyze` from rewriting
+  `CLAUDE.md` and `AGENTS.md`; a tooling check enforces it.
+
 ## Documentation
 
 | Find… | Reference |
@@ -113,6 +132,46 @@ for the step-by-step macOS setup referenced by the contributing guide.
 | Revenue Cloud API collections | [Postman guide](postman/README.md) |
 | Data-model diagrams | [ERD guide](docs/erds/README.md) |
 | Hands-on learning | [Enablement exercises](docs/enablement/README.md) |
+
+## What changed in September 2026
+
+An agent-driven architecture review and two implementation waves reworked the
+agent layer, security, and CI. The review and work-package plan were produced
+by [Claude Opus 5.5](https://www.anthropic.com/claude-opus-5-5) acting as
+architect in Claude Code, with Claude Sonnet 5 workers implementing the
+packages in parallel. Recommendations were grounded in the current Claude Code
+and Agent Skills documentation, retrieved through the Context7 MCP server and
+the official docs sites, and the implemented changes were then verified with
+Perplexity AI research (Sonar via the Perplexity MCP server), with every
+source cited in the report. The full review, findings, plan, and Perplexity
+verification are in
+[architect-review-2026-09.md](docs/references/architect-review-2026-09.md).
+Highlights:
+
+- **Agent instructions:** `AGENTS.md` cut from 443 to about 120 lines; detail
+  moved to topic rules and skills. `CLAUDE.md` no longer depends on symlinks.
+- **Claude Code configuration:** shared settings, hooks, rules, and subagents
+  (see [Claude Code setup](#claude-code-setup)); skill sizes capped at 500 lines
+  with sub-files; commands and skills de-duplicated.
+- **Security:** the SFDMU task no longer logs or passes org access tokens and
+  never uses `shell=True`; the scratch-org password task refuses non-scratch
+  orgs and takes an injected password; every Apex class declares sharing; the
+  record-update service enforces `USER_MODE` and an object allowlist.
+- **Python tasks:** a shared REST helper (`tasks/rlm_rest_base.py`) with
+  timeouts on every HTTP call, API version read from `sfdx-project.json`,
+  silent `except: pass` sites replaced with logging.
+- **Windows and encoding:** every text-mode file and subprocess call passes an
+  explicit encoding, enforced by `scripts/lint/check_text_encoding.py` and ruff
+  `PLW1514`; the previously Windows-only test failures are fixed.
+- **CI and supply chain:** Dependabot, SHA-pinned actions, a diff-only lint job
+  (ruff, ESLint, Prettier), tool versions pinned once in
+  `config/tool-versions.env`, secrets scoped rather than exported image-wide,
+  and `requirements-dev.txt` for a reproducible dev environment.
+- **Release identity:** active release, prior GA, API version, and PR base branch
+  are read from `.agents/context/project-memory.json` and checked for drift.
+
+Apex, permission-set, and Robot changes from this work still need validation
+against a scratch org; see the review's wave-2 exit criteria.
 
 ## Contributing
 

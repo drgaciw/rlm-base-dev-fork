@@ -4,6 +4,71 @@
         <agentName>RLM_Quoting_Assistant</agentName>
         <enabled>true</enabled>
     </agentAccesses>
+    <!-- A-C6 (docs/ARCHITECT_REVIEW.md WP-11): RLM_AI_UpdateRecordFieldsService runs its
+         DML/query in AccessLevel.USER_MODE, so Quinn's Update_Record_Fields action needs
+         its own FLS/CRUD rather than relying on ambient system-mode access. QuoteLineItem
+         is a master-detail child of Quote and is intentionally NOT listed as a separate
+         objectPermissions entry — the platform derives its CRUD from the Quote grant below
+         (see RLM_LargeSalesTransaction.permissionset-meta.xml for the same pattern).
+         Field grants cover the fields the agent bundle documents for this action
+         (RLM_Quoting_Assistant.agent: "Quote HEADER field edits (name / status /
+         expiration date)" and "Plain LINE field edits (dates/term/description)");
+         Quantity/UnitPrice/Name are standard non-permissionable fields per the same
+         precedent and need no explicit entry. Verified only that these exact field API
+         names are permissionable elsewhere in this schema (RLM_LargeSalesTransaction,
+         RLM_QuantumBit_Sales_Representative, RLM_Partner_Community_User_Perm_Set); not
+         yet verified end-to-end against a live org for this action (org validation
+         pending, see docs/ARCHITECT_REVIEW.md §6.A I6). -->
+    <objectPermissions>
+        <allowCreate>false</allowCreate>
+        <allowDelete>false</allowDelete>
+        <allowEdit>true</allowEdit>
+        <allowRead>true</allowRead>
+        <modifyAllRecords>false</modifyAllRecords>
+        <object>Quote</object>
+        <viewAllRecords>false</viewAllRecords>
+    </objectPermissions>
+    <objectPermissions>
+        <!-- Read-only: Update_Record_Fields allows Opportunity in its object allowlist,
+             but the agent bundle documents no edit workflow against it today. -->
+        <allowCreate>false</allowCreate>
+        <allowDelete>false</allowDelete>
+        <allowEdit>false</allowEdit>
+        <allowRead>true</allowRead>
+        <modifyAllRecords>false</modifyAllRecords>
+        <object>Opportunity</object>
+        <viewAllRecords>false</viewAllRecords>
+    </objectPermissions>
+    <fieldPermissions>
+        <editable>true</editable>
+        <field>Quote.Description</field>
+        <readable>true</readable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <editable>true</editable>
+        <field>Quote.ExpirationDate</field>
+        <readable>true</readable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <editable>true</editable>
+        <field>Quote.Status</field>
+        <readable>true</readable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <editable>true</editable>
+        <field>QuoteLineItem.StartDate</field>
+        <readable>true</readable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <editable>true</editable>
+        <field>QuoteLineItem.EndDate</field>
+        <readable>true</readable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <editable>true</editable>
+        <field>QuoteLineItem.Description</field>
+        <readable>true</readable>
+    </fieldPermissions>
     <hasActivationRequired>false</hasActivationRequired>
     <label>RLM Quoting Assistant</label>
 </PermissionSet>

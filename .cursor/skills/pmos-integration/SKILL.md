@@ -1,13 +1,11 @@
 ---
 name: pmos-integration
 description: >-
-  Optional cross-repo skill manifest pattern for maintainers with PMOS access,
-  connecting Foundations (rlm-base-dev) and
-  PMOS (pmos-revenue-cloud). Use when a skill needs to read content from the
-  other repo (PRDs, demo scripts, capability roadmap, schema, Help articles,
-  scenario reference) without forking or duplicating it. Documents the temporal
-  split (PMOS = future state, Foundations = current state), the resolver, and
-  when each side is canonical.
+  Optional cross-repo skill manifest for maintainers with PMOS access,
+  connecting Foundations (rlm-base-dev) and PMOS (pmos-revenue-cloud). Use
+  when a skill needs to read content from the other repo (PRDs, demo scripts,
+  roadmap, schema, Help articles, scenario reference) without forking or
+  duplicating it. Documents the temporal split and which side is canonical.
 ---
 
 # PMOS ↔ Foundations Integration
@@ -122,8 +120,8 @@ Foundations' `qb-demo-script` skill (shipped in Release 262, now on `main`) auto
 - ✅ `qb-demo-script` skill — first proof-of-pattern consumer
 
 ### In progress
-- 🟡 PMOS-side manifest YAML (drafted at `.agents/artifacts/pmos-side-manifest-draft.md`, pending Arun → Sandy review)
-- 🟡 PMOS Tier 0 hygiene fixes (drafted at `.agents/artifacts/pmos-tier-0-hygiene-ask.md` — 4 critical-path: legacy CPQ schema in `context/ARCHITECTURE.md`, v61.0 REST examples, invented Apex REST paths, healthcare residue in `demo-data`)
+- 🟡 PMOS-side manifest YAML (drafted at `.agents/artifacts/pmos-side-manifest-draft.md` — private tracker; may be absent, pending Arun → Sandy review)
+- 🟡 PMOS Tier 0 hygiene fixes (drafted at `.agents/artifacts/pmos-tier-0-hygiene-ask.md` — private tracker; may be absent — 4 critical-path: legacy CPQ schema in `context/ARCHITECTURE.md`, v61.0 REST examples, invented Apex REST paths, healthcare residue in `demo-data`)
 
 ### Not yet built
 - Per-skill PMOS opt-in PRs (one PR per skill that PMOS chooses to upgrade)
@@ -132,6 +130,9 @@ Foundations' `qb-demo-script` skill (shipped in Release 262, now on `main`) auto
 - CI gate that checks both repos' manifests stay in sync (Phase 6.3.5)
 
 ## Related Artifacts
+
+All `.agents/artifacts/` paths below are in the private tracker; may be absent on
+a clone that hasn't cloned `rlm-base-artifacts` (see `todo-tracker/SKILL.md`).
 
 - `.agents/artifacts/arun-pmos-skills-brief.md` — full briefing to Arun on the integration plan
 - `.agents/artifacts/rlm-base-dev-and-pmos-research.md` — owner/purpose comparison

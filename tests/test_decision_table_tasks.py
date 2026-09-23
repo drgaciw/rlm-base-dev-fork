@@ -332,7 +332,7 @@ for cls in (ManageDecisionTables, RefreshDecisionTable):
         events, right_keychain = credentials_hook_events(cls)
         check(f"{cls.__name__}._update_credentials refreshes with the keychain", right_keychain)
         check(
-            f"{cls.__name__} refreshes INSIDE save_if_changed (enter→refresh→exit)",
+            f"{cls.__name__} refreshes INSIDE save_if_changed (enter->refresh->exit)",
             events == ["enter", "refresh", "exit"],
             str(events),
         )
@@ -348,7 +348,7 @@ for cls in (ManageDecisionTables, RefreshDecisionTable):
 # ---------------------------------------------------------------------------
 print("\n[1b] only the sanctioned fallback bypasses the pinned client")
 
-_manage_src = (REPO / "tasks" / "rlm_manage_decision_tables.py").read_text()
+_manage_src = (REPO / "tasks" / "rlm_manage_decision_tables.py").read_text(encoding="utf-8")
 _unpinned_uses = _manage_src.count("self.org_config.salesforce_client")
 
 # ⚠ A TRIPWIRE, not a proof — scope the claim honestly. This counts one literal spelling, so
@@ -713,7 +713,7 @@ except Exception as exc:
 # ---------------------------------------------------------------------------
 print("\n[4] refresh_all_decision_tables step keys are contiguous and complete")
 
-with open(REPO / "cumulusci.yml") as fh:
+with open(REPO / "cumulusci.yml", encoding="utf-8") as fh:
     cci = yaml.safe_load(fh)
 
 declared_flags = set(cci["project"]["custom"])

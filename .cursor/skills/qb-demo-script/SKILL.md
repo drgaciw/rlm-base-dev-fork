@@ -15,6 +15,11 @@ artifact today lives as a Slack canvas (`F09Q04HEC8Y` for the FY27/260 version);
 this skill generates the Markdown source so future versions can be regenerated
 mechanically per Salesforce release rather than hand-edited.
 
+> Every `.agents/artifacts/` path in this file is the private tracker; may be
+> absent on a clone that hasn't cloned `rlm-base-artifacts` (see
+> `todo-tracker/SKILL.md`). The generation flow already treats them as
+> optional — read the sections below for the fallback behavior.
+
 ## Quick Rules
 
 1. **The canvas is per-Salesforce-release.** Every release gets its own version

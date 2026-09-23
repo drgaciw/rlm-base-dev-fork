@@ -35,11 +35,11 @@ G = load_generator()
 def _plan(td, export_data, csvs=None):
     plan = pathlib.Path(td) / "plan"
     plan.mkdir()
-    (plan / "export.json").write_text(json.dumps(export_data))
+    (plan / "export.json").write_text(json.dumps(export_data), encoding="utf-8")
     for relpath, body in (csvs or {}).items():
         p = plan / relpath
         p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text(body)
+        p.write_text(body, encoding="utf-8")
     return plan
 
 
@@ -56,7 +56,7 @@ def _case_fresh_write():
     with tempfile.TemporaryDirectory() as td:
         plan = _plan(td, {"objectSets": [{"objects": [UPSERT_WIDGET]}]}, {"Widget__c.csv": _csv(3)})
         wrote, message = G.write_readme(str(plan))
-        content = (plan / "README.md").read_text()
+        content = (plan / "README.md").read_text(encoding="utf-8")
         return (wrote, "(new)" in message, G.BEGIN_MARKER in content, G.END_MARKER in content,
                 "Widget__c" in content, "3" in content)
 
@@ -66,18 +66,18 @@ def _case_regen_preserves_narrative():
         plan = _plan(td, {"objectSets": [{"objects": [UPSERT_WIDGET]}]}, {"Widget__c.csv": _csv(3)})
         G.write_readme(str(plan))
         readme = plan / "README.md"
-        original = readme.read_text()
+        original = readme.read_text(encoding="utf-8")
         begin_idx = original.find(G.BEGIN_MARKER)
         end_idx = original.find(G.END_MARKER) + len(G.END_MARKER)
         narrated = (original[:begin_idx] + "HAND-WRITTEN INTRO\n\n"
                     + original[begin_idx:end_idx] + "\nHAND-WRITTEN OUTRO\n")
-        readme.write_text(narrated)
+        readme.write_text(narrated, encoding="utf-8")
 
         # Change the plan (add a second object) and regenerate.
         (plan / "export.json").write_text(json.dumps(
-            {"objectSets": [{"objects": [UPSERT_WIDGET, READONLY_GADGET]}]}))
+            {"objectSets": [{"objects": [UPSERT_WIDGET, READONLY_GADGET]}]}), encoding="utf-8")
         wrote, message = G.write_readme(str(plan))
-        regenerated = readme.read_text()
+        regenerated = readme.read_text(encoding="utf-8")
         return (wrote, "regenerated" in message, "narrative preserved" in message,
                 "HAND-WRITTEN INTRO" in regenerated, "HAND-WRITTEN OUTRO" in regenerated,
                 "Gadget__c" in regenerated)
@@ -87,9 +87,9 @@ def _case_skip_no_markers():
     with tempfile.TemporaryDirectory() as td:
         plan = _plan(td, {"objectSets": [{"objects": [UPSERT_WIDGET]}]}, {"Widget__c.csv": _csv(3)})
         readme = plan / "README.md"
-        readme.write_text("# Hand-written plan doc, no markers at all.\n")
+        readme.write_text("# Hand-written plan doc, no markers at all.\n", encoding="utf-8")
         wrote, message = G.write_readme(str(plan))
-        unchanged = readme.read_text()
+        unchanged = readme.read_text(encoding="utf-8")
         return (wrote, "skip" in message, "--force" in message,
                 unchanged == "# Hand-written plan doc, no markers at all.\n")
 
@@ -98,9 +98,9 @@ def _case_force_replaces():
     with tempfile.TemporaryDirectory() as td:
         plan = _plan(td, {"objectSets": [{"objects": [UPSERT_WIDGET]}]}, {"Widget__c.csv": _csv(3)})
         readme = plan / "README.md"
-        readme.write_text("# Hand-written plan doc, no markers at all.\n")
+        readme.write_text("# Hand-written plan doc, no markers at all.\n", encoding="utf-8")
         wrote, message = G.write_readme(str(plan), force=True)
-        replaced = readme.read_text()
+        replaced = readme.read_text(encoding="utf-8")
         return (wrote, "--force" in message, "replaced whole file" in message,
                 "Hand-written plan doc" not in replaced, "Widget__c" in replaced)
 
@@ -111,7 +111,7 @@ def _case_duplicate_markers_skipped():
         readme = plan / "README.md"
         readme.write_text(
             f"# Doc\n{G.BEGIN_MARKER}\nblock one\n{G.END_MARKER}\n"
-            f"stray extra:\n{G.BEGIN_MARKER}\nblock two\n{G.END_MARKER}\n"
+            f"stray extra:\n{G.BEGIN_MARKER}\nblock two\n{G.END_MARKER}\n", encoding="utf-8"
         )
         wrote, message = G.write_readme(str(plan))
         return wrote, "skip" in message
@@ -137,15 +137,15 @@ def _resolve_case_setup(td, use_separated, override_pass2=True, override_pass1=T
         {"objectSets": [{"objects": [UPSERT_WIDGET]}, {"objects": [UPSERT_WIDGET]}],
          "useSeparatedCSVFiles": use_separated},
     )
-    (plan / "Widget__c.csv").write_text(_csv(5))
+    (plan / "Widget__c.csv").write_text(_csv(5), encoding="utf-8")
     if override_pass1:
         p1 = plan / "objectset_source" / "object-set-1"
         p1.mkdir(parents=True)
-        (p1 / "Widget__c.csv").write_text(_csv(1))
+        (p1 / "Widget__c.csv").write_text(_csv(1), encoding="utf-8")
     if override_pass2:
         p2 = plan / "objectset_source" / "object-set-2"
         p2.mkdir(parents=True)
-        (p2 / "Widget__c.csv").write_text(_csv(2))
+        (p2 / "Widget__c.csv").write_text(_csv(2), encoding="utf-8")
     return plan
 
 
@@ -183,8 +183,12 @@ def _case_no_csv_at_all():
 RESOLVE_PASS_CSV = [
     ("pass 1 always reads the root CSV even with an object-set-1 override present",
      (5, "Widget__c.csv"), _case_pass1_always_root()),
+    # A-L5 (wave 2): forward-slashed regardless of platform -- resolve_pass_csv()'s relpath
+    # is a display-only string (never parsed back, see its own docstring) that check_plan_
+    # readme_consistency.py now normalizes with .replace(os.sep, "/") for exactly that
+    # reason, so the expectation here is a literal rather than an os.sep-dependent join.
     ("pass 2 reads the object-set-2 override when useSeparatedCSVFiles is true",
-     (2, str(pathlib.Path("objectset_source") / "object-set-2" / "Widget__c.csv")),
+     (2, "objectset_source/object-set-2/Widget__c.csv"),
      _case_pass2_separated_override()),
     ("pass 2 falls back to root when useSeparatedCSVFiles is false, even with an override present",
      (5, "Widget__c.csv"), _case_pass2_not_separated_falls_back_to_root()),
@@ -217,7 +221,7 @@ def _case_readonly_only_optional_csv_not_required():
         plan = _plan(td, {"objectSets": [{"objects": [READONLY_GADGET]}]}, {"Gadget__c.csv": _csv(3)})
         G.write_readme(str(plan))
         import check_plan_readme_consistency as checker
-        content = (plan / "README.md").read_text()
+        content = (plan / "README.md").read_text(encoding="utf-8")
         listed = "Gadget__c.csv" in content  # Files section only (row uses the bare name)
         # The section is labeled for required source CSVs and its empty state says "no required
         # CSVs" (not "no CSVs") — accurate now that an optional CSV may exist but be omitted here
@@ -239,10 +243,10 @@ def _case_shared_writable_readonly_csv_still_listed():
         # Reuse the same object across passes so the physical file is genuinely shared.
         (plan / "export.json").write_text(json.dumps(
             {"objectSets": [{"objects": [UPSERT_WIDGET]},
-                            {"objects": [dict(UPSERT_WIDGET, operation="Readonly")]}]}))
+                            {"objects": [dict(UPSERT_WIDGET, operation="Readonly")]}]}), encoding="utf-8")
         G.write_readme(str(plan))
         import check_plan_readme_consistency as checker
-        listed = "Widget__c.csv" in (plan / "README.md").read_text()
+        listed = "Widget__c.csv" in (plan / "README.md").read_text(encoding="utf-8")
         errors, warns, _ = checker.check_plan(str(plan))
         return (listed, len(errors), warns)
 
@@ -257,7 +261,7 @@ def _case_same_pass_duplicate_note():
                      {"Widget__c.csv": _csv(3)})
         G.write_readme(str(plan))
         import check_plan_readme_consistency as checker
-        content = (plan / "README.md").read_text()
+        content = (plan / "README.md").read_text(encoding="utf-8")
         errors, warns, _ = checker.check_plan(str(plan))
         rows = list(checker.parse_object_tables(content.splitlines()))
         widget_rows = [r for r in rows if r["object"] == "Widget__c"]
@@ -325,7 +329,7 @@ def _case_optional_csv_roundtrip(operation, excluded=False):
         # Import via the generator's canonical module, including the shared resolver.
         import check_plan_readme_consistency as checker
         errors, warns, _ = checker.check_plan(str(plan))
-        rows = list(checker.parse_object_tables((plan / "README.md").read_text().splitlines()))
+        rows = list(checker.parse_object_tables((plan / "README.md").read_text(encoding="utf-8").splitlines()))
         return [row["records"] for row in rows], errors, warns
 
 
@@ -352,13 +356,13 @@ def _case_shared_optional_source(operation, excluded=False, same_pass=True,
         readme = plan / "README.md"
         if legacy:
             # Add a blank-Pass row reusing the explicit rows' shared count.
-            lines = readme.read_text().splitlines()
+            lines = readme.read_text(encoding="utf-8").splitlines()
             rows = list(checker.parse_object_tables(lines))
             cells = lines[rows[-1]["line"] - 1].split("|")
             header = next(line for line in lines if "| Pass |" in line).split("|")
             cells[header.index(" Pass ")] = " "
             lines.insert(rows[-1]["line"], "|".join(cells))
-            readme.write_text("\n".join(lines) + "\n")
+            readme.write_text("\n".join(lines) + "\n", encoding="utf-8")
         errors, warns, _ = checker.check_plan(str(plan))
         return len(errors), warns
 

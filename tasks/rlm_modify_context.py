@@ -2,8 +2,16 @@ from abc import abstractmethod
 
 import requests
 
-from cumulusci.core.keychain import BaseProjectKeychain
-from cumulusci.tasks.sfdx import SFDXBaseTask
+try:
+    from cumulusci.core.keychain import BaseProjectKeychain
+    from cumulusci.tasks.sfdx import SFDXBaseTask
+except ImportError:
+    BaseProjectKeychain = object
+    SFDXBaseTask = object
+
+# Context Definition APIs can take 5-10 minutes to complete server-side.
+_CONNECT_TIMEOUT = 30
+_READ_TIMEOUT = 600
 
 
 # ModifyContextDefinition is a custom task that extends the SFDXBaseTask provided by CumulusCI.
@@ -152,6 +160,7 @@ class ModifyContextDefinition(SFDXBaseTask):
 
     # Make an HTTP request using the requests library and handle the response
     def _make_request(self, method, url, **kwargs):
+        kwargs.setdefault("timeout", (_CONNECT_TIMEOUT, _READ_TIMEOUT))
         response = requests.request(method, url, **kwargs)
         if response.ok:
             return response.json()

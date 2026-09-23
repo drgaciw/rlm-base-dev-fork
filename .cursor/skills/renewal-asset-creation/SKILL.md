@@ -206,5 +206,5 @@ reason.
 > a behavioral change to them.
 
 Before the PR: `python -m py_compile scripts/renewal_assets/*.py`, run
-`python scripts/ai/pr_gate.py --base origin/264`, and follow
+`python scripts/ai/pr_gate.py --base origin/main`, and follow
 `doc-consistency/SKILL.md` (this skill is registered in `AGENTS.md`).

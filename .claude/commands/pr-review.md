@@ -1,10 +1,12 @@
 ---
 description: Drive automated PR-review comments to zero unresolved (verify → sweep → reply+👍+resolve)
 argument-hint: <pr-number>
+allowed-tools: Bash(python scripts/ai/pr_review.py *)
 ---
 
 Process **every** automated review comment on **PR #$ARGUMENTS** to **zero
-unresolved threads**, following AGENTS.md §"Responding to Automated PR Reviews".
+unresolved threads**, following the canonical review protocol in
+`.cursor/skills/audit-review/SKILL.md` ("The process").
 Use the helper `scripts/ai/pr_review.py`.
 
 1. **List open threads:**

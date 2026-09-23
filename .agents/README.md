@@ -21,11 +21,13 @@ For contributions, follow [CONTRIBUTING.md](../CONTRIBUTING.md).
 
 1. **`AGENTS.md` — root safety and project contract**
    - Authoritative for repository-wide safety rules, project context, common
-     workflows, pre-merge checks, and the skill index.
+     workflows, pre-merge checks, and a pointer to the skill catalog.
    - Every tool should read this file first and treat it as the top-level source
      of truth unless a direct human instruction overrides it.
-   - Tool-specific entry points (`CLAUDE.md`, `.github/copilot-instructions.md`)
-     are symlinks or pointers to this file — edit `AGENTS.md` only.
+   - Tool-specific entry points point back to this file — edit `AGENTS.md` only.
+     `CLAUDE.md` is a regular tracked file whose first line is the native
+     `@AGENTS.md` import (not a symlink, so it survives a Windows checkout with
+     `core.symlinks=false`); `.github/copilot-instructions.md` is a pointer.
 
 2. **`REVIEW.md` — how pull requests get reviewed**
    - Root-level companion to `AGENTS.md`, read by Claude and by Copilot. Defines
@@ -44,8 +46,8 @@ For contributions, follow [CONTRIBUTING.md](../CONTRIBUTING.md).
      and release enablement.
    - Despite the historical `.cursor` path, these are plain Markdown skills for
      any agent that can read repository files.
-   - Use the Skill Index in `AGENTS.md` or `.cursor/skills/README.md` to choose
-     the relevant entry point.
+   - Use [`.cursor/skills/README.md`](../.cursor/skills/README.md), linked from
+     `AGENTS.md`, to choose the relevant entry point.
    - `.agents/skills/<name>` and `.claude/skills/<name>` are relative directory
      links to that same content for native client discovery. See the
      [discovery guide](../docs/guides/agent-skill-discovery.md) for tested

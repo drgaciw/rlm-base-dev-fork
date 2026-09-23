@@ -155,7 +155,7 @@ def body_of(src, marker, label):
 
 def run_gate(*args):
     proc = subprocess.run([sys.executable, os.path.join(REPO, "scripts", "ai", "pr_gate.py"),
-                           *args], cwd=REPO, capture_output=True, text=True)
+                           *args], cwd=REPO, capture_output=True, text=True, encoding="utf-8")
     return proc.returncode, proc.stdout + proc.stderr
 
 
@@ -176,7 +176,7 @@ def main_with(args):
     # real gate is a hang, not a failure.
     if "--changed-files-from" in args:
         listed = args[args.index("--changed-files-from") + 1]
-        with open(listed) as fh:
+        with open(listed, encoding="utf-8") as fh:
             fixture_paths = [ln.strip() for ln in fh if ln.strip()]
         nesting = [c["name"] for c in pr_gate.CHECKS
                    if pr_gate.selects(c, fixture_paths) and c["cmd"]
@@ -346,7 +346,13 @@ check("a suite is never run twice — no dedicated check's suite is also in a bu
 CMD_WORDS = {"python", "-m", "pytest", "-q", "check", "--check"}
 # Words admitted only for the one check that declares them, not for CHECKS at large — the
 # scoping the global CMD_WORDS set cannot express.
-PER_CHECK_EXTRA_WORDS = {"plan_readme_consistency": {"--strict"}}
+PER_CHECK_EXTRA_WORDS = {
+    "plan_readme_consistency": {"--strict"},
+    # check_text_encoding.py's own positional root-directory arguments (I2, wave
+    # 2) -- bare directory names, not paths under tests/ or scripts/, so the
+    # startswith() exemption below cannot admit them.
+    "text_encoding_gate": {"tasks", "scripts", "tests", "robot"},
+}
 bad_words = sorted({w for c in pr_gate.CHECKS for w in (c["cmd"] or ())
                     if w not in CMD_WORDS
                     and w not in PER_CHECK_EXTRA_WORDS.get(c["name"], set())
@@ -387,7 +393,7 @@ check("and refuses an interpreter the gate does not normalise, which would run a
       "dependencies verified for a different one", "python3" not in CMD_WORDS, sorted(CMD_WORDS))
 check("while the gate itself remaps both spellings, so re-adding the word cannot reintroduce the gap",
       re.search(r'argv\[0\] in \("python", "python3"\)',
-                pathlib.Path(pr_gate.__file__).read_text()) is not None)
+                pathlib.Path(pr_gate.__file__).read_text(encoding="utf-8")) is not None)
 
 # A check must run when the suite it runs is edited. The trigger-coverage rule further down asks
 # whether a check's triggers cover the files its suites *read*; this asks the more basic question it
@@ -438,7 +444,11 @@ def first_party_imports(suite):
     counted and an aliased one still is.
     """
     try:
-        tree = ast.parse(pathlib.Path(os.path.join(REPO, suite)).read_text())
+        # encoding="utf-8" explicitly: this repo's source is UTF-8 (comments use em-dashes and
+        # smart quotes), but Path.read_text() with no encoding follows the platform's locale
+        # encoding — cp1252 on Windows — which raised UnicodeDecodeError on a real suite file
+        # and crashed the whole run before any check() reported anything.
+        tree = ast.parse(pathlib.Path(os.path.join(REPO, suite)).read_text(encoding="utf-8"))
     except (OSError, SyntaxError):
         return set()
     named = set()
@@ -491,7 +501,7 @@ check("those directories really do hold suites", len(real_nested) > 20, len(real
 # crash cannot leave a stray file in the real tests/ that then fails everyone else's gate.
 with tempfile.TemporaryDirectory() as fake_repo:
     os.makedirs(os.path.join(fake_repo, "tests", "nested"))
-    open(os.path.join(fake_repo, "tests", "nested", "test_probe.py"), "w").close()
+    open(os.path.join(fake_repo, "tests", "nested", "test_probe.py"), "w", encoding="utf-8").close()
     saved_root = pr_gate.REPO_ROOT
     try:
         pr_gate.REPO_ROOT = fake_repo
@@ -502,7 +512,7 @@ with tempfile.TemporaryDirectory() as fake_repo:
         check("an unclaimed suite fails the gate", code == 1, code)
         check("the unclaimed suite is named in the output", "suites no check runs" in out)
         # A shell suite must be discovered too, so excluding one is a declaration.
-        open(os.path.join(fake_repo, "tests", "test-probe.sh"), "w").close()
+        open(os.path.join(fake_repo, "tests", "test-probe.sh"), "w", encoding="utf-8").close()
         check("a shell suite is discovered rather than missed by the .py filter",
               "tests/test-probe.sh" in pr_gate.unlisted_suites(),
               pr_gate.unlisted_suites())
@@ -517,8 +527,8 @@ with tempfile.TemporaryDirectory() as fake_repo:
         # diagnosis with the rules that make it.
         for claimed_dir in sorted(c for c in pr_gate.CLAIMED_SUITES if c.endswith("/"))[:1]:
             os.makedirs(os.path.join(fake_repo, claimed_dir), exist_ok=True)
-            open(os.path.join(fake_repo, claimed_dir, "test_inside.py"), "w").close()
-            open(os.path.join(fake_repo, claimed_dir, "test-inside.sh"), "w").close()
+            open(os.path.join(fake_repo, claimed_dir, "test_inside.py"), "w", encoding="utf-8").close()
+            open(os.path.join(fake_repo, claimed_dir, "test-inside.sh"), "w", encoding="utf-8").close()
             listed = pr_gate.unlisted_suites()
             check("a .py suite under a claimed directory is covered by the claim",
                   claimed_dir + "test_inside.py" not in listed, listed)
@@ -643,18 +653,25 @@ check("a sequence reports non-zero when any command fails", code != 0, code)
 check("commands before the failure still ran", "first" in out)
 check("commands after the failure still ran", "third" in out)
 
-print("\nDependency pins agree with the workflow that installs them")
-prepare = os.path.join(REPO, ".github", "workflows", "prepare-rlm-org.yml")
-if os.path.exists(prepare):
-    with open(prepare) as fh:
+print("\nDependency pins agree with the single source of tool versions")
+# prepare-rlm-org.yml stopped carrying its own literal `cumulusci==X` pin once WP-09 pointed
+# it at config/tool-versions.env (`cat config/tool-versions.env >> "$GITHUB_ENV"`, then
+# `pip install "cumulusci==${CUMULUSCI_VERSION}"`) — so a regex pulled from that workflow's
+# body would now find nothing to compare, which is not the same as agreement. The single
+# source both the workflow and this gate read from is config/tool-versions.env itself
+# (WP-10's own pin at pr_gate.py resolves TOOL_VERSIONS from it), so that is what the gate's
+# PINS value is checked against instead.
+tool_versions = os.path.join(REPO, "config", "tool-versions.env")
+if os.path.exists(tool_versions):
+    with open(tool_versions, encoding="utf-8") as fh:
         body = fh.read()
-    pinned = re.findall(r"cumulusci==([\d.]+)", body)
+    declared = re.search(r"^CUMULUSCI_VERSION=([\d.]+)", body, re.M)
     gate_pin = re.findall(r"cumulusci==([\d.]+)", pr_gate.PINS.get("cumulusci", ""))
-    check("the gate pins the same CumulusCI version prepare-rlm-org installs",
-          bool(pinned) and bool(gate_pin) and pinned[0] == gate_pin[0],
-          f"prepare-rlm-org={pinned}, pr_gate={gate_pin}")
+    check("the gate pins the CumulusCI version config/tool-versions.env declares",
+          declared is not None and bool(gate_pin) and declared.group(1) == gate_pin[0],
+          f"tool-versions.env={declared.group(1) if declared else None}, pr_gate={gate_pin}")
 else:
-    check("prepare-rlm-org.yml exists to compare pins against", False, "file missing")
+    check("config/tool-versions.env exists to read pins from", False, "file missing")
 
 print("\nThe workflow that runs the gate cannot be quietly defanged")
 # The gate is only as real as the job that invokes it, and every way of disabling that job
@@ -664,7 +681,7 @@ print("\nThe workflow that runs the gate cannot be quietly defanged")
 # Pending and blocks every PR that misses the paths, while an `if:` skip reports success.
 workflow = os.path.join(REPO, ".github", "workflows", "pr-checks.yml")
 if os.path.exists(workflow):
-    with open(workflow) as fh:
+    with open(workflow, encoding="utf-8") as fh:
         wf = fh.read()
 
     # Trailing comments, not just whole-line ones. The first version dropped only lines that
@@ -1228,6 +1245,16 @@ if os.path.exists(workflow):
     gate_job_name, gate_job = job_with("scripts/ai/pr_gate.py",
                                        exclude=("--requirements", "--list", "--help"))
     check("exactly one job runs the gate", gate_job_name, list(doc.get("jobs") or {}))
+    # Every executed line of the gate job alone, read back out through the same run_lines()
+    # every per-step rule already uses — not run_contents(wf), the whole file. The rules below
+    # (inter-step data flow, backslash/heredoc evasion, restated pip installs, the base-ref
+    # writer) are specifically about whether *this* job's exit code can be neutralised; a second
+    # job (`lint`, WP-09) has its own legitimate shell — a regex escape in `grep -E '\.py$'`, a
+    # GitHub Actions multiline-output delimiter (`name<<EOF`), a pinned `pip install
+    # "ruff==X"` — that a whole-file scan would misread as the same evasion these rules exist to
+    # catch. The folded-scalar and `${{ }}`-injection checks further down stay whole-file on
+    # purpose: those hazards apply to every job, not only the gate's.
+    gate_run_lines = [ln for s in (gate_job.get("steps") or []) for ln in run_lines(s)]
     # A whitelist of job keys, not a search for `if:`. `continue-on-error:` at job level, and
     # `defaults: {run: {shell: …}}` — which replaces the shell for *every* step in the job and so
     # needs no step edit at all — were both invisible to a rule that looked for one key.
@@ -1245,7 +1272,15 @@ if os.path.exists(workflow):
     # string a branch ruleset matches lives outside this repo: the ruleset never learns of a rename
     # here, so it goes on requiring a context nobody publishes and every PR blocks.
     # Adding a job is therefore allowed — by editing this list, which is the review.
-    PUBLISHED = ["Mechanical checks"]
+    # "Lint (changed files)" (WP-09, C6: diff-only ruff/ESLint/Prettier) added by editing this
+    # list, which is the review the comment above describes — it publishes its own name and
+    # satisfies no branch-ruleset context named "Mechanical checks".
+    # "Docker ARG defaults match tool-versions.env" (WP-13, A-C16/AC6: the Dockerfile's ARG
+    # defaults can drift from config/tool-versions.env, the single source WP-09/WP-10 already
+    # made everything else read from) — same review, same reasoning: its own published name,
+    # satisfies no branch-ruleset context this repo relies on.
+    PUBLISHED = ["Mechanical checks", "Lint (changed files)",
+                "Docker ARG defaults match tool-versions.env"]
     published = [(j.get("name") or key) for key, j in (doc.get("jobs") or {}).items()]
     check("the workflow publishes exactly the check-run names it was reviewed with (PUBLISHED) — the "
           "job *key* is free to be renamed, since a branch ruleset matches the `name:`; add a job by "
@@ -2120,7 +2155,7 @@ if os.path.exists(workflow):
     # contained the line. The destination cannot be avoided the same way, because a step that wants to
     # reach a later one has to write to one of these four files, and `redirections()` already refuses
     # every other target. So all four are read here, as one rule, rather than one file per rule.
-    crossings = [ln.strip() for ln in run_contents(wf) if hands_over(ln)]
+    crossings = [ln.strip() for ln in gate_run_lines if hands_over(ln)]
     # A step summary is display-only: it reaches the PR page, not a later step's environment, so it is
     # matched by shape instead of enumerated. Leaving it out made `REDIR_TARGETS` advertise a
     # destination this rule refused, and a reader who meets two rules disagreeing concludes the suite
@@ -2193,9 +2228,9 @@ if os.path.exists(workflow):
           not [ln for ln in "        run: |\n          echo x\n        run: echo y\n".splitlines()
                if re.match(r"^\s*run:\s*>[-+]?\s*$", ln)])
     for label, hits in (("a backslash escape or line continuation",
-                         [ln.strip() for ln in run_contents(wf) if "\\" in ln]),
+                         [ln.strip() for ln in gate_run_lines if "\\" in ln]),
                         ("an input redirection or heredoc, whose body this suite would read as "
-                         "commands", [ln.strip() for ln in run_contents(wf) if "<" in ln])):
+                         "commands", [ln.strip() for ln in gate_run_lines if "<" in ln])):
         check(f"no executed line uses {label}", not hits, hits)
     check("that pair of rules can see an escaped separator",
           [ln for ln in run_contents(
@@ -2930,14 +2965,14 @@ if os.path.exists(workflow):
                 packages.append(word)
             i += 1
         return upgrading and packages == ["pip"]
-    restated = [seg.strip() for ln in run_contents(wf) for seg, _ in parts(ln)
+    restated = [seg.strip() for ln in gate_run_lines for seg, _ in parts(ln)
                 if runs_pip(seg) and "install" in seg
                 and not re.search(r"\$\{?reqs\}?", seg)
                 and not self_upgrade(seg)]
     check("every dependency install comes from --requirements rather than being restated",
           not restated, restated)
     check("the gate is asked what to install in the first place",
-          [ln for ln in run_contents(wf) if "--requirements" in ln], run_contents(wf))
+          [ln for ln in gate_run_lines if "--requirements" in ln], gate_run_lines)
     def restates(seg):
         return (runs_pip(seg) and "install" in seg and not re.search(r"\$\{?reqs\}?", seg)
                 and not self_upgrade(seg))
@@ -3345,8 +3380,14 @@ if os.path.exists(workflow):
     # argument applies to the two steps' `env:` mappings, which is where the base ref this job diffs
     # against actually comes from: `BASE: HEAD` leaves both permitted `SEL` lines untouched and makes
     # the selection `HEAD...HEAD`. So the inputs are pinned alongside the identities.
+    # "cache" / "cache-dependency-path" (WP-09, C7: "no pip cache in CI") are pinned literally
+    # rather than deferred to None — neither can redirect what runs, but their value is still
+    # the reviewed one, not an unbounded field.
     JOB_WITH = {"Checkout repository": {"fetch-depth": "0", "persist-credentials": "false"},
-                "Set up Python": {"python-version": None}}
+                "Set up Python": {"python-version": None, "cache": "pip",
+                                  "cache-dependency-path":
+                                      "            pyproject.toml\n"
+                                      "            robot/requirements.txt\n"}}
     JOB_ENV = {"Resolve the base ref": {"BASE_REF": "${{ github.base_ref }}"},
                "Install only what the selection needs": {"BASE": "${{ steps.base.outputs.ref }}"}}
     def inputs_of(step):
@@ -3697,7 +3738,7 @@ if os.path.exists(workflow):
     # while still being the value the gate diffs against.
     ALLOWED_REF = ('echo "ref=" >> "$GITHUB_OUTPUT"',
                    'echo "ref=origin/${BASE_REF}" >> "$GITHUB_OUTPUT"')
-    ref_lines = [ln.strip() for ln in run_contents(wf)
+    ref_lines = [ln.strip() for ln in gate_run_lines
                  if re.search(r'>>?\s*"?\$GITHUB_OUTPUT', ln)]
     check("the base the selection diffs against is the real base ref, or empty for a dispatch",
           ref_lines and all(ln in ALLOWED_REF for ln in ref_lines), ref_lines)
@@ -3785,7 +3826,7 @@ def git(repo, *args):
     walk above the throwaway directory.
     """
     env = {**os.environ, "GIT_CEILING_DIRECTORIES": os.path.dirname(os.path.realpath(repo))}
-    done = subprocess.run(["git", *args], cwd=repo, capture_output=True, text=True, env=env)
+    done = subprocess.run(["git", *args], cwd=repo, capture_output=True, text=True, env=env, encoding="utf-8")
     if done.returncode:
         print("TOOL ERROR: fixture git %s failed in %s: %s"
               % (" ".join(args), repo, (done.stderr or done.stdout).strip()))
@@ -3800,21 +3841,21 @@ with tempfile.TemporaryDirectory() as repo:
           os.path.realpath(top) == os.path.realpath(repo), (top, repo))
     git(repo, "config", "user.email", "t@example.com")
     git(repo, "config", "user.name", "t")
-    open(os.path.join(repo, "seed.txt"), "w").write("seed\n")
+    open(os.path.join(repo, "seed.txt"), "w", encoding="utf-8").write("seed\n")
     # Present on the base, so a later move reads as a deletion from it. Given a body, so
     # git's similarity detection actually fires — with a one-line file it falls back to
     # delete+add and the rename case is never exercised.
     os.makedirs(os.path.join(repo, "datasets", "sfdmu"), exist_ok=True)
-    open(os.path.join(repo, "datasets", "sfdmu", "export.json"), "w").write(
+    open(os.path.join(repo, "datasets", "sfdmu", "export.json"), "w", encoding="utf-8").write(
         "\n".join(f'{{"object": "Obj{i}", "operation": "Upsert"}}' for i in range(40)))
     git(repo, "add", "-A")
     git(repo, "commit", "-qm", "seed")
     git(repo, "checkout", "-q", "-b", "feature")
-    open(os.path.join(repo, "feature-change.md"), "w").write("feature work\n")
+    open(os.path.join(repo, "feature-change.md"), "w", encoding="utf-8").write("feature work\n")
     git(repo, "add", "-A")
     git(repo, "commit", "-qm", "feature work")
     git(repo, "checkout", "-q", "base")
-    open(os.path.join(repo, "base_only.txt"), "w").write("landed after divergence\n")
+    open(os.path.join(repo, "base_only.txt"), "w", encoding="utf-8").write("landed after divergence\n")
     git(repo, "add", "-A")
     git(repo, "commit", "-qm", "base moves on")
     git(repo, "checkout", "-q", "feature")
@@ -3848,7 +3889,7 @@ with tempfile.TemporaryDirectory() as repo:
                           | {".csv", ".json", ".md", ".py", ".yml", ".xml", ".apex", ".robot"})
         os.makedirs(os.path.join(repo, "datasets", "sfdmu", "probe"), exist_ok=True)
         for i, suf in enumerate(suffixes):
-            with open(os.path.join(repo, "datasets", "sfdmu", "probe", f"p{i}{suf}"), "w") as fh:
+            with open(os.path.join(repo, "datasets", "sfdmu", "probe", f"p{i}{suf}"), "w", encoding="utf-8") as fh:
                 fh.write("x\n")
         git(repo, "add", "-A")
         git(repo, "commit", "-qm", "one file per extension")
@@ -3863,7 +3904,7 @@ with tempfile.TemporaryDirectory() as repo:
         # quote matches no prefix.
         odd = os.path.join(repo, "docs")
         os.makedirs(odd, exist_ok=True)
-        open(os.path.join(odd, "café.md"), "w").write("x\n")
+        open(os.path.join(odd, "café.md"), "w", encoding="utf-8").write("x\n")
         git(repo, "add", "-A")
         git(repo, "commit", "-qm", "non-ascii")
         files = pr_gate.changed_files("base")
@@ -3877,7 +3918,7 @@ with tempfile.TemporaryDirectory() as repo:
         # selection: no .md suffix, no deeper prefix. The gate claims uncommitted work is
         # covered, so the collapse has to be defeated rather than documented.
         os.makedirs(os.path.join(repo, "brand-new", "guide"), exist_ok=True)
-        open(os.path.join(repo, "brand-new", "guide", "page.md"), "w").write("# new\n")
+        open(os.path.join(repo, "brand-new", "guide", "page.md"), "w", encoding="utf-8").write("# new\n")
         files = pr_gate.changed_files("base")
         check("a file inside a brand-new untracked directory reaches selection by full path",
               "brand-new/guide/page.md" in files, files)
@@ -3885,7 +3926,7 @@ with tempfile.TemporaryDirectory() as repo:
               "brand-new/" not in files, files)
         # The same collapse, now proved to change a verdict: this citation is wrong, and
         # doc_build_steps only sees it if the leaf path survives.
-        open(os.path.join(repo, "brand-new", "guide", "page.md"), "w").write(
+        open(os.path.join(repo, "brand-new", "guide", "page.md"), "w", encoding="utf-8").write(
             "See step 99.99 of a flow that does not exist.\n")
         check("the new directory's markdown selects the build-step check",
               "doc_build_steps" in selected_names(pr_gate.changed_files("base")),
@@ -3897,7 +3938,7 @@ with tempfile.TemporaryDirectory() as repo:
         # does not exist — while the real one went unselected. Both halves of a rename are wanted,
         # because a check keyed on the old path (a doc citing it, a README listing it) has to run.
         os.makedirs(os.path.join(repo, "ab cd"), exist_ok=True)
-        open(os.path.join(repo, "ab cd", "page.md"), "w").write("# spaced\n")
+        open(os.path.join(repo, "ab cd", "page.md"), "w", encoding="utf-8").write("# spaced\n")
         git(repo, "add", "-A")
         git(repo, "commit", "-qm", "spaced path")
         git(repo, "mv", "ab cd/page.md", "renamed.md")
@@ -3938,7 +3979,7 @@ with tempfile.TemporaryDirectory() as repo:
         for path in sorted(set(probes.values())):
             os.makedirs(os.path.join(repo, os.path.dirname(path)) if os.path.dirname(path) else repo,
                         exist_ok=True)
-            with open(os.path.join(repo, path), "w") as fh:
+            with open(os.path.join(repo, path), "w", encoding="utf-8") as fh:
                 fh.write("probe\n")
         git(repo, "add", "-A")
         git(repo, "commit", "-qm", "one file for every trigger any check names")
@@ -3981,6 +4022,16 @@ NOT_INPUTS = {
         # there is selectable, which is the very asymmetry this suite exists to pin.
         ".agents/artifacts": "gitignored: cannot appear in a diff, so cannot select anything",
         ".agents/artifacts/integration-staging/pmos-integration.md": "gitignored",
+        # WP-06's release-identity fixture (`_release_fixture()`) writes a synthetic README.md
+        # and manifest `"path"` values into a throwaway `TemporaryDirectory()` root to exercise
+        # `_audit_release_identity()`'s drift detection — never this repo's real README.md or
+        # docs/salesforce/ tree, even though the literals happen to name real files here too.
+        "README.md": "a path written inside a throwaway TemporaryDirectory fixture root, not "
+                      "read from this repo's real README.md",
+        "docs/salesforce/264/help/articles": "a fixture manifest's 'path' value inside a "
+                                              "throwaway TemporaryDirectory root, not read from this repo",
+        "docs/salesforce/262/help/articles": "a fixture manifest's 'path' value inside a "
+                                              "throwaway TemporaryDirectory root, not read from this repo",
     },
     "tests/test_fix_scratch_identity.py": {
         ".sf/orgs": "runtime org state, gitignored — not a repo input",
@@ -3994,6 +4045,15 @@ NOT_INPUTS = {
     },
     "tests/test_repo_paths.py": {
         ".gitignore": "a file written inside a throwaway synthetic repo, not read from this one",
+    },
+    "tests/test_link_skills.py": {
+        # ".git/info/exclude" (A-H2) is always resolved against a throwaway repo's own
+        # `L.REPO_ROOT` (via `_exclude_path()`/`git rev-parse --git-common-dir`), never this
+        # checkout's real one -- it only happens to also name a real file here because this
+        # repo's own local, never-committed `.git/info/exclude` exists on disk for the same
+        # A-H2 reason the suite is testing.
+        ".git/info/exclude": "a path resolved inside a throwaway synthetic repo, not read "
+                              "from this checkout's real .git",
     },
 }
 
@@ -4107,13 +4167,27 @@ def check_sources(spec):
     for arg in spec["cmd"][1:]:
         if arg.endswith(".py") and arg.startswith("tests/"):
             sources.append(arg)
-        elif os.path.isdir(os.path.join(REPO, arg)):
+        elif arg.startswith("tests/") and os.path.isdir(os.path.join(REPO, arg)):
+            # Restricted to tests/, like the .py branch above: a directory argument
+            # elsewhere (text_encoding_gate's "tasks"/"scripts"/"tests"/"robot" -- I2, wave 2)
+            # names a tree the check *scans* as source text, not a bundle of suites it
+            # *runs* -- every string constant inside every .py file under it would
+            # otherwise read as a fixture path this check must be triggered by, which is
+            # the "script invoked with a subcommand" false-positive shape the docstring
+            # above already carves out, one level removed (a whole tree instead of one
+            # subcommand's branch). text_encoding_gate's own explicit triggers (the same
+            # four roots) already cover its real inputs.
+            #
             # A directory argument is ~30 suites plus their conftest.py. Skipping it — the
             # first version of this function did, having only matched names ending in .py —
             # left every nested harness suite outside the guarantee, which is how the root
             # `tui-cci` launcher came to be read by a test that no check selected.
             for root, _dirs, files in os.walk(os.path.join(REPO, arg)):
-                sources += [os.path.relpath(os.path.join(root, f), REPO)
+                # Forward-slash normalised for the same reason pr_gate.unlisted_suites() is:
+                # every trigger and CLAIMED_SUITES entry is spelled with "/", but
+                # os.path.relpath follows os.sep, so this returned backslash paths on a
+                # native Windows run and every nested-directory source read as unclaimed.
+                sources += [os.path.relpath(os.path.join(root, f), REPO).replace(os.sep, "/")
                             for f in files if f.endswith(".py")]
     return sources
 
@@ -4203,7 +4277,7 @@ check("this suite reads repo files only through os.path.join(REPO, …)",
 # agent_tooling asserts these files exist, so deleting one must select it. Read back out of
 # the script for the same reason as the manifest roots below: a hand-kept copy drifts.
 tooling_src = pathlib.Path(
-    os.path.join(REPO, "scripts", "ai", "analyze_agent_tooling.py")).read_text()
+    os.path.join(REPO, "scripts", "ai", "analyze_agent_tooling.py")).read_text(encoding="utf-8")
 required = []
 for const in ("REQUIRED_FILES", "GENERATED_CCI_REFERENCE_FILES", "BASELINE_EXTRA_FILES"):
     block = re.search(rf"^{const} = \[(.*?)\]", tooling_src, re.S | re.M)
@@ -4223,7 +4297,8 @@ check("every file agent_tooling asserts the presence of can select it",
 
 # The manifest audit resolves paths anywhere under its own declared roots, so the trigger
 # list is read back out of the script rather than kept in step by hand.
-manifest_src = pathlib.Path(os.path.join(REPO, "scripts", "ai", "skill_manifest.py")).read_text()
+manifest_src = pathlib.Path(
+    os.path.join(REPO, "scripts", "ai", "skill_manifest.py")).read_text(encoding="utf-8")
 roots = re.search(r"_PATH_ROOTS = \((.*?)\)", manifest_src, re.S)
 root_files = re.search(r"_ROOT_FILES = \((.*?)\)", manifest_src, re.S)
 check("skill_manifest.py still declares the roots it audits",
@@ -4241,7 +4316,7 @@ check("every root the manifest audit resolves can select the manifest check",
       not missed_roots, missed_roots)
 
 print("\nThe CCI reference drift check watches only what the generator writes")
-src = open(os.path.join(REPO, "scripts", "ai", "pr_gate.py")).read()
+src = open(os.path.join(REPO, "scripts", "ai", "pr_gate.py"), encoding="utf-8").read()
 check("the drift scope names the three generated files",
       all(n in src for n in ("tasks-reference.md", "flows-reference.md",
                              "feature-flags.md")))
@@ -4371,7 +4446,7 @@ for spec in list(pr_gate.CHECKS):
 # So the property is not "these particular variables are not read" — enumerating the runner's variables
 # is the losing game — it is that the gate's behaviour does not depend on the environment at all.
 # `FOUNDATIONS_REPO_ROOT` is the one exception, and it is read by a *check*, not by the gate.
-gate_src = pathlib.Path(pr_gate.__file__).read_text()
+gate_src = pathlib.Path(pr_gate.__file__).read_text(encoding="utf-8")
 
 # The guard suite reads the workflow's `python -m pip install ${reqs}` and pins every word of it. But
 # `${reqs}` is the *stdout of this script*, interpolated unquoted under `set -f` precisely so it
@@ -4758,12 +4833,23 @@ def fingerprint(text):
 
 VERDICT_REGIONS = {
     # region: (fingerprint, what it decides)
-    "run()": ("0085e7acf27b", "the exit code, stdout and duration of one command"),
+    # Repinned for WP-10: subprocess.run() now passes encoding="utf-8", errors="replace"
+    # instead of bare text=True, so a child process's non-locale byte degrades the captured
+    # output instead of leaving proc.stdout/proc.stderr None and crashing run() itself
+    # (`TypeError: unsupported operand type(s) for +: 'NoneType' and 'str'`, observed for
+    # real on this Windows checkout with cp1252 as the platform locale).
+    "run()": ("cdd521f9a0f5", "the exit code, stdout and duration of one command"),
     "run_sequence()": ("00747f44b21e", "the first non-zero code across a sequence"),
     # Repinned in the wave that split tool errors out of failures: a runner returning 2 was booked as a
     # FAIL and exited 1, publishing a code verdict on a check that produced none. This rule is what
     # made that a deliberate edit rather than a quiet one, which is exactly its purpose.
-    "the booking loop and main()'s return": ("a88508e61f7f", "which verdicts reach the exit code"),
+    # Repinned for wave 2 (A-L3): the region, split on a string marker to end-of-file, also
+    # captures the `if __name__ == "__main__":` block below main() — where cp1252-safe
+    # stdout/stderr `.reconfigure(errors="replace")` calls were added ahead of `sys.exit(main())`
+    # so a check's captured output containing a non-cp1252 character no longer crashes the whole
+    # report on a Windows console. No verdict logic changed; only the deliberate-edit gate itself
+    # moved, which is exactly what re-pinning here is for.
+    "the booking loop and main()'s return": ("83f4ea150f5c", "which verdicts reach the exit code"),
 }
 observed = {
     "run()": fingerprint(body_of(gate_src, "def run(", "the command runner")),
@@ -4893,7 +4979,7 @@ finally:
 with tempfile.TemporaryDirectory() as probe_dir:
     name = "zz_present_but_unimportable"
     pathlib.Path(probe_dir, name + ".py").write_text(
-        "raise ModuleNotFoundError(\"No module named 'pretend_transitive_dep'\")\n")
+        "raise ModuleNotFoundError(\"No module named 'pretend_transitive_dep'\")\n", encoding="utf-8")
     prior_path, prior_cache = sys.path[:], dict(pr_gate._IMPORTABLE)
     prior_env = os.environ.get("PYTHONPATH")
     sys.path.insert(0, probe_dir)
@@ -4926,7 +5012,7 @@ check("cumulusci is probed at the depth a task actually needs",
 # changed_files that would silently drop every uncommitted path from the selection; in the
 # CCI-reference check, where the status IS the verdict, it would report "no drift" and pass.
 # Both must fail loudly instead, so both return codes are asserted here.
-source = pathlib.Path(pr_gate.__file__).read_text()
+source = pathlib.Path(pr_gate.__file__).read_text(encoding="utf-8")
 status_calls = source.count('"status", "--porcelain"')
 check("both git status call sites are still present", status_calls == 2, status_calls)
 
@@ -5122,8 +5208,15 @@ if FAILED:
 # fourth wave in a row to correct a hand-maintained figure. Pinned, so raising EXPECTED without
 # updating the sentence that quotes it is a failure rather than a reader's problem.
 README_COUNT = re.compile(r"Verified by `tests/test_pr_gate\.py` \((\d+) checks")
-EXPECTED = 702
-_readme_text = pathlib.Path(os.path.join(REPO, "scripts/ai/README.md")).read_text()
+# Raised for WP-10: 7 checks were added to CHECKS (claude_rules_sync, sync_claude_rules_suite,
+# link_skills_suite, rlm_sfdmu_redaction, rlm_rest_base_suite, rlm_context_service_suite,
+# expression_set_schema_parity), and the per-check loop at "a failing {name} is booked..."
+# alone adds one check() per matrix entry — this is the deliberate re-count the comment above
+# describes, not a drift.
+# Raised again for wave 2 (I2/A-M1): check_text_encoding_suite and text_encoding_gate were
+# added to CHECKS, and the same per-check loops add checks proportional to len(CHECKS).
+EXPECTED = 729
+_readme_text = pathlib.Path(os.path.join(REPO, "scripts/ai/README.md")).read_text(encoding="utf-8")
 cited = README_COUNT.search(_readme_text)
 check("the check count quoted in scripts/ai/README.md matches EXPECTED, so the prose cannot drift "
       "from the suite (README_COUNT is the sentence it reads)",
@@ -5136,7 +5229,10 @@ check("the check count quoted in scripts/ai/README.md matches EXPECTED, so the p
 # `MATRIX_SIZE_PROSE` deliberately anchors on phrases that describe CHECKS, since "fourteen" also
 # appears in unrelated incident narration that must not be rewritten.
 _NUM_WORDS = {13: "thirteen", 14: "fourteen", 15: "fifteen", 16: "sixteen", 17: "seventeen",
-              18: "eighteen", 19: "nineteen", 20: "twenty", 21: "twenty-one", 22: "twenty-two"}
+              18: "eighteen", 19: "nineteen", 20: "twenty", 21: "twenty-one", 22: "twenty-two",
+              23: "twenty-three", 24: "twenty-four", 25: "twenty-five", 26: "twenty-six",
+              27: "twenty-seven", 28: "twenty-eight", 29: "twenty-nine", 30: "thirty",
+              31: "thirty-one"}
 _actual = len(pr_gate.CHECKS)
 # A word boundary that also rejects a trailing hyphen, so the pattern for a smaller number word
 # does not match inside a hyphenated compound of a larger one: "two of the twenty" must NOT

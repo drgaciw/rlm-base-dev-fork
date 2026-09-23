@@ -1,0 +1,19 @@
+---
+description: Protected metadata rules — force-app profiles, object actionOverrides, EmailTemplatePage flexipages, rlm.network-meta.xml placeholder emails
+paths:
+  - force-app/**/profiles/**
+  - force-app/**/*.object-meta.xml
+  - templates/profiles/**
+  - templates/objects/**
+  - templates/flexipages/**
+  - unpackaged/**/networks/rlm.network-meta.xml
+---
+
+# Protected Metadata Rules
+
+## DO NOT
+
+- Add `layoutAssignment` or `applicationVisibilities` to `force-app/` profiles — use `templates/profiles/`
+- Add object `.object-meta.xml` files with `actionOverrides` to `force-app/` — they belong in `templates/objects/`
+- Add `EmailTemplatePage` flexipages to `templates/flexipages/` — they cannot deploy via Metadata API
+- Commit real emails in `rlm.network-meta.xml` — use the placeholder; patch/revert tasks handle deploy-time substitution

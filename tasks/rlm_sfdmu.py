@@ -15,11 +15,21 @@ from typing import Dict, Any, List, Optional
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "scripts"))
 import sfdmu_export  # noqa: E402  (after the path bootstrap above)
 
+# Imported before the CCI try/except below (A-C3, docs/ARCHITECT_REVIEW.md WP-11 /
+# WP-12): CumulusCI's own import machinery has been observed to reset the `tasks`
+# package's __path__ during its plugin/task discovery, which breaks a same-package
+# `from tasks import ...` done afterward. rlm_rest_base has no CCI dependency, so
+# resolving it up front sidesteps that ordering hazard entirely.
+from tasks import rlm_rest_base  # noqa: E402
+
 # ANSI escape code pattern for stripping color codes from subprocess output.
 # SFDMU and other CLI tools emit color codes; stripping them improves log readability.
 ANSI_ESCAPE_PATTERN = re.compile(r'\x1b\[[0-9;]*m')
 
-# Note: If CumulusCI is not installed, you'll need to install it or mock these imports for development.
+# If CumulusCI is not installed, fall back to minimal shims so this module (and its
+# module-level helpers) can still be imported for offline unit testing. ScratchOrgConfig
+# stays a distinct class, not plain `object`, so `isinstance(org_config, ScratchOrgConfig)`
+# checks remain meaningful in tests.
 try:
     from cumulusci.core.config import ScratchOrgConfig
     from cumulusci.tasks.salesforce import BaseSalesforceTask
@@ -27,18 +37,16 @@ try:
     from cumulusci.core.exceptions import TaskOptionsError, CommandException
     from cumulusci.core.keychain import BaseProjectKeychain
 except ImportError:
-    print("CumulusCI not found. Please install it or mock these imports for development.")
-    # For development without CumulusCI, you can use:
-    # ScratchOrgConfig = object
-    # SFDXBaseTask = object
-    # TaskOptionsError = Exception
-    # CommandException = Exception
-    # BaseProjectKeychain = object
+    class ScratchOrgConfig:  # fallback shim: CCI-less environments only
+        pass
+
+    BaseSalesforceTask = object
+    SFDXBaseTask = object
+    TaskOptionsError = Exception
+    CommandException = Exception
+    BaseProjectKeychain = object
 
 # Constants
-LOAD_COMMAND = "sf sfdmu run --sourceusername CSVFILE --targetusername {targetusername} -p {pathtoexportjson} --canmodify {instanceurl} --noprompt --verbose"
-SCRATCHORG_LOAD_COMMAND = "sf sfdmu run --sourceusername CSVFILE --targetusername {targetusername} -p {pathtoexportjson} --canmodify {instanceurl} --noprompt --verbose"
-EXTRACT_COMMAND = "sf sfdmu run --sourceusername {sourceusername} --targetusername CSVFILE -p {pathtoexportjson} --noprompt --verbose"
 EXPORT_JSON_FILENAME = "export.json"
 DRO_ASSIGNED_TO_PLACEHOLDER = "__DRO_ASSIGNED_TO_USER__"
 DRO_CSV_FILES_TO_REPLACE = ("FulfillmentStepDefinition.csv", "User.csv", "UserAndGroup.csv")
@@ -47,6 +55,101 @@ DRO_CSV_FILES_TO_REPLACE = ("FulfillmentStepDefinition.csv", "User.csv", "UserAn
 def strip_ansi_codes(text: str) -> str:
     """Strip ANSI escape codes from subprocess output for readable logs."""
     return ANSI_ESCAPE_PATTERN.sub('', text)
+
+
+def _sf_executable() -> str:
+    """Resolve the `sf` CLI executable path (A-C2, docs/ARCHITECT_REVIEW.md WP-11).
+
+    On native Windows, `sf` is installed as `sf.cmd`; `subprocess.run(["sf", ...])`
+    with list argv and shell=False does not consult PATHEXT the way a shell would,
+    so the bare name raises FileNotFoundError there. `shutil.which("sf")` performs
+    that PATHEXT-aware resolution and returns the actual executable path; falling
+    back to the bare name keeps this working unchanged on macOS/Linux (and in tests
+    that monkeypatch `shutil.which`) where no such resolution is needed.
+    """
+    return shutil.which("sf") or "sf"
+
+
+def _load_command_args(targetusername: str, pathtoexportjson: str, instanceurl: str) -> List[str]:
+    """Build the `sf sfdmu run` argv for a CSV -> org load (list form, no shell)."""
+    return [
+        _sf_executable(), "sfdmu", "run",
+        "--sourceusername", "CSVFILE",
+        "--targetusername", targetusername,
+        "-p", pathtoexportjson,
+        "--canmodify", instanceurl,
+        "--noprompt", "--verbose",
+    ]
+
+
+def _extract_command_args(sourceusername: str, pathtoexportjson: str) -> List[str]:
+    """Build the `sf sfdmu run` argv for an org -> CSV extract (list form, no shell)."""
+    return [
+        _sf_executable(), "sfdmu", "run",
+        "--sourceusername", sourceusername,
+        "--targetusername", "CSVFILE",
+        "-p", pathtoexportjson,
+        "--noprompt", "--verbose",
+    ]
+
+
+def _resolve_cli_org_alias(org_config, options: Dict[str, Any], option_key: str) -> str:
+    """Resolve a CLI-safe org alias/username for `sf` invocations and the export.json
+    ``orgs[].name`` join key.
+
+    Never falls back to ``org_config.access_token``: passing a token as a CLI
+    --target-org/--sourceusername/--targetusername value fails CLI auth and leaks the
+    secret via logs, shell history, and process listings. The access token is carried
+    exclusively in the export.json ``orgs[].accessToken`` field, which SFDMU reads
+    directly from disk.
+    """
+    if isinstance(org_config, ScratchOrgConfig):
+        return org_config.username
+    org_alias = options.get(option_key) or getattr(org_config, "username", None)
+    if not org_alias:
+        raise TaskOptionsError(
+            f"No target org alias/username available for Salesforce CLI invocation. "
+            f"Provide a valid '{option_key}' option or ensure org_config.username is set. "
+            "Falling back to org_config.access_token is not supported."
+        )
+    return org_alias
+
+
+def _copy_dir_tree_to_temp(source_dir: str, prefix: str) -> str:
+    """Copy a directory tree into a fresh temp directory; returns the temp dir path."""
+    temp_dir = tempfile.mkdtemp(prefix=prefix)
+    for item in os.listdir(source_dir):
+        src = os.path.join(source_dir, item)
+        dst = os.path.join(temp_dir, item)
+        if os.path.isdir(src):
+            shutil.copytree(src, dst)
+        else:
+            shutil.copy2(src, dst)
+    return temp_dir
+
+
+def _clear_export_json_orgs(export_json_path: str, logger: Optional[Any] = None) -> None:
+    """Best-effort: overwrite orgs=[] in export_json_path so credentials don't linger on disk."""
+    if not os.path.isfile(export_json_path):
+        return
+    try:
+        with open(export_json_path, "r", encoding="utf-8") as f:
+            ej = json.load(f)
+        ej["orgs"] = []
+        with open(export_json_path, "w", encoding="utf-8") as f:
+            json.dump(ej, f, indent=2)
+    except Exception as e:
+        if logger:
+            logger.warning(f"Could not clear credentials from {export_json_path}: {e}")
+
+
+def _redact_export_json_for_log(export_json: Dict[str, Any]) -> Dict[str, Any]:
+    """Deep copy of export_json with every orgs[].accessToken masked, for safe logging."""
+    redacted = json.loads(json.dumps(export_json))
+    for org in redacted.get("orgs", []):
+        if org.get("accessToken"):
+            org["accessToken"] = "***REDACTED***"
+    return redacted
 
 
 def derive_qb_reference_plan_dir(plan_dir: str) -> Optional[str]:
@@ -113,7 +216,7 @@ def run_post_process_script(
         cmd += ["--copy-to-plan"]
     if logger:
         logger.info(f"Running post-process: {shlex.join(cmd)}")
-    result = subprocess.run(cmd, capture_output=True, text=True, cwd=cwd)
+    result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", cwd=cwd)
     if logger:
         for line in (result.stdout or "").splitlines():
             logger.info(strip_ansi_codes(line))
@@ -231,7 +334,7 @@ class LoadSFDMUData(SFDXBaseTask):
             raise FileNotFoundError(f"export.json is missing: {export_json_path}")
         
         try:
-            with open(export_json_path, "r") as file:
+            with open(export_json_path, "r", encoding="utf-8") as file:
                 export_json = json.load(file)
 
             object_sets = self.options.get("object_sets")
@@ -256,10 +359,12 @@ class LoadSFDMUData(SFDXBaseTask):
             }
             export_json["orgs"] = [org_data]
 
-            with open(export_json_path, "w") as file:
+            with open(export_json_path, "w", encoding="utf-8") as file:
                 json.dump(export_json, file, indent=2)
 
-            self.logger.info(f'Formatted EXPORT.JSON: {json.dumps(export_json, indent=2)}')
+            self.logger.info(
+                f'Formatted EXPORT.JSON: {json.dumps(_redact_export_json_for_log(export_json), indent=2)}'
+            )
         except json.JSONDecodeError as e:
             self.logger.error(f"Error parsing export.json: {e}")
             raise
@@ -270,14 +375,14 @@ class LoadSFDMUData(SFDXBaseTask):
     def _cleanup_export_json_file(self) -> None:
         export_json_path = os.path.join(self.pathtoexportjson, EXPORT_JSON_FILENAME)
         try:
-            with open(export_json_path, "r") as file:
+            with open(export_json_path, "r", encoding="utf-8") as file:
                 export_json = json.load(file)
 
             export_json["orgs"] = []
             if getattr(self, "_original_object_sets", None) is not None:
                 export_json["objectSets"] = self._original_object_sets
 
-            with open(export_json_path, "w") as file:
+            with open(export_json_path, "w", encoding="utf-8") as file:
                 json.dump(export_json, file, indent=2)
         except (json.JSONDecodeError, IOError) as e:
             self.logger.error(f"Error cleaning up export.json: {e}")
@@ -295,9 +400,10 @@ class LoadSFDMUData(SFDXBaseTask):
         escaped = org_for_cli.replace("\\", "\\\\").replace("'", "\\'")
         query = "SELECT Name FROM User WHERE Username = '%s'" % escaped
         result = subprocess.run(
-            ["sf", "data", "query", "-q", query, "-o", org_for_cli, "--json"],
+            [_sf_executable(), "data", "query", "-q", query, "-o", org_for_cli, "--json"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
         )
         if result.returncode != 0:
             self.logger.error(f"sf data query STDERR: {strip_ansi_codes(result.stderr)}")
@@ -311,21 +417,33 @@ class LoadSFDMUData(SFDXBaseTask):
             raise CommandException("User record has no Name.")
         return name
 
+    def _copy_plan_tree_to_temp(self, prefix: str) -> str:
+        """Copy the current plan directory tree into a fresh temp directory.
+
+        Used so export.json is only ever written with live org credentials into a
+        temp copy, never into the version-controlled plan under datasets/.
+        """
+        return _copy_dir_tree_to_temp(self.pathtoexportjson, prefix)
+
+    def _stage_plan_to_temp_dir(self) -> None:
+        """Ensure ``self.pathtoexportjson`` points at a temp copy of the plan.
+
+        A no-op if a temp copy already exists (e.g. ``_apply_dynamic_assigned_to_user``
+        already staged one). Called unconditionally so credentials never land in the
+        tracked plan directory under datasets/.
+        """
+        if self._temp_plan_dir is not None:
+            return
+        self._temp_plan_dir = self._copy_plan_tree_to_temp("sfdmu_plan_")
+        self.pathtoexportjson = self._temp_plan_dir
+
     def _apply_dynamic_assigned_to_user(self) -> None:
         """Copy plan to a temp dir and replace DRO assigned-to placeholder with target org user Name."""
         placeholder = self.options.get("assigned_to_placeholder") or DRO_ASSIGNED_TO_PLACEHOLDER
         user_name = self._get_target_org_user_name()
         self.logger.info(f"Replacing DRO assigned-to placeholder with target org user Name: {user_name}")
-        source_dir = self.pathtoexportjson
-        self._temp_plan_dir = tempfile.mkdtemp(prefix="sfdmu_dro_")
         try:
-            for item in os.listdir(source_dir):
-                src = os.path.join(source_dir, item)
-                dst = os.path.join(self._temp_plan_dir, item)
-                if os.path.isdir(src):
-                    shutil.copytree(src, dst)
-                else:
-                    shutil.copy2(src, dst)
+            self._temp_plan_dir = self._copy_plan_tree_to_temp("sfdmu_dro_")
             for filename in DRO_CSV_FILES_TO_REPLACE:
                 path = os.path.join(self._temp_plan_dir, filename)
                 if not os.path.isfile(path):
@@ -345,8 +463,10 @@ class LoadSFDMUData(SFDXBaseTask):
 
     def _set_project_defaults(self, instanceurl: str) -> None:
         try:
-            subprocess.run(["sf", "config set", f"instanceUrl={instanceurl}"], 
-                           check=True, capture_output=True, text=True)
+            subprocess.run(
+                [_sf_executable(), "config", "set", f"instanceUrl={instanceurl}"],
+                check=True, capture_output=True, text=True, encoding="utf-8",
+            )
         except subprocess.CalledProcessError as e:
             self.logger.error(f"Error setting project defaults: {e}")
             raise CommandException(f"Error setting project defaults: {e}")
@@ -391,31 +511,35 @@ class LoadSFDMUData(SFDXBaseTask):
         self.pathtoexportjson = self.options.get("pathtoexportjson", "datasets/sfdmu/")
         self._temp_plan_dir = None
 
-        if isinstance(self.org_config, ScratchOrgConfig):
-            self.targetusername = self.org_config.username
-        else:
-            self.targetusername = self.options.get("targetusername") or self.org_config.access_token
+        self.targetusername = _resolve_cli_org_alias(self.org_config, self.options, "targetusername")
 
         self.accesstoken = self.options.get("accesstoken") or self.org_config.access_token
         self.instanceurl = self.options.get("instanceurl") or self.org_config.instance_url
 
         if self.options.get("dynamic_assigned_to_user"):
             self._apply_dynamic_assigned_to_user()
+        # Staging MUST happen before the sync below (A-C16, docs/ARCHITECT_REVIEW.md
+        # WP-11): dynamic_assigned_to_user already stages its own temp copy (setting
+        # self._temp_plan_dir), so this call is a no-op in that case; otherwise it
+        # stages here. Either way, self.pathtoexportjson is a temp copy by the time
+        # sync_objectset_source_to_source writes into it, so it never rewrites the
+        # tracked plan CSVs under datasets/.
+        self._stage_plan_to_temp_dir()
         if self.options.get("sync_objectset_source_to_source"):
             self._sync_objectset_source_to_source()
         self._prepare_export_json_file()
-    
+
     def _run_task(self) -> None:
         try:
             self._prep_runtime()
-            
+
             self.logger.info(f'Target Path: {self.pathtoexportjson}')
             self.logger.info(f'Current Working Directory: {self.options.get("dir")}')
-            
+
             cmd = self._get_command()
-            self.logger.info(f'Executing command: {cmd}')  # Log the command being executed
-            result = subprocess.run(cmd, shell=True, capture_output=True, text=True, cwd=self.options.get("dir"))
-            
+            self.logger.info(f'Executing command: {shlex.join(cmd)}')  # Log the command being executed
+            result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", cwd=self.options.get("dir"))
+
             if result.returncode != 0:
                 self.logger.error(f"Command failed with exit code {result.returncode}")
                 self.logger.error(f"STDOUT: {strip_ansi_codes(result.stdout)}")
@@ -432,24 +556,19 @@ class LoadSFDMUData(SFDXBaseTask):
             self.logger.info('Cleaning up export.json...')
             self._cleanup_export_json_file()
             if getattr(self, "_temp_plan_dir", None) and os.path.isdir(self._temp_plan_dir):
+                # A-C16 (docs/ARCHITECT_REVIEW.md WP-11): SFDMU writes its own run
+                # logs into <plan_dir>/logs/. Log the path before it is removed so a
+                # failed run's SFDMU logs are not silently lost with the temp dir.
+                logs_dir = os.path.join(self._temp_plan_dir, "logs")
+                if os.path.isdir(logs_dir):
+                    self.logger.info(f"SFDMU logs directory (removing after this run): {logs_dir}")
                 shutil.rmtree(self._temp_plan_dir, ignore_errors=True)
                 self.logger.info("Removed temp plan directory.")
-    def _get_command(self) -> str:
+    def _get_command(self) -> List[str]:
         trimmed_instance_url = self._trim_instance_url(self.instanceurl)
-        if not isinstance(self.org_config, ScratchOrgConfig):
-            cmd = LOAD_COMMAND.format(
-                targetusername=self.targetusername,
-                pathtoexportjson=self.pathtoexportjson,
-                instanceurl=trimmed_instance_url
-            )
-        else:
-            cmd = SCRATCHORG_LOAD_COMMAND.format(
-                targetusername=self.targetusername,
-                pathtoexportjson=self.pathtoexportjson,
-                instanceurl=trimmed_instance_url
-            )
+        cmd = _load_command_args(self.targetusername, self.pathtoexportjson, trimmed_instance_url)
         if self.options.get("simulation"):
-            cmd += " --simulation"
+            cmd.append("--simulation")
         return cmd
         
     def _trim_instance_url(self, url: str) -> str:
@@ -465,7 +584,7 @@ def _sobjects_from_export_json(export_path: str) -> list:
     not dropped, as the old exclusive fallback here did.
     """
     path = os.path.join(export_path, EXPORT_JSON_FILENAME)
-    with open(path, "r") as f:
+    with open(path, "r", encoding="utf-8") as f:
         data = json.load(f)
     sobjects = []
     object_sets = sfdmu_export.normalize_object_sets(data)
@@ -556,7 +675,7 @@ class DeleteSFDMUData(BaseSalesforceTask):
         plan_dir = self.options.get("pathtoexportjson", "datasets/sfdmu/")
         export_json_path = os.path.join(plan_dir, EXPORT_JSON_FILENAME)
 
-        with open(export_json_path) as f:
+        with open(export_json_path, encoding="utf-8") as f:
             plan = json.load(f)
 
         # Apply the optional object_sets index filter to the RAW objectSets, THEN normalize —
@@ -637,7 +756,10 @@ class DeleteSFDMUData(BaseSalesforceTask):
         params: Optional[Dict] = {"q": f"SELECT Id FROM {sobject_name}"}
 
         while True:
-            resp = requests.get(url, headers=self._auth_headers, params=params)
+            resp = requests.get(
+                url, headers=self._auth_headers, params=params,
+                timeout=rlm_rest_base.DEFAULT_TIMEOUT,
+            )
             if resp.status_code != 200:
                 self.logger.error(
                     f"{sobject_name}: SOQL query failed ({resp.status_code}): {resp.text}"
@@ -671,6 +793,7 @@ class DeleteSFDMUData(BaseSalesforceTask):
                 delete_url,
                 headers=self._auth_headers,
                 params={"ids": ",".join(batch), "allOrNone": "false"},
+                timeout=rlm_rest_base.DEFAULT_TIMEOUT,
             )
             if resp.status_code != 200:
                 self.logger.error(
@@ -771,20 +894,11 @@ class TestSFDMUIdempotency(SFDXBaseTask):
             self.project_config.keychain = self.keychain
 
     def _get_org_for_cli(self) -> str:
-        if isinstance(self.org_config, ScratchOrgConfig):
-            return self.org_config.username
         # CLI commands (sf apex run, sf data query) require an authorized org alias or username
         # as --target-org. Never fall back to access_token: it fails CLI auth and leaks a
         # secret via logs, shell history, and process listings. The access_token is kept
         # exclusively in the export.json orgs block where SFDMU needs it.
-        org_alias = self.options.get("targetusername") or getattr(self.org_config, "username", None)
-        if not org_alias:
-            raise TaskOptionsError(
-                "No target username/alias available for Salesforce CLI invocation. "
-                "Provide a valid 'targetusername' option or ensure org_config.username is set. "
-                "Falling back to org_config.access_token is not supported for CLI calls."
-            )
-        return org_alias
+        return _resolve_cli_org_alias(self.org_config, self.options, "targetusername")
 
     def _get_record_counts(self, sobjects: list) -> Dict[str, int]:
         org_alias = self._get_org_for_cli()
@@ -792,9 +906,10 @@ class TestSFDMUIdempotency(SFDXBaseTask):
         for sobject in sobjects:
             try:
                 result = subprocess.run(
-                    ["sf", "data", "query", "-q", f"SELECT COUNT(Id) cnt FROM {sobject}", "-o", org_alias, "--json"],
+                    [_sf_executable(), "data", "query", "-q", f"SELECT COUNT(Id) cnt FROM {sobject}", "-o", org_alias, "--json"],
                     capture_output=True,
                     text=True,
+                    encoding="utf-8",
                     timeout=60,
                     cwd=self.options.get("dir"),
                 )
@@ -820,20 +935,22 @@ class TestSFDMUIdempotency(SFDXBaseTask):
         export_path = os.path.join(plan_dir, EXPORT_JSON_FILENAME)
         if not os.path.isfile(export_path):
             raise FileNotFoundError(f"export.json not found: {export_path}")
-        with open(export_path, "r") as f:
-            export_json = json.load(f)
-        org_data = {"name": self._get_org_for_cli(), "accessToken": self.accesstoken, "instanceUrl": self.instanceurl}
-        export_json["orgs"] = [org_data]
-        with open(export_path, "w") as f:
-            json.dump(export_json, f, indent=2)
-        trimmed = self.instanceurl.replace("https://", "").replace("http://", "")
-        cmd = f"sf sfdmu run --sourceusername CSVFILE --targetusername {self._get_org_for_cli()} -p {plan_dir} --canmodify {trimmed} --noprompt --verbose"
-        self.logger.info(f"Running SFDMU: {cmd}")
-        result = None
+        # Load into a temp copy so credentials are never written into the plan_dir
+        # itself (which may be the version-controlled directory under datasets/).
+        temp_dir = _copy_dir_tree_to_temp(plan_dir, "sfdmu_idem_load_")
         try:
-            result = subprocess.run(
-                cmd, shell=True, capture_output=True, text=True, cwd=self.options.get("dir")
-            )
+            temp_export_path = os.path.join(temp_dir, EXPORT_JSON_FILENAME)
+            with open(temp_export_path, "r", encoding="utf-8") as f:
+                export_json = json.load(f)
+            org_alias = self._get_org_for_cli()
+            org_data = {"name": org_alias, "accessToken": self.accesstoken, "instanceUrl": self.instanceurl}
+            export_json["orgs"] = [org_data]
+            with open(temp_export_path, "w", encoding="utf-8") as f:
+                json.dump(export_json, f, indent=2)
+            trimmed = self.instanceurl.replace("https://", "").replace("http://", "")
+            cmd = _load_command_args(org_alias, temp_dir, trimmed)
+            self.logger.info(f"Running SFDMU: {shlex.join(cmd)}")
+            result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", cwd=self.options.get("dir"))
             if result.returncode != 0:
                 self.logger.error(strip_ansi_codes(result.stdout))
                 self.logger.error(strip_ansi_codes(result.stderr))
@@ -841,17 +958,19 @@ class TestSFDMUIdempotency(SFDXBaseTask):
             for line in result.stdout.splitlines():
                 self.logger.info(strip_ansi_codes(line))
         finally:
-            # Always clear injected org credentials from export.json
-            export_json["orgs"] = []
-            with open(export_path, "w") as f:
-                json.dump(export_json, f, indent=2)
+            # A-C16 (docs/ARCHITECT_REVIEW.md WP-11): log the SFDMU logs/ path
+            # before the temp dir is removed so a failed run's logs are not lost.
+            logs_dir = os.path.join(temp_dir, "logs")
+            if os.path.isdir(logs_dir):
+                self.logger.info(f"SFDMU logs directory (removing after this run): {logs_dir}")
+            shutil.rmtree(temp_dir, ignore_errors=True)
 
     def _run_extract_once(self, work_dir: str) -> None:
         """Extract from org into work_dir (must contain export.json with orgs injected)."""
-        cmd = EXTRACT_COMMAND.format(sourceusername=self._get_org_for_cli(), pathtoexportjson=work_dir)
-        self.logger.info(f"Running SFDMU extract: {cmd}")
+        cmd = _extract_command_args(self._get_org_for_cli(), work_dir)
+        self.logger.info(f"Running SFDMU extract: {shlex.join(cmd)}")
         result = subprocess.run(
-            cmd, shell=True, capture_output=True, text=True, cwd=self.options.get("dir"),
+            cmd, capture_output=True, text=True, encoding="utf-8", cwd=self.options.get("dir"),
         )
         if result.returncode != 0:
             self.logger.error(strip_ansi_codes(result.stdout))
@@ -874,10 +993,10 @@ class TestSFDMUIdempotency(SFDXBaseTask):
                 "misleading test results."
             )
         org = self._get_org_for_cli()
-        cmd = ["sf", "apex", "run", "--target-org", org, "--file", path]
+        cmd = [_sf_executable(), "apex", "run", "--target-org", org, "--file", path]
         self.logger.info(f"Running post-load Apex: {' '.join(cmd)}")
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, cwd=base, timeout=300)
+            result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", cwd=base, timeout=300)
         except subprocess.TimeoutExpired as e:
             self.logger.error(f"Post-load Apex timed out after 300s: {path}")
             if e.stdout:
@@ -943,23 +1062,14 @@ class TestSFDMUIdempotency(SFDXBaseTask):
                 export_src = os.path.join(plan_dir, EXPORT_JSON_FILENAME)
                 export_dst = os.path.join(work_dir, EXPORT_JSON_FILENAME)
                 shutil.copy2(export_src, export_dst)
-                with open(export_dst, "r") as f:
+                with open(export_dst, "r", encoding="utf-8") as f:
                     export_json = json.load(f)
                 export_json["orgs"] = [{"name": self._get_org_for_cli(), "accessToken": self.accesstoken, "instanceUrl": self.instanceurl}]
-                with open(export_dst, "w") as f:
+                with open(export_dst, "w", encoding="utf-8") as f:
                     json.dump(export_json, f, indent=2)
                 self._run_extract_once(work_dir)
                 # Scrub credentials immediately so they are not left on disk if we crash before finally
-                export_in_work = os.path.join(work_dir, EXPORT_JSON_FILENAME)
-                if os.path.isfile(export_in_work):
-                    try:
-                        with open(export_in_work, "r") as f:
-                            ej = json.load(f)
-                        ej["orgs"] = []
-                        with open(export_in_work, "w") as f:
-                            json.dump(ej, f, indent=2)
-                    except Exception as e:
-                        self.logger.warning(f"Could not clear credentials from {export_in_work}: {e}")
+                _clear_export_json_orgs(os.path.join(work_dir, EXPORT_JSON_FILENAME), self.logger)
                 processed_dir = os.path.join(work_dir, "processed")
                 os.makedirs(processed_dir, exist_ok=True)
                 run_post_process_script(
@@ -973,16 +1083,7 @@ class TestSFDMUIdempotency(SFDXBaseTask):
             finally:
                 # Always clear credentials from work_dir/export.json (persist mode leaves dir on disk)
                 if work_dir and os.path.isdir(work_dir):
-                    export_in_work = os.path.join(work_dir, EXPORT_JSON_FILENAME)
-                    if os.path.isfile(export_in_work):
-                        try:
-                            with open(export_in_work, "r") as f:
-                                ej = json.load(f)
-                            ej["orgs"] = []
-                            with open(export_in_work, "w") as f:
-                                json.dump(ej, f, indent=2)
-                        except Exception as e:
-                            self.logger.warning(f"Could not clear credentials from {export_in_work}: {e}")
+                    _clear_export_json_orgs(os.path.join(work_dir, EXPORT_JSON_FILENAME), self.logger)
                     if use_temp:
                         shutil.rmtree(work_dir, ignore_errors=True)
                         self.logger.info("Removed extraction roundtrip temp directory.")
@@ -1133,7 +1234,7 @@ class ExtractSFDMUData(SFDXBaseTask):
     def _prepare_export_json(self, work_dir: str) -> None:
         """Inject org credentials and optional object_sets filter."""
         export_json_path = os.path.join(work_dir, EXPORT_JSON_FILENAME)
-        with open(export_json_path, "r") as f:
+        with open(export_json_path, "r", encoding="utf-8") as f:
             export_json = json.load(f)
 
         object_sets = self.options.get("object_sets")
@@ -1158,7 +1259,7 @@ class ExtractSFDMUData(SFDXBaseTask):
         }
         export_json["orgs"] = [org_data]
 
-        with open(export_json_path, "w") as f:
+        with open(export_json_path, "w", encoding="utf-8") as f:
             json.dump(export_json, f, indent=2)
 
         self.logger.info(f"Prepared export.json for extraction in {work_dir}")
@@ -1200,12 +1301,11 @@ class ExtractSFDMUData(SFDXBaseTask):
     def _cli_org(self) -> Optional[str]:
         """CLI-safe org identifier for `sf` commands (alias or username).
 
-        The SFDMU extract may use the access_token (SFDMU keeps it in the orgs block),
-        so ``self.sourceusername`` can be an access_token for a non-scratch org with no
-        explicit sourceusername. ``sf data query --target-org`` requires a locally
-        authorized alias/username and rejects a bearer token (failing CLI auth and
-        leaking the secret), so resolve a real alias/username here: the explicit
-        sourceusername option, else org_config.username. Never the access_token.
+        ``sf data query --target-org`` requires a locally authorized alias/username and
+        rejects a bearer token (failing CLI auth and leaking the secret), so resolve a
+        real alias/username here: the explicit sourceusername option, else
+        org_config.username. Never the access_token — see ``_resolve_cli_org_alias``,
+        which ``self.sourceusername`` is also now derived from.
         """
         return self.options.get("sourceusername") or getattr(self.org_config, "username", None)
 
@@ -1219,9 +1319,9 @@ class ExtractSFDMUData(SFDXBaseTask):
         if not org:
             self.logger.warning("No CLI-safe org alias/username for code-map query; skipping backfill")
             return []
-        cmd = ["sf", "data", "query", "--target-org", org, "-q", soql, "--json"]
+        cmd = [_sf_executable(), "data", "query", "--target-org", org, "-q", soql, "--json"]
         try:
-            res = subprocess.run(cmd, capture_output=True, text=True)
+            res = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8")
         except Exception as e:  # pragma: no cover - subprocess failure
             self.logger.warning(f"Code-map query error: {e}")
             return []
@@ -1371,10 +1471,7 @@ class ExtractSFDMUData(SFDXBaseTask):
             if not os.path.isdir(plan_dir):
                 raise FileNotFoundError(f"Plan directory not found: {plan_dir}")
 
-            if isinstance(self.org_config, ScratchOrgConfig):
-                self.sourceusername = self.org_config.username
-            else:
-                self.sourceusername = self.options.get("sourceusername") or self.org_config.access_token
+            self.sourceusername = _resolve_cli_org_alias(self.org_config, self.options, "sourceusername")
 
             self.accesstoken = self.org_config.access_token
             self.instanceurl = self.org_config.instance_url
@@ -1384,13 +1481,10 @@ class ExtractSFDMUData(SFDXBaseTask):
             self._prepare_export_json(work_dir)
 
             # Build and run SFDMU extract command
-            cmd = EXTRACT_COMMAND.format(
-                sourceusername=self.sourceusername,
-                pathtoexportjson=work_dir,
-            )
-            self.logger.info(f"Executing extraction: {cmd}")
+            cmd = _extract_command_args(self.sourceusername, work_dir)
+            self.logger.info(f"Executing extraction: {shlex.join(cmd)}")
             result = subprocess.run(
-                cmd, shell=True, capture_output=True, text=True,
+                cmd, capture_output=True, text=True, encoding="utf-8",
                 cwd=self.options.get("dir"),
             )
 
@@ -1448,5 +1542,10 @@ class ExtractSFDMUData(SFDXBaseTask):
             raise
         finally:
             if work_dir and os.path.isdir(work_dir):
+                # A-C16 (docs/ARCHITECT_REVIEW.md WP-11): log the SFDMU logs/ path
+                # before the temp dir is removed so a failed run's logs are not lost.
+                logs_dir = os.path.join(work_dir, "logs")
+                if os.path.isdir(logs_dir):
+                    self.logger.info(f"SFDMU logs directory (removing after this run): {logs_dir}")
                 shutil.rmtree(work_dir, ignore_errors=True)
                 self.logger.info("Cleaned up extraction working directory.")

@@ -21,6 +21,7 @@ Offline, no org: `python tests/test_post_process_extraction.py`.
 """
 import importlib.util
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -186,10 +187,16 @@ def test_copy_to_plan_refuses_on_malformed_query(m):
         (extraction / "Pricebook2.csv").write_bytes(b"Id,Name,IsStandard\n01s,RAW,false\n")
         (extraction / "Account.csv").write_bytes(b"Id,Name\n001,Acme\n")
 
+        # PYTHONUTF8=1: the child (post_process_extraction.py) prints non-ASCII
+        # (em-dashes) to stdout, which it would otherwise encode with the platform
+        # default -- the Windows console codepage, not UTF-8 -- making this
+        # capture's encoding="utf-8" raise UnicodeDecodeError. Forcing the child
+        # into UTF-8 mode keeps both sides of the pipe agreeing.
         r = subprocess.run(
             [sys.executable, str(MODULE_PATH), str(extraction), str(plan),
              "--copy-to-plan", "--output-dir", str(td / "out")],
-            capture_output=True, text=True,
+            capture_output=True, text=True, encoding="utf-8",
+            env=dict(os.environ, PYTHONUTF8="1"),
         )
         check("--copy-to-plan run exits nonzero on a malformed query", r.returncode != 0,
               f"returncode={r.returncode}\n{(r.stdout + r.stderr)[-400:]}")

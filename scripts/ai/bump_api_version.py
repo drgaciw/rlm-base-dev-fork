@@ -64,6 +64,7 @@ def tracked_files() -> frozenset[str]:
         ["git", "-C", REPO_ROOT, "ls-files", "-z"],
         capture_output=True,
         text=True,
+        encoding="utf-8",
         check=True,
     ).stdout
     return frozenset(p for p in out.split("\0") if p)

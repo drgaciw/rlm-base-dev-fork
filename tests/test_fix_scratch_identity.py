@@ -63,6 +63,23 @@ def make_task(options=None, org_config=None):
     return task
 
 
+def _expected_mode(requested):
+    """The `os.stat().st_mode & 0o777` bits `os.chmod(path, requested)` actually
+    yields on this platform.
+
+    POSIX honors `requested` exactly. Windows has no discrete owner/group/other
+    bits -- NTFS's `os.chmod` only toggles the read-only file attribute, so any
+    `requested` with the owner-write bit set reports back as 0o666 (writable),
+    and one without it reports back as 0o444 (read-only); verified empirically
+    (`os.chmod(p, 0o600)` -> `os.stat(p).st_mode & 0o777 == 0o666` there). The
+    task's own `os.chmod(path, 0o600)` call is the POSIX-correct call --
+    Windows just cannot express finer granularity through this API.
+    """
+    if os.name != "nt":
+        return requested
+    return 0o666 if requested & 0o200 else 0o444
+
+
 def write_auth(directory, data, mode=0o600, name="u.json"):
     path = os.path.join(directory, name)
     with open(path, "w", encoding="utf-8") as fh:
@@ -95,7 +112,7 @@ def test_repair_decisions():
         with tempfile.TemporaryDirectory() as d:
             path = write_auth(d, dict(data))
             changed = task._repair_file(path)
-            after = json.loads(path.read_text())
+            after = json.loads(path.read_text(encoding="utf-8"))
             ok = changed == expect_change
             if expect_change:
                 ok = ok and after.get("isScratch") is True
@@ -135,12 +152,13 @@ def test_repair_raises_on_bad_files():
 
 def test_permissions_forced_0600():
     task = make_task()
+    expected = oct(_expected_mode(0o600))
     for in_mode in (0o700, 0o644, 0o600, 0o666):
         with tempfile.TemporaryDirectory() as d:
             path = write_auth(d, {"isScratch": False, "devHubUsername": "dh"}, mode=in_mode)
             task._repair_file(path)
             final = oct(os.stat(path).st_mode & 0o777)
-            check(f"{oct(in_mode)} -> {final} (expect 0o600)", final == "0o600")
+            check(f"{oct(in_mode)} -> {final} (expect {expected})", final == expected)
 
 
 # ----------------------------------------------------------------------
@@ -198,7 +216,7 @@ def test_run_summary_branches():
     # errors only -> "NOT verified"
     with tempfile.TemporaryDirectory() as d:
         bad = pathlib.Path(os.path.join(d, "bad.json"))
-        bad.write_text("not json")
+        bad.write_text("not json", encoding="utf-8")
         msgs = _run_with_files([bad])
         check("summary: NOT verified", any("NOT verified" in m for m in msgs))
 
@@ -206,7 +224,7 @@ def test_run_summary_branches():
     with tempfile.TemporaryDirectory() as d:
         good = write_auth(d, {"isScratch": False, "devHubUsername": "dh"}, name="g.json")
         bad = pathlib.Path(os.path.join(d, "b.json"))
-        bad.write_text("not json")
+        bad.write_text("not json", encoding="utf-8")
         msgs = _run_with_files([good, bad])
         check("summary: partial", any("PARTIALLY repaired" in m for m in msgs))
 
@@ -220,7 +238,7 @@ def test_run_gating_and_failure_modes():
     # raise_on_failure raises when a file can't be parsed
     with tempfile.TemporaryDirectory() as d:
         bad = pathlib.Path(os.path.join(d, "bad.json"))
-        bad.write_text("not json")
+        bad.write_text("not json", encoding="utf-8")
         task = make_task(
             options={"raise_on_failure": True},
             org_config=SimpleNamespace(scratch=True, username="u"),
@@ -307,8 +325,8 @@ def test_atomic_write_without_fchmod():
             path = write_auth(d, {"isScratch": False, "devHubUsername": "dh"}, mode=0o644)
             task._repair_file(path)
             final = oct(os.stat(path).st_mode & 0o777)
-            data = json.loads(path.read_text())
-            check("no-fchmod path -> 0o600", final == "0o600")
+            data = json.loads(path.read_text(encoding="utf-8"))
+            check("no-fchmod path -> 0o600", final == oct(_expected_mode(0o600)))
             check("no-fchmod path writes isScratch=true", data.get("isScratch") is True)
     finally:
         if had_fchmod:

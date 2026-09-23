@@ -8,6 +8,8 @@ from typing import Dict, Any, List
 import json
 import os
 
+from tasks import rlm_rest_base
+
 try:
     from cumulusci.core.tasks import BaseTask
     from cumulusci.core.exceptions import TaskOptionsError
@@ -66,7 +68,7 @@ class ManageTransactionProcessingTypes(BaseTask):
         import requests
 
         url = f"{instance_url}/services/data/v{api_version}/tooling/sobjects/TransactionProcessingType/describe"
-        resp = requests.get(url, headers=self._tooling_headers(access_token))
+        resp = requests.get(url, headers=self._tooling_headers(access_token), timeout=rlm_rest_base.DEFAULT_TIMEOUT)
         if not resp.ok:
             raise TaskOptionsError(
                 f"Describe failed for TransactionProcessingType: {resp.status_code} - {resp.text}"
@@ -77,7 +79,7 @@ class ManageTransactionProcessingTypes(BaseTask):
         import requests
 
         url = f"{instance_url}/services/data/v{api_version}/tooling/query"
-        resp = requests.get(url, headers=self._tooling_headers(access_token), params={"q": soql})
+        resp = requests.get(url, headers=self._tooling_headers(access_token), params={"q": soql}, timeout=rlm_rest_base.DEFAULT_TIMEOUT)
         if not resp.ok:
             raise TaskOptionsError(f"Tooling query failed: {resp.status_code} - {resp.text}")
         records = resp.json().get("records", [])
@@ -157,7 +159,7 @@ class ManageTransactionProcessingTypes(BaseTask):
         import requests
 
         url = f"{instance_url}/services/data/v{api_version}/tooling/sobjects/TransactionProcessingType"
-        resp = requests.post(url, headers=self._tooling_headers(access_token), json=body)
+        resp = requests.post(url, headers=self._tooling_headers(access_token), json=body, timeout=rlm_rest_base.DEFAULT_TIMEOUT)
         if not resp.ok:
             raise TaskOptionsError(f"Create failed: {resp.status_code} - {resp.text}")
         return resp.json().get("id")
@@ -166,6 +168,6 @@ class ManageTransactionProcessingTypes(BaseTask):
         import requests
 
         url = f"{instance_url}/services/data/v{api_version}/tooling/sobjects/TransactionProcessingType/{record_id}"
-        resp = requests.patch(url, headers=self._tooling_headers(access_token), json=body)
+        resp = requests.patch(url, headers=self._tooling_headers(access_token), json=body, timeout=rlm_rest_base.DEFAULT_TIMEOUT)
         if resp.status_code not in (200, 204):
             raise TaskOptionsError(f"Update failed: {resp.status_code} - {resp.text}")

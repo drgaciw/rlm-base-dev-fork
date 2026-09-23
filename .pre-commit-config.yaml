@@ -1,0 +1,44 @@
+# Optional local pre-commit hooks. Not wired into CI — .github/workflows/pr-checks.yml's
+# `lint` job is the enforced gate (ruff, ESLint, prettier --check, scoped to
+# changed files only; see CONTRIBUTING.md "Compare against the baseline").
+# This file lets a contributor opt in to the same checks before committing:
+#   pip install pre-commit && pre-commit install
+#
+# The `local` hooks call the npm scripts directly (`language: system`) so
+# ESLint/Prettier run at the exact devDependency versions pinned in
+# package.json, instead of duplicating version pins in a mirror repo — run
+# `npm install` once so `npx` can find them.
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        # datasets/** CSVs are data, not source — see sfdmu-export-json rules;
+        # a whitespace fixer mutating them is a silent data change, not a lint.
+        exclude: '\.md$|^docs/salesforce/|^datasets/'
+      - id: end-of-file-fixer
+        exclude: '^docs/salesforce/|^datasets/'
+      - id: check-yaml
+        exclude: '^\.github/workflows/' # actionlint (CI) understands GHA-specific YAML extensions this doesn't
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ["--maxkb=2048"]
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.7 # matches ruff's pin used by .github/workflows/pr-checks.yml's lint job
+    hooks:
+      - id: ruff
+        args: [--fix]
+
+  - repo: local
+    hooks:
+      - id: eslint
+        name: eslint (LWC)
+        entry: npx eslint
+        language: system
+        files: '^(force-app|unpackaged)/.*/lwc/.*\.js$'
+      - id: prettier
+        name: prettier --check
+        entry: npx prettier --check
+        language: system
+        files: '\.(cls|cmp|component|css|html|js|json|page|trigger|yaml|yml)$'

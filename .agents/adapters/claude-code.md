@@ -8,11 +8,15 @@ separate Claude-only contract.
 - **Native discovery:** `.claude/skills/<name>` links to the canonical skill
   directory. Invoke `/skill-name` with project skills enabled. See the
   [discovery guide](../../docs/guides/agent-skill-discovery.md) for tested
-  versions and the catalog fallback.
-- **Primary instructions:** `CLAUDE.md` is a symlink to `AGENTS.md`;
-  `AGENTS.md` is the authoritative root contract — edit only `AGENTS.md`.
+  versions, the Windows fix, and the catalog fallback.
+- **Primary instructions:** `CLAUDE.md` is a regular tracked file whose first
+  line is `@AGENTS.md` (Claude Code's native memory import), followed by a
+  handful of Claude-specific notes — not a symlink, so a Windows checkout with
+  `core.symlinks=false` still loads it. `AGENTS.md` is the authoritative root
+  contract — edit only `AGENTS.md`.
 - **Task-specific skills:** read the applicable `.cursor/skills/**` Markdown
-  files from the Skill Index in `AGENTS.md`. The skills are tool-neutral.
+  files from [`.cursor/skills/README.md`](../../.cursor/skills/README.md),
+  linked from `AGENTS.md`. The skills are tool-neutral.
 - **File-specific guidance:** `.cursor/rules/*.mdc` files are Cursor auto-rules,
   but Claude Code can reuse their guidance manually for matching file types.
 - **Cross-repo discovery:** `.claude/skill-manifest.yml` is the manifest for
@@ -24,7 +28,7 @@ separate Claude-only contract.
 
 ## Authoritative files
 
-1. `AGENTS.md` (authoritative); `CLAUDE.md` is the symlink entry point for Claude Code
+1. `AGENTS.md` (authoritative); `CLAUDE.md` is the `@AGENTS.md`-import entry point for Claude Code
 2. Relevant `.cursor/skills/**` files
 3. Relevant `.cursor/rules/*.mdc` files
 4. `.claude/skill-manifest.yml` for cross-repo skill resolution

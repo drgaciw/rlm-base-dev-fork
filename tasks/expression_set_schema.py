@@ -630,6 +630,16 @@ def validate_overlay(overlay: dict) -> ValidationResult:
         result.error("addVariables", "must be a list.")
     else:
         added_var_names: Set[str] = set()
+        # Variable names produced (output) by any addSteps step. A step's OUTPUT
+        # variable is materialized IMPLICITLY by the platform from the step's
+        # `section-N-output` / `formula-section-N-output` param — declaring that
+        # same name in addVariables too registers it twice and the Connect POST
+        # fails with INVALID_INPUT "A context variable with the name … already
+        # exists." addVariables is for INPUT Constants only.
+        step_produced: Set[str] = set()
+        for st in overlay.get("addSteps", []) or []:
+            _, produced = _step_all_refs(st)
+            step_produced |= produced
         for i, var in enumerate(add_vars):
             _validate_variable(var, f"addVariables[{i}]", result)
             if isinstance(var, dict):
@@ -638,6 +648,16 @@ def validate_overlay(overlay: dict) -> ValidationResult:
                     result.error(
                         f"addVariables[{i}]",
                         f"duplicate added variable name '{name}'.",
+                    )
+                if name and name in step_produced:
+                    result.error(
+                        f"addVariables[{i}]",
+                        f"variable '{name}' is already produced as a step output "
+                        f"by an addSteps entry (via its section output param); it "
+                        f"is materialized implicitly and must NOT also be declared "
+                        f"in addVariables (that double-registers it and the apply "
+                        f"fails with \"a context variable with the name '{name}' "
+                        f"already exists\"). addVariables is for input Constants only.",
                     )
                 if name:
                     added_var_names.add(name)
@@ -666,8 +686,33 @@ def validate_overlay(overlay: dict) -> ValidationResult:
 
     _validate_external_dependencies(overlay.get("externalDependencies"), result)
     _warn_undeclared_external_dependencies(overlay, result)
+    _validate_labels_block(overlay.get("labels"), result)
 
     return result
+
+
+def _validate_labels_block(labels, result: "ValidationResult") -> None:
+    """Validate the optional top-level ``labels`` block: a ``{name: label}`` map.
+
+    Readable step labels the overlay ships for the post-PATCH Tooling relabel
+    (Connect has no label field). Both keys and values must be strings; anything
+    else is an error so a malformed labels block fails the overlay rather than
+    silently dropping a label.
+    """
+    if labels is None:
+        return
+    if not isinstance(labels, dict):
+        result.error("labels", "must be an object of {step name: label}.")
+        return
+    bad = sorted(
+        k for k, v in labels.items()
+        if not isinstance(k, str) or not isinstance(v, str)
+    )
+    if bad:
+        result.error(
+            "labels",
+            f"every entry must be a string name → string label; bad entr(ies): {bad}.",
+        )
 
 
 # Suffixes that mark a reference as a CUSTOM, org-specific external dependency

@@ -899,11 +899,11 @@ def test_cli_restore_boundary():
     with tempfile.TemporaryDirectory() as td:
         overlay_path = Path(td) / "ov.json"
         overlay_path.write_text(json.dumps(
-            {"addSteps": [{"name": "S", "stepType": "BusinessKnowledgeModel"}]}))
+            {"addSteps": [{"name": "S", "stepType": "BusinessKnowledgeModel"}]}), encoding="utf-8")
         import_path = Path(td) / "imp.json"
         import_path.write_text(json.dumps(
             {"apiName": "TEST", "versions": [{"apiName": "TEST_V1", "steps": [],
-                                              "variables": []}]}))
+                                              "variables": []}]}), encoding="utf-8")
 
         # ---- apply_expression_set_overlay -------------------------------
         undo = _patch(
@@ -1007,7 +1007,7 @@ def test_export_overlay_with_labels():
         finally:
             undo()
         check("export --with-labels exits 0", rc == 0, rc)
-        written = json.loads(out_path.read_text())
+        written = json.loads(out_path.read_text(encoding="utf-8"))
         check("export --with-labels emits a labels block",
               written.get("labels") == {"GetPrice": "Get Price"}, written.get("labels"))
         check("export --with-labels drops non-sliced steps' labels",
@@ -1118,7 +1118,7 @@ def test_overlay_content_verification():
         def ensure_resource_initialization_type(self, *a): calls.append("write")
     with tempfile.TemporaryDirectory() as td:
         path = Path(td) / "overlay.json"
-        path.write_text(json.dumps({"addSteps": [changed]}))
+        path.write_text(json.dumps({"addSteps": [changed]}), encoding="utf-8")
         undo = _patch(cli, LifecycleEngine=PreflightEngine, Transport=lambda **k: None,
                       resolve_expression_set_id=lambda *a, **k: "9QLx",
                       resolve_definition_id=lambda *a, **k: "9QAx",

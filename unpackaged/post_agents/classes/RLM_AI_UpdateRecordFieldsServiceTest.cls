@@ -174,6 +174,46 @@ private class RLM_AI_UpdateRecordFieldsServiceTest {
         System.assertEquals(Date.newInstance(2029, 12, 31), updated.ExpirationDate);
     }
 
+    // ---- sObjectType allowlist is case-insensitive (A-C6) ----
+    @isTest
+    static void updatesQuoteHeaderFieldsWithLowercaseSObjectType() {
+        Fixture f = buildFixture(new List<String>{ 'Quinn Alpha' });
+
+        RLM_AI_UpdateRecordFieldsService.UpdateFieldsInput input = baseInput(f.quoteId);
+        input.sObjectType = 'quote'; // lowercase, as an LLM-supplied value might arrive
+        input.fieldUpdatesJson = '[{"fieldApiName":"Description","value":"Lowercase type worked"}]';
+
+        Test.startTest();
+        List<RLM_AI_UpdateRecordFieldsService.UpdateFieldsOutput> results =
+            RLM_AI_UpdateRecordFieldsService.updateRecordFields(
+                new List<RLM_AI_UpdateRecordFieldsService.UpdateFieldsInput>{ input });
+        Test.stopTest();
+
+        RLM_AI_UpdateRecordFieldsService.UpdateFieldsOutput out = results[0];
+        System.assertEquals(true, out.isSuccess, 'error: ' + out.errorMessage);
+        Quote updated = [SELECT Description FROM Quote WHERE Id = :f.quoteId];
+        System.assertEquals('Lowercase type worked', updated.Description);
+    }
+
+    @isTest
+    static void rejectsUnsupportedSObjectType() {
+        Fixture f = buildFixture(new List<String>{ 'Quinn Alpha' });
+
+        RLM_AI_UpdateRecordFieldsService.UpdateFieldsInput input = baseInput(f.quoteId);
+        input.sObjectType = 'Account';
+        input.fieldUpdatesJson = '[{"fieldApiName":"Name","value":"Nope"}]';
+
+        Test.startTest();
+        List<RLM_AI_UpdateRecordFieldsService.UpdateFieldsOutput> results =
+            RLM_AI_UpdateRecordFieldsService.updateRecordFields(
+                new List<RLM_AI_UpdateRecordFieldsService.UpdateFieldsInput>{ input });
+        Test.stopTest();
+
+        RLM_AI_UpdateRecordFieldsService.UpdateFieldsOutput out = results[0];
+        System.assertEquals(false, out.isSuccess);
+        System.assert(out.errorMessage.contains('Unsupported sObject type'), out.errorMessage);
+    }
+
     // ---- Quote Status by label or API value ----
     @isTest
     static void updatesQuoteStatusByLabelOrApiValue() {
@@ -867,11 +907,11 @@ private class RLM_AI_UpdateRecordFieldsServiceTest {
     @isTest
     static void coercesBooleanYesNoValues() {
         Fixture f = buildFixture(new List<String>{ 'BoolTest Product' });
-        Id productId = [SELECT Product2Id FROM QuoteLineItem WHERE Id = :f.lineIds[0]].Product2Id;
+        Id oppId = [SELECT OpportunityId FROM Quote WHERE Id = :f.quoteId].OpportunityId;
         RLM_AI_UpdateRecordFieldsService.UpdateFieldsInput input = baseInput(f.quoteId);
-        input.sObjectType = 'Product2';
-        input.quoteLineItemIds = new List<String>{ String.valueOf(productId) };
-        input.fieldUpdatesJson = '[{"fieldApiName":"IsActive","value":"yes"}]';
+        input.sObjectType = 'Opportunity';
+        input.quoteLineItemIds = new List<String>{ String.valueOf(oppId) };
+        input.fieldUpdatesJson = '[{"fieldApiName":"IsPrivate","value":"yes"}]';
 
         Test.startTest();
         List<RLM_AI_UpdateRecordFieldsService.UpdateFieldsOutput> results =
@@ -887,11 +927,11 @@ private class RLM_AI_UpdateRecordFieldsServiceTest {
     @isTest
     static void rejectsInvalidBooleanValue() {
         Fixture f = buildFixture(new List<String>{ 'BoolReject Product' });
-        Id productId = [SELECT Product2Id FROM QuoteLineItem WHERE Id = :f.lineIds[0]].Product2Id;
+        Id oppId = [SELECT OpportunityId FROM Quote WHERE Id = :f.quoteId].OpportunityId;
         RLM_AI_UpdateRecordFieldsService.UpdateFieldsInput input = baseInput(f.quoteId);
-        input.sObjectType = 'Product2';
-        input.quoteLineItemIds = new List<String>{ String.valueOf(productId) };
-        input.fieldUpdatesJson = '[{"fieldApiName":"IsActive","value":"maybe"}]';
+        input.sObjectType = 'Opportunity';
+        input.quoteLineItemIds = new List<String>{ String.valueOf(oppId) };
+        input.fieldUpdatesJson = '[{"fieldApiName":"IsPrivate","value":"maybe"}]';
 
         Test.startTest();
         List<RLM_AI_UpdateRecordFieldsService.UpdateFieldsOutput> results =
@@ -904,5 +944,30 @@ private class RLM_AI_UpdateRecordFieldsServiceTest {
             'Should reject invalid boolean');
         System.assert(out.errorMessage.containsIgnoreCase('boolean'),
             'Error should mention boolean: ' + out.errorMessage);
+    }
+
+    // ---- Object allowlist (issue X6) ----
+    @isTest
+    static void rejectsDisallowedObjectType() {
+        Fixture f = buildFixture(new List<String>{ 'AllowlistReject Product' });
+        Id productId = [SELECT Product2Id FROM QuoteLineItem WHERE Id = :f.lineIds[0]].Product2Id;
+        RLM_AI_UpdateRecordFieldsService.UpdateFieldsInput input = baseInput(f.quoteId);
+        input.sObjectType = 'Product2';
+        input.quoteLineItemIds = new List<String>{ String.valueOf(productId) };
+        input.fieldUpdatesJson = '[{"fieldApiName":"IsActive","value":"false"}]';
+
+        Test.startTest();
+        List<RLM_AI_UpdateRecordFieldsService.UpdateFieldsOutput> results =
+            RLM_AI_UpdateRecordFieldsService.updateRecordFields(
+                new List<RLM_AI_UpdateRecordFieldsService.UpdateFieldsInput>{ input });
+        Test.stopTest();
+
+        RLM_AI_UpdateRecordFieldsService.UpdateFieldsOutput out = results[0];
+        System.assertEquals(false, out.isSuccess, 'Product2 is not an allowlisted sObject type');
+        System.assertEquals(0, out.updatedCount);
+        System.assert(out.errorMessage.containsIgnoreCase('Unsupported sObject type'),
+            'Error should name the unsupported type: ' + out.errorMessage);
+        Product2 unchanged = [SELECT IsActive FROM Product2 WHERE Id = :productId];
+        System.assertEquals(true, unchanged.IsActive, 'Product2 must be untouched');
     }
 }

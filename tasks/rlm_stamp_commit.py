@@ -135,6 +135,8 @@ class StampGitCommit(SFDXBaseTask):
                 command,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 check=True,
                 timeout=10,
             )
@@ -378,6 +380,8 @@ class StampGitCommit(SFDXBaseTask):
                 command,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 check=False,
                 timeout=DEPLOY_TIMEOUT_SECONDS,
                 cwd=temp_dir,

@@ -11,6 +11,8 @@ import os
 import re
 import requests
 
+from tasks import rlm_rest_base
+
 try:
     from cumulusci.core.tasks import BaseTask
     from cumulusci.core.exceptions import TaskOptionsError
@@ -91,7 +93,7 @@ class PatchNetworkEmailForDeploy(BaseTask):
         query_url = f"{instance_url}/services/data/v{api_version}/query"
         network_name_escaped = network_name.replace("'", "''")
         soql = f"SELECT EmailSenderAddress FROM Network WHERE Name = '{network_name_escaped}' LIMIT 1"
-        response = requests.get(query_url, headers=headers, params={"q": soql})
+        response = requests.get(query_url, headers=headers, params={"q": soql}, timeout=rlm_rest_base.DEFAULT_TIMEOUT)
         response.raise_for_status()
         result = response.json()
         if result.get("totalSize", 0) == 0:

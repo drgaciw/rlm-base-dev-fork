@@ -251,7 +251,14 @@ def resolve_pass_csv(plan_dir: str, csv_idx: dict, use_separated: bool, name: st
             p = by_abspath[abs_candidate]
             if p not in count_cache:
                 count_cache[p] = csv_row_count(p)
-            return count_cache[p], os.path.relpath(p, plan_dir)
+            # Forward-slashed regardless of platform: this is a display-only string
+            # (an error message, or the generator's row-count lookup, which never
+            # embeds it in the written README -- see generate_block) never parsed
+            # back, so there is no reason for it to vary with os.sep and every
+            # reason for a Windows/POSIX diff not to depend on which one ran a
+            # check or wrote a fixture (A-L5: this backslash-vs-slash mismatch is
+            # what made `plan_readme_parsing` fail on Windows).
+            return count_cache[p], os.path.relpath(p, plan_dir).replace(os.sep, "/")
     return None, None
 
 

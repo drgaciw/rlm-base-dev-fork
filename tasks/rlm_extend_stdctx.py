@@ -4,8 +4,12 @@ import time
 import requests
 from requests.exceptions import ConnectionError, Timeout, ChunkedEncodingError
 
-from cumulusci.core.keychain import BaseProjectKeychain
-from cumulusci.tasks.sfdx import SFDXBaseTask
+try:
+    from cumulusci.core.keychain import BaseProjectKeychain
+    from cumulusci.tasks.sfdx import SFDXBaseTask
+except ImportError:
+    BaseProjectKeychain = object
+    SFDXBaseTask = object
 
 # Network resilience settings for long-running Salesforce APIs
 _CONNECT_TIMEOUT = 30       # seconds to establish TCP connection

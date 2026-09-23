@@ -434,7 +434,7 @@ def clean_video_url(value):
 
 def write_csv(name, header, rows):
     path = OUT_DIR / f"{name}.csv"
-    with open(path, "w", newline="") as f:
+    with open(path, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
         w.writerow(header)
         w.writerows(rows)
@@ -461,7 +461,7 @@ def main():
             f"as the first argument (or via {ENV_SRC}). This script regenerates the CSVs "
             f"from that legacy dump and is only needed when the source content changes."
         )
-    sql = src.read_text()
+    sql = src.read_text(encoding="utf-8")
 
     # NOTE: parse_table reads the LEGACY SQL dump, which uses the ORIGINAL (unprefixed) table
     # names. Only the OUTPUT (write_csv object names + column headers + __r traversals) carries

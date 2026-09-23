@@ -1,8 +1,98 @@
 # Repo-level Python tooling configuration.
 #
-# This file currently only configures pytest discovery for the build harness
-# unit tests. The repo's primary build system is CumulusCI (cumulusci.yml),
-# not Python packaging, so there is no [project] table here on purpose.
+# This file configures pytest discovery for the build harness unit tests and
+# ruff for the CI lint job (.github/workflows/pr-checks.yml). The repo's
+# primary build system is CumulusCI (cumulusci.yml), not Python packaging, so
+# there is no [project] table here on purpose.
+
+[tool.ruff]
+target-version = "py311"
+
+[tool.ruff.lint]
+# Ruff's own default select (E4 import, E7 statement, E9 syntax/runtime
+# error, F pyflakes). Deliberately not widened here: this is a first-time
+# baseline for a codebase that never ran a linter, not a style rewrite.
+select = ["E4", "E7", "E9", "F"]
+# PLW1514 (unspecified-encoding, I2) is a preview rule; `explicit-preview-rules`
+# keeps preview enablement scoped to exactly the rules named in `extend-select`
+# below, rather than turning on every other preview rule too.
+preview = true
+explicit-preview-rules = true
+extend-select = ["PLW1514"]
+
+[tool.ruff.lint.per-file-ignores]
+# Grandfathered violations present when the lint job was added (2026-09-22).
+# New code should not add to these; existing files are ignored per-code
+# rather than fixed here because tasks/**, scripts/** and tests/** business
+# logic belongs to other work packages. Narrow an entry (or drop it) the next
+# time its file is touched.
+"datasets/sfdmu/inapp/convert_from_legacy.py" = ["E731"]
+"postman/utilities/build_agentforce_collection.py" = ["F401", "F541"]
+"postman/utilities/update_existing_collections.py" = ["F401"]
+"postman/utilities/validate_collection.py" = ["F821"]
+"scripts/ai/pr_gate.py" = ["F401"]
+"scripts/ai/query_erd.py" = ["F541"]
+"scripts/build_harness/harness.py" = ["E402"]
+"scripts/build_quote_to_asset.py" = ["E741"]
+"scripts/cml/import_cml.py" = ["E402"]
+"scripts/compare_sfdmu_extractions.py" = ["F401"]
+"scripts/context_service/definition/diff_context.py" = ["E741"]
+"scripts/df_workshop/insert_workshop_quotes.py" = ["E741"]
+"scripts/docgen/docgen_odt_compare.py" = ["F541"]
+"scripts/docgen/docgen_odt_create.py" = ["F401", "F541"]
+"scripts/docgen/docgen_odt_execute.py" = ["F541"]
+"scripts/docgen/docgen_odt_inspect_hierarchy.py" = ["F541"]
+"scripts/docgen/docgen_odt_validate.py" = ["F541"]
+"scripts/docgen/docgen_template_build.py" = ["F401"]
+"scripts/docgen/docgen_template_extract_tokens.py" = ["F541"]
+"scripts/docgen/docgen_template_generate.py" = ["F541"]
+"scripts/docgen/docgen_template_manage.py" = ["F401", "F541"]
+"scripts/erd/build_erds.py" = ["E741", "F401", "F541"]
+"scripts/erd/cleanup_orphan_erd_fields.py" = ["F541"]
+"scripts/erd/orphan_batch_helper.py" = ["F401", "F541"]
+"scripts/erd/schema_diff/diff_schemas.py" = ["F401", "F541"]
+"scripts/erd/schema_diff/extract_schema.py" = ["F401", "F541"]
+"scripts/erd/validate_erd_against_org.py" = ["F401", "F541"]
+"scripts/expand_currency_pricing_data.py" = ["E741"]
+"scripts/expand_currency_rates_data.py" = ["E401"]
+"scripts/expression_sets/_lifecycle.py" = ["F401"]
+"scripts/expression_sets/_overlay.py" = ["F401"]
+"scripts/expression_sets/_payload.py" = ["F401"]
+"scripts/expression_sets/_tooling.py" = ["E741"]
+"scripts/expression_sets/diff_expression_set.py" = ["F401"]
+"scripts/expression_sets/export_expression_set_overlay.py" = ["E741"]
+"scripts/expression_sets/relabel_expression_set.py" = ["E741"]
+"scripts/expression_sets/trace_expression_set.py" = ["F401"]
+"scripts/post_process_extraction.py" = ["F401"]
+"scripts/qb_usage.py" = ["E741"]
+"scripts/reconcile_detail_qb_tax_billing_rating_rates.py" = ["F401", "F541", "F841"]
+"scripts/txn_data_harness/config.py" = ["F401"]
+"scripts/txn_data_harness/lifecycle.py" = ["E741", "F401"]
+"scripts/txn_data_harness/models.py" = ["F401"]
+"scripts/txn_data_harness/steps.py" = ["E741"]
+"scripts/validate_sfdmu_v5_datasets.py" = ["E402", "F401", "F541"]
+"tasks/rlm_assign_permission_set_groups.py" = ["F401"]
+"tasks/rlm_cml.py" = ["F541"]
+"tasks/rlm_extend_stdctx.py" = ["F541", "F811"]
+"tasks/rlm_manage_decision_tables.py" = ["F401"]
+"tasks/rlm_manage_expression_sets.py" = ["E722"]
+"tasks/rlm_manage_flows.py" = ["F401", "F821", "F841"]
+"tasks/rlm_modify_context.py" = ["F811"]
+"tasks/rlm_reorder_app_launcher.py" = ["E741"]
+"tasks/rlm_snapshot_help.py" = ["F401"]
+"tasks/rlm_ux_assembly.py" = ["F401", "F541"]
+"tasks/rlm_validate_setup.py" = ["F401"]
+"tasks/rlm_writeback_ux.py" = ["F401", "F821"]
+"tests/test_agent_launch_checks.py" = ["E402"]
+"tests/test_decision_table_tasks.py" = ["E402"]
+"tests/test_decision_tables_toolkit.py" = ["F401"]
+"tests/test_docgen_helpers.py" = ["E402", "F401"]
+"tests/test_expression_set_schema.py" = ["F841"]
+"tests/test_expression_sets_toolkit.py" = ["E731", "E741", "F841"]
+"tests/test_pr_gate.py" = ["F541", "F841"]
+"tests/test_qb_multicurrency_data.py" = ["F841"]
+"tests/txn_data_harness/conftest.py" = ["E402"]
+"tests/txn_data_harness/test_product_currency.py" = ["E702"]
 
 [tool.build_harness]
 # Harness/TUI uses enum.StrEnum (Python 3.11+).

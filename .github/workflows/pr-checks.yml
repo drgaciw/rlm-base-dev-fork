@@ -61,6 +61,10 @@ jobs:
           # would forbid testing on anything newer, but it does mean CI exercises only this one
           # version. A regression that only appears on the 3.11 floor is invisible here.
           python-version: "3.13"
+          cache: "pip"
+          cache-dependency-path: |
+            pyproject.toml
+            robot/requirements.txt
 
       - name: Resolve the base ref
         id: base
@@ -184,3 +188,144 @@ jobs:
             sleep $((attempt * 15))
             attempt=$((attempt + 1))
           done
+
+  # Diff-only lint: ruff (Python), ESLint (LWC JS) and prettier --check, each
+  # scoped to files the PR actually touches. Independent of `gate` (no
+  # `needs:`) so it runs in parallel — it is a code-quality signal, not part
+  # of the mechanical-checks exit contract above. Intentionally does not run
+  # under merge_group: ruleset config drift is exactly what `gate` and branch
+  # protection are for, and this job needs github.event.pull_request.* to
+  # scope to changed files.
+  #
+  # Not repo-wide on purpose: ESLint and Prettier already fail on main
+  # (CONTRIBUTING.md — ESLint/Prettier baseline). A first PR-checks lint job
+  # that only looks at changed files can go in today without a separate
+  # repo-wide cleanup pass; ruff's baseline is pyproject.toml's
+  # `[tool.ruff.lint.per-file-ignores]`, which does grandfather existing
+  # violations, but new/changed lines in those files are still checked.
+  lint:
+    name: Lint (changed files)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: "pip"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version-file: "package.json" # resolves engines.node (>=22)
+          # No `cache: npm`: setup-node's npm cache keys off package-lock.json,
+          # which is gitignored here (C7 — tracked as a follow-up, out of
+          # scope for this PR). `npm install` below is used instead of
+          # `npm ci` for the same reason.
+
+      - name: List changed files
+        id: diff
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          # --diff-filter=ACMR: added/copied/modified/renamed only — a deleted
+          # file can't be linted, and a rename with no content change would
+          # otherwise be flagged over nothing.
+          git diff --name-only --diff-filter=ACMR "${BASE_SHA}" "${HEAD_SHA}" > changed_files.txt
+          py_files=$(grep -E '\.py$' changed_files.txt || true)
+          js_files=$(grep -E '^(force-app|unpackaged)/.*/lwc/.*\.js$' changed_files.txt || true)
+          # Apex (.cls/.trigger) is deliberately excluded here: prettier --check
+          # has no "changed lines only" mode, so it fails on the *entire* file's
+          # formatting, not just the diff — unlike ruff's per-file-ignores
+          # grandfather clause. A one-line touch to a legacy, never-reformatted
+          # Apex class would fail this job for pre-existing formatting the PR
+          # didn't introduce. `npm run prettier:verify` still covers Apex
+          # repo-wide for anyone who wants to check it locally.
+          prettier_files=$(grep -E '\.(cmp|component|css|html|js|json|page|yaml|yml)$' changed_files.txt || true)
+          {
+            echo "py_files<<PY_EOF"; echo "${py_files}"; echo "PY_EOF"
+            echo "js_files<<JS_EOF"; echo "${js_files}"; echo "JS_EOF"
+            echo "prettier_files<<PRETTIER_EOF"; echo "${prettier_files}"; echo "PRETTIER_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: ruff
+        if: steps.diff.outputs.py_files != ''
+        env:
+          PY_FILES: ${{ steps.diff.outputs.py_files }}
+        run: |
+          set -euo pipefail
+          # Version matches .pre-commit-config.yaml's ruff-pre-commit rev, so a
+          # local `pre-commit run ruff` and this CI step agree.
+          python -m pip install --upgrade pip "ruff==0.16.7"
+          # -d '\n': split only on newlines, not all whitespace, so a changed
+          # file whose name contains a space (tracked examples exist under
+          # postman/ and templates/profiles/) is passed as one argument
+          # instead of being split into two bogus paths.
+          echo "${PY_FILES}" | xargs -r -d '\n' python -m ruff check
+
+      - name: npm install
+        if: steps.diff.outputs.js_files != '' || steps.diff.outputs.prettier_files != ''
+        run: npm install
+
+      - name: eslint
+        if: steps.diff.outputs.js_files != ''
+        env:
+          JS_FILES: ${{ steps.diff.outputs.js_files }}
+        run: |
+          set -euo pipefail
+          echo "${JS_FILES}" | xargs -r -d '\n' npx eslint
+
+      - name: prettier --check
+        if: steps.diff.outputs.prettier_files != ''
+        env:
+          PRETTIER_FILES: ${{ steps.diff.outputs.prettier_files }}
+        run: |
+          set -euo pipefail
+          echo "${PRETTIER_FILES}" | xargs -r -d '\n' npx prettier --check
+
+  # config/tool-versions.env is the single source of truth for pinned tool
+  # versions; docker/Dockerfile's ARG defaults are a plain-`docker build`
+  # fallback that is kept in sync with it "by convention" (its own header
+  # comment says so) rather than by any automated check. Nothing previously
+  # caught the two drifting apart, so a local build could silently use a
+  # different toolchain than CI/the published image.
+  docker-versions:
+    name: Docker ARG defaults match tool-versions.env
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Compare
+        run: |
+          set -euo pipefail
+          fail=0
+          while IFS='=' read -r key val; do
+            [ -z "${key:-}" ] && continue
+            arg_line="$(grep -E "^ARG ${key}=" docker/Dockerfile || true)"
+            if [ -z "${arg_line}" ]; then
+              continue  # not every pinned var has a matching Dockerfile ARG
+            fi
+            arg_val="${arg_line#ARG "${key}"=}"
+            if [ "${arg_val}" != "${val}" ]; then
+              echo "::error file=docker/Dockerfile::ARG ${key} default (${arg_val}) does not match config/tool-versions.env (${val})"
+              fail=1
+            fi
+          done < <(grep -E '^[A-Za-z_][A-Za-z0-9_]*=' config/tool-versions.env)
+          exit "${fail}"

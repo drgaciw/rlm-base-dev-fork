@@ -13,9 +13,11 @@ ${SETUP_PAGE_LOAD_TIMEOUT}    20s
 ${TOGGLE_CLICK_TIMEOUT}       10s
 # Password used to complete a forced "Change Your Password" reset if frontdoor
 # login lands there (safety net; the set_scratch_org_password CCI task normally
-# clears the must-reset flag first). Keep in sync with
-# scripts/apex/setScratchOrgPassword.apex.
-${SCRATCH_NEW_PASSWORD}       Cumulus1234!
+# clears the must-reset flag first). No hard-coded, shared password (issue X5):
+# override with a CLI variable (robot -v SCRATCH_NEW_PASSWORD:... ) or the
+# SCRATCH_NEW_PASSWORD env var; with neither, a fresh random value is generated
+# so this fallback path never sets a predictable password on the org.
+${SCRATCH_NEW_PASSWORD}       ${{os.environ.get('SCRATCH_NEW_PASSWORD') or __import__('secrets').token_urlsafe(12) + 'Aa1!'}}
 # Shared JS helper — pierces lightning-input → lightning-primitive-input-toggle → input.
 # Prepended to both _EnsureShadowDOMToggle and _VerifyToggleViaShadowDOM JS blocks so
 # the implementation lives in one place.

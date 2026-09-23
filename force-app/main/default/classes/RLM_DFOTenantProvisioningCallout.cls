@@ -1,4 +1,4 @@
-global class RLM_DFOTenantProvisioningCallout implements industriesintegrationfwk.ProcessIntegrationProvider{
+global with sharing class RLM_DFOTenantProvisioningCallout implements industriesintegrationfwk.ProcessIntegrationProvider{
 
     private static final industriesintegrationfwk.ApexProviderAttr inputOrderIdTest = new industriesintegrationfwk.ApexProviderAttr('inputOrderId', 
     'inputOrderId', '', false, 'String');

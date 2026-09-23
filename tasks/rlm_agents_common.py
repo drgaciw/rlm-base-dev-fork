@@ -84,6 +84,8 @@ def run_sf_json(cmd, *, timeout, label, cwd=None):
             cwd=cwd,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=timeout,
         )
     except subprocess.TimeoutExpired as exc:

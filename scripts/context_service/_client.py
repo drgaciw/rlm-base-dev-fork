@@ -80,7 +80,7 @@ def _run_sf(
             capture_output=True,
             text=True,
             input=input_text,
-            timeout=timeout,
+            timeout=timeout, encoding="utf-8",
         )
     except FileNotFoundError as exc:
         raise ContextClientError(

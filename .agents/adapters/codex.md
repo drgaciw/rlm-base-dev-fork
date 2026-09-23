@@ -10,9 +10,9 @@ project contract for every task in this repository.
   [discovery guide](../../docs/guides/agent-skill-discovery.md) for tested
   versions and the catalog fallback.
 - **Primary instructions:** read and obey `AGENTS.md` first.
-- **Task-specific skills:** use the Skill Index in `AGENTS.md` to select and read
-  the relevant `.cursor/skills/**` Markdown files. These files are tool-neutral
-  despite the historical Cursor path.
+- **Task-specific skills:** use [`.cursor/skills/README.md`](../../.cursor/skills/README.md),
+  linked from `AGENTS.md`, to select and read the relevant `.cursor/skills/**`
+  Markdown files. These files are tool-neutral despite the historical Cursor path.
 - **File-specific guidance:** when editing file types covered by
   `.cursor/rules/*.mdc`, read the matching rule file as reusable guidance.
 - **Cross-repo discovery:** use `.claude/skill-manifest.yml` and

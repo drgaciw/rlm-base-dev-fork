@@ -3,16 +3,18 @@
  * (QuoteLineItem and Quote primarily) via direct Apex DML for the Quinn quoting
  * assistant (Update_Record_Fields action).
  *
- * BROAD edit by default: accepts ANY field that is genuinely updateable
- * (validated dynamically via describe at call time; no hand-maintained field
- * allowlist). Field updateability (describe.isUpdateable) is the gate, not a
- * static list. Bypasses the PST pricing engine so field values stick (the
- * managed update actions reprice and silently discard proration-owned values
- * like EndDate).
+ * BROAD field edit by default: within an allowlisted sObject (Quote,
+ * QuoteLineItem, Opportunity — issue X6), accepts ANY field that is genuinely
+ * updateable (validated dynamically via describe at call time; no
+ * hand-maintained field allowlist). Field updateability (describe.isUpdateable)
+ * is the gate, not a static list. Bypasses the PST pricing engine so field
+ * values stick (the managed update actions reprice and silently discard
+ * proration-owned values like EndDate).
  *
- * Demo code: reads and DML run in system mode (no USER_MODE / FLS enforcement).
- * The agent's permission set does not grant field-level grants, and FLS
- * enforcement here only blocks legitimate demo edits.
+ * DML runs in USER_MODE (FLS/CRUD enforced against the running user's actual
+ * grants). The agent's permission set must grant field-level access to any
+ * field this action is expected to edit; a field without that grant fails the
+ * update rather than writing through unchecked.
  *
  * Carve-outs (CORRECTNESS rails): QuoteLineItemAttribute raw DML is disallowed
  * (routes to config actions); productName matching >1 line returns
@@ -26,6 +28,18 @@
  * `with sharing` entry point; null-safe Id handling via RLM_AI_ConfigServiceUtils.
  */
 public with sharing class RLM_AI_UpdateRecordFieldsService {
+
+    // Object allowlist (issue X6): without this, any sObject name supplied via
+    // sObjectType would be describable/queryable/updateable through this
+    // invocable action, so prompt injection could edit arbitrary objects.
+    // Keep in sync with the action's actual supported scope: quote headers,
+    // quote lines, and the parent opportunity. Keyed lowercase so lookup is
+    // case-insensitive (A-C6: the LLM-supplied sObjectType is not guaranteed to
+    // match this literal casing); the value is the canonical API-name casing
+    // used everywhere else in this class (typeName == 'Quote' etc.).
+    private static final Map<String, String> ALLOWED_OBJECT_TYPES = new Map<String, String>{
+        'quote' => 'Quote', 'quotelineitem' => 'QuoteLineItem', 'opportunity' => 'Opportunity'
+    };
 
     // Test-only seam: QuoteLineItem Ids to treat as one-time selling model.
     // QuoteLineItem.SellingModelType/ProductSellingModelId are not createable
@@ -151,17 +165,19 @@ public with sharing class RLM_AI_UpdateRecordFieldsService {
                 return out;
             }
 
-            // 1. Resolve sObjectType
-            String typeName = String.isBlank(input.sObjectType)
+            // 1. Resolve sObjectType (case-insensitive; normalized to canonical casing)
+            String rawTypeName = String.isBlank(input.sObjectType)
                 ? 'QuoteLineItem'
                 : input.sObjectType.trim();
-            if (typeName == 'QuoteLineItemAttribute') {
+            if (rawTypeName.equalsIgnoreCase('QuoteLineItemAttribute')) {
                 out.errorMessage = 'QuoteLineItemAttribute edits must use the configuration actions, not direct field updates.';
                 return out;
             }
-            if (typeName != 'QuoteLineItem' && typeName != 'Quote') {
-                // Allow other objects (Opportunity, Account, etc.) — broad by design.
-                // Field updateability (describe.isUpdateable) is the gate.
+            String typeName = ALLOWED_OBJECT_TYPES.get(rawTypeName.toLowerCase());
+            if (typeName == null) {
+                out.errorMessage = 'Unsupported sObject type: ' + rawTypeName
+                    + '. This action can only update Quote, QuoteLineItem, or Opportunity.';
+                return out;
             }
 
             // 2. Parse field updates
@@ -236,7 +252,7 @@ public with sharing class RLM_AI_UpdateRecordFieldsService {
 
             if (!dmlRecords.isEmpty()) {
                 Database.SaveResult[] saveResults =
-                    Database.update(dmlRecords, AccessLevel.SYSTEM_MODE);
+                    Database.update(dmlRecords, AccessLevel.USER_MODE);
 
                 for (Integer i = 0; i < saveResults.size(); i++) {
                     Database.SaveResult sr = saveResults[i];
@@ -543,7 +559,7 @@ public with sharing class RLM_AI_UpdateRecordFieldsService {
                 return null;
             }
             String soql = 'SELECT Id FROM ' + typeName + ' WHERE Id IN :requestedIds LIMIT 200';
-            return Database.query(soql);
+            return Database.query(soql, AccessLevel.USER_MODE);
         }
 
         out.errorMessage = 'Specify which record(s) to update.';

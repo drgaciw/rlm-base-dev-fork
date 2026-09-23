@@ -1,0 +1,35 @@
+# Development dependencies for running this repo's Python test suites and
+# lint checks locally without an org, `sf` CLI, or CumulusCI already
+# installed (WP-14, I5) -- see docs/guides/windows-dev-setup.md.
+#
+#   py -3.11 -m venv .venv
+#   .venv\Scripts\activate        (POSIX: source .venv/bin/activate)
+#   pip install -r requirements-dev.txt
+#
+# Versions below are pinned to what CI and the Docker build actually install,
+# not floated independently -- a version bump belongs with the workflow/build
+# step cited next to it, the same "one source, not a second literal" reason
+# `scripts/ai/pr_gate.py`'s `_read_tool_versions()` gives for reading
+# config/tool-versions.env instead of restating CUMULUSCI_VERSION here.
+
+# setuptools BEFORE cumulusci, and pinned to the same range `pr_gate.py`'s
+# CO_REQUIRES and prepare-rlm-org.yml:130 use: CumulusCI imports `fs` ->
+# `pkg_resources`, which a Python 3.12+ venv does not ship unless setuptools
+# is installed first (pr_gate.py:64-66). snowfakery 4.x (a CumulusCI
+# dependency) requires setuptools>=75.4; the historical `<71` pin some older
+# docs still mention is incompatible with it (see
+# docs/guides/local-installation.md, "Note on setuptools").
+setuptools>=75.4,<77
+
+# config/tool-versions.env: CUMULUSCI_VERSION (read-only reference here --
+# bump both together if this ever drifts).
+cumulusci==4.8.1
+
+# scripts/build_harness/tui/requirements.txt's floors: the build-harness TUI
+# and its pytest suite under tests/build_harness/.
+pytest>=7.4
+textual>=0.58.0
+PyYAML>=6.0
+
+# .github/workflows/pr-checks.yml's lint job pin.
+ruff==0.16.7

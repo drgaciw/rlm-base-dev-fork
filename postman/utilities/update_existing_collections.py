@@ -76,7 +76,7 @@ def create_endpoint(
 def update_rlm_collection(filepath: str) -> Dict[str, Any]:
     """Update the RLM collection with v260 endpoints."""
 
-    with open(filepath, 'r') as f:
+    with open(filepath, 'r', encoding="utf-8") as f:
         collection = json.load(f)
 
     changes = {
@@ -350,7 +350,7 @@ def add_pricing_endpoints(folder: Dict[str, Any]) -> int:
 def update_rca_collection(filepath: str) -> tuple[Dict[str, Any], Dict[str, int]]:
     """Update the RCA collection for v260 validation and consistency."""
 
-    with open(filepath, 'r') as f:
+    with open(filepath, 'r', encoding="utf-8") as f:
         collection = json.load(f)
 
     changes = {
@@ -607,7 +607,7 @@ def main():
     print(f"   Pricing endpoints added: {rlm_changes['pricing_endpoints_added']}")
     print(f"   Total new endpoints: {sum([rlm_changes['transaction_mgmt_added'], rlm_changes['pcm_endpoints_added'], rlm_changes['pd_endpoints_added'], rlm_changes['pricing_endpoints_added']])}")
 
-    with open(rlm_path, 'w') as f:
+    with open(rlm_path, 'w', encoding="utf-8") as f:
         json.dump(rlm_collection, f, indent=2)
     print(f"   ✓ Updated file written to {rlm_path}")
     print()
@@ -630,7 +630,7 @@ def main():
     print(f"   Product Configurator verified (13 endpoints): {rca_changes['configurator_verified']}")
     print(f"   Total new endpoints: {sum([rca_changes['billing_endpoints_added'], rca_changes['usage_endpoints_added'], rca_changes['transaction_endpoints_added']])}")
 
-    with open(rca_path, 'w') as f:
+    with open(rca_path, 'w', encoding="utf-8") as f:
         json.dump(rca_collection, f, indent=2)
     print(f"   ✓ Updated file written to {rca_path}")
     print()

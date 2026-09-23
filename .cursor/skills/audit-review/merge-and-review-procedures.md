@@ -9,7 +9,7 @@ the repository root as the working directory.
 
 Use these before opening or updating a PR. They complement the [PR Review Focus Areas](../../../AGENTS.md#pr-review-focus-areas) in the root contract.
 
-**Run `python scripts/ai/pr_gate.py --base origin/264` first.** It selects the mechanical
+**Run `python scripts/ai/pr_gate.py --base origin/main` first.** It selects the mechanical
 checks your diff actually needs, runs them, and prints a status for **every** check — including the
 ones it skipped and why. That is the point: the checks below already existed and were enforced only
 by an agent reading this list, which is the enforcement that failed in `#264-27`, `#264-55` and
@@ -88,7 +88,7 @@ indexes, and more.
 ### Merges and unintended diffs
 
 1. **Run `python scripts/ai/check_branch_scope.py --pr <n>` before merging.** It fails a branch carrying commits it does not own — the signature of a branch cut from a *composed* integration branch, which inherits other fixes **in their pre-review state** and can revert landed review fixes on merge. A branch that re-accumulated five foreign commits reached the point of merging twice (`#264-56`); this is what catches it. It reports two distinct findings: `FOREIGN` (content already upstream) and `STACKED` (built on another **open** PR, which the first signal cannot see because nothing has merged yet). Rebuild a `FOREIGN` branch from the base rather than reverting on top of it; a `STACKED` one must at minimum not merge before its parent. Pass `--pr` for both signals. Details and the two weaker checks that do *not* work: `.cursor/skills/audit-review/SKILL.md` → **Step −1**.
-2. Before push, review the diff/stat against the intended PR base: `git diff origin/264 --stat` for the active release line (substitute the target base for other PRs). Pay extra attention to **`orgs/`**, **`datasets/`**, **`unpackaged/post_ux/`**, and scratch data — unexpected churn often means files were **swept in from another branch**.
+2. Before push, review the diff/stat against the intended PR base: `git diff origin/main --stat` for the active release line (substitute the target base for other PRs). Pay extra attention to **`orgs/`**, **`datasets/`**, **`unpackaged/post_ux/`**, and scratch data — unexpected churn often means files were **swept in from another branch**.
 3. Changes under **`unpackaged/post_ux/`** should come from **`assemble_and_deploy_ux`** or the **UX drift** flows, not manual XML edits (see `.cursor/skills/repo-integration/ux-assembly-retrieve.md`).
 
 ## Responding to Automated PR Reviews

@@ -137,7 +137,7 @@ def sf_api(method, path, body, org, dry_run=False):
     tmp_path = None
     try:
         with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".json", delete=False
+            mode="w", suffix=".json", delete=False, encoding="utf-8"
         ) as f:
             json.dump(body, f)
             tmp_path = f.name
@@ -145,7 +145,7 @@ def sf_api(method, path, body, org, dry_run=False):
         result = subprocess.run(
             ["sf", "api", "request", "rest", "--method", method,
              "--body", f"@{tmp_path}", path, "--target-org", org],
-            capture_output=True, text=True,
+            capture_output=True, text=True, encoding="utf-8",
         )
     finally:
         if tmp_path:
@@ -299,7 +299,7 @@ def _check_formula_converted(odt_id, org):
     )
     result = subprocess.run(
         ["sf", "data", "query", "-q", query, "--target-org", org, "--json"],
-        capture_output=True, text=True,
+        capture_output=True, text=True, encoding="utf-8",
     )
     try:
         data = json.loads(result.stdout)
@@ -344,7 +344,7 @@ def main():
         parser.error("--org required (or use --dry-run)")
 
     try:
-        with open(args.spec) as f:
+        with open(args.spec, encoding="utf-8") as f:
             spec = json.load(f)
     except FileNotFoundError:
         print(f"ERROR: Spec file not found: {args.spec}", file=sys.stderr)

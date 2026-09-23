@@ -39,14 +39,14 @@ def sf_api_post(path, body, org):
     import os
     tmp_path = None
     try:
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False, encoding="utf-8") as f:
             json.dump(body, f)
             tmp_path = f.name
 
         result = subprocess.run(
             ["sf", "api", "request", "rest", "--method", "POST",
              "--body", f"@{tmp_path}", path, "--target-org", org],
-            capture_output=True, text=True,
+            capture_output=True, text=True, encoding="utf-8",
         )
     finally:
         if tmp_path:
@@ -67,7 +67,7 @@ def sf_query(query, org):
     """Run SOQL query, return records list."""
     result = subprocess.run(
         ["sf", "data", "query", "-q", query, "--target-org", org, "--json"],
-        capture_output=True, text=True,
+        capture_output=True, text=True, encoding="utf-8",
     )
     try:
         data = json.loads(result.stdout)

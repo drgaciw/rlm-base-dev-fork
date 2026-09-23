@@ -6,10 +6,30 @@ on:
 
 jobs:
   claude-review:
+    # `synchronize` re-runs whenever the label is already present (that's the
+    # point — a new push should get a fresh review). `labeled` must NOT re-run
+    # for every label: it fires for any label added to the PR, and the old
+    # `contains(...)` check alone couldn't tell "claude-review was just added"
+    # from "some unrelated label was just added while claude-review already
+    # sat on the PR" — both looked identical after the fact.
     if: |
       github.event.pull_request.head.repo.full_name == github.repository &&
-      contains(github.event.pull_request.labels.*.name, 'claude-review')
+      (
+        (github.event.action == 'labeled' && github.event.label.name == 'claude-review') ||
+        (github.event.action == 'synchronize' && contains(github.event.pull_request.labels.*.name, 'claude-review'))
+      )
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # Job-level (not workflow-level): a workflow-level `concurrency:` block
+    # claims its slot for *every* trigger of this workflow, including ones the
+    # `if:` above then skips entirely. That let an unrelated label add on the
+    # PR — which still starts a run, just one whose job never executes — cancel
+    # a review actually in progress, because both runs shared the same
+    # workflow-level group regardless of the `if:` verdict. Scoping the
+    # `concurrency:` to the job means a skipped job never occupies the group.
+    concurrency:
+      group: claude-code-review-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
     permissions:
       contents: read
       pull-requests: write   # required to post review comments
@@ -21,12 +41,30 @@ jobs:
         uses: actions/checkout@v6
         with:
           fetch-depth: 1
+          persist-credentials: false
+
+      # anthropics/claude-code-action's `plugin_marketplaces` input has no
+      # ref/sha pin (action.yml, v1.0.231): it clones whatever is on the
+      # marketplace repo's default branch at run time. Upstream tracks this
+      # gap as anthropics/claude-code-action#1229 with a fix proposed in
+      # PR #1497 (ref/sha inputs), not yet merged. Until it lands, vendor the
+      # marketplace by checking it out at a pinned SHA and pointing
+      # `plugin_marketplaces` at that local path instead of the remote URL.
+      - name: Checkout claude-code plugin marketplace (pinned)
+        uses: actions/checkout@v6
+        with:
+          repository: anthropics/claude-code
+          ref: 56f36532530f88b572854538d685fcf781141e8c # bump deliberately; revisit when anthropics/claude-code-action#1497 lands
+          path: .ci/claude-code
+          persist-credentials: false
 
       - name: Run Claude Code Review
         id: claude-review
-        uses: anthropics/claude-code-action@v1
+        # SHA-pinned (v1.0.231), not the floating `v1` tag — this workflow
+        # accepts pull-requests: write.
+        uses: anthropics/claude-code-action@cfc3eb22bfed5c26ef66e3223c982af27e4524de # v1.0.231
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
+          plugin_marketplaces: './.ci/claude-code'
           plugins: 'code-review@claude-code-plugins'
           prompt: '/code-review:code-review ${{ github.repository }}/pull/${{ github.event.pull_request.number }}'

@@ -161,7 +161,7 @@ def test_manifest_kind_roundtrips_through_disk(tmp_path) -> None:
 
 def test_load_manifest_rejects_missing_kind(tmp_path) -> None:
     path = tmp_path / "DEMO-NO-KIND.json"
-    path.write_text(json.dumps({"run_id": "DEMO-NO-KIND"}))
+    path.write_text(json.dumps({"run_id": "DEMO-NO-KIND"}), encoding="utf-8")
     with pytest.raises(ValueError, match="missing required 'kind' discriminator"):
         load_manifest("DEMO-NO-KIND", manifest_dir=tmp_path)
 

@@ -53,7 +53,7 @@ def check(label: str, ok: bool) -> None:
 
 def git(cwd, *args):
     proc = subprocess.run(["git"] + list(args), cwd=cwd, capture_output=True,
-                          text=True, env=GIT_ENV)
+                          text=True, env=GIT_ENV, encoding="utf-8")
     if proc.returncode != 0:
         raise AssertionError(f"git {' '.join(args)} failed in {cwd}:\n{proc.stderr}")
     return proc.stdout.strip()
@@ -73,14 +73,17 @@ print("-- repo_paths.repo_relpath")
 with tempfile.TemporaryDirectory() as td:
     root = os.path.realpath(td)
     inside = os.path.join(root, "datasets", "sfdmu", "x", "export.json")
+    # repo_relpath (like os.path.relpath) emits the platform separator (`\` on
+    # Windows); normalize to `/` for the comparison, same as tracked_paths does
+    # internally below -- the assertion is about path *content*, not separator style.
     check("a path under repo_root becomes a clean relative path",
-          rp.repo_relpath(inside, root) == "datasets/sfdmu/x/export.json")
+          rp.repo_relpath(inside, root).replace(os.sep, "/") == "datasets/sfdmu/x/export.json")
     check("repo_root itself maps to '.'",
           rp.repo_relpath(root, root) == ".")
     # Case-only-differing prefix is treated as the same dir (macOS APFS), NOT a
     # '../'-prefixed escape that would later make git ls-files exit 128.
     check("a case-only-differing repo_root prefix is the SAME dir (no '..' escape)",
-          rp.repo_relpath(root.upper() + "/datasets/x", root) == "datasets/x")
+          rp.repo_relpath(root.upper() + "/datasets/x", root).replace(os.sep, "/") == "datasets/x")
     # A genuinely outside path still yields a '..'-prefixed relpath (the guard the
     # README gate keys on to skip cleanly).
     outside = os.path.join(os.path.dirname(root), "sibling", "export.json")
@@ -95,14 +98,14 @@ with tempfile.TemporaryDirectory() as td:
     tracked_dir = pathlib.Path(root) / "datasets" / "sfdmu" / "kept"
     tracked_dir.mkdir(parents=True)
     tracked_json = tracked_dir / "export.json"
-    tracked_json.write_text(json.dumps({"objectSets": []}))
+    tracked_json.write_text(json.dumps({"objectSets": []}), encoding="utf-8")
 
     scratch_dir = pathlib.Path(root) / "datasets" / "sfdmu" / "scratch"
     scratch_dir.mkdir(parents=True)
     scratch_json = scratch_dir / "export.json"
-    scratch_json.write_text(json.dumps({"objectSets": []}))
+    scratch_json.write_text(json.dumps({"objectSets": []}), encoding="utf-8")
 
-    (pathlib.Path(root) / ".gitignore").write_text("datasets/sfdmu/scratch/**\n")
+    (pathlib.Path(root) / ".gitignore").write_text("datasets/sfdmu/scratch/**\n", encoding="utf-8")
     git(root, "init", "--quiet", "-b", "base")
     git(root, "config", "user.email", "t@example.com")
     git(root, "config", "user.name", "test")
@@ -144,7 +147,7 @@ with tempfile.TemporaryDirectory() as td:
     root = os.path.realpath(td)
     accent = pathlib.Path(root) / "datasets" / "café"
     accent.mkdir(parents=True)
-    (accent / "export.json").write_text(json.dumps({"objectSets": []}))
+    (accent / "export.json").write_text(json.dumps({"objectSets": []}), encoding="utf-8")
     git(root, "init", "--quiet", "-b", "base")
     git(root, "config", "user.email", "t@example.com")
     git(root, "config", "user.name", "test")
@@ -179,7 +182,7 @@ print("-- repo_paths.tracked_paths raises outside a git checkout (check=True)")
 with tempfile.TemporaryDirectory() as td:
     root = os.path.realpath(td)
     cand = os.path.join(root, "export.json")
-    open(cand, "w").close()
+    open(cand, "w", encoding="utf-8").close()
     raised = False
     try:
         rp.tracked_paths([cand], root)
@@ -222,11 +225,11 @@ try:
         sfdmu = pathlib.Path(root) / "datasets" / "sfdmu"
         kept = sfdmu / "kept"
         kept.mkdir(parents=True)
-        (kept / "export.json").write_text(json.dumps({"objectSets": []}))
+        (kept / "export.json").write_text(json.dumps({"objectSets": []}), encoding="utf-8")
         scratch = sfdmu / "scratch"
         scratch.mkdir(parents=True)
-        (scratch / "export.json").write_text(json.dumps({"objectSets": []}))
-        (pathlib.Path(root) / ".gitignore").write_text("datasets/sfdmu/scratch/**\n")
+        (scratch / "export.json").write_text(json.dumps({"objectSets": []}), encoding="utf-8")
+        (pathlib.Path(root) / ".gitignore").write_text("datasets/sfdmu/scratch/**\n", encoding="utf-8")
         git(root, "init", "--quiet", "-b", "base")
         git(root, "config", "user.email", "t@example.com")
         git(root, "config", "user.name", "test")
@@ -247,7 +250,7 @@ try:
         root = os.path.realpath(td)
         sfdmu = pathlib.Path(root) / "datasets" / "sfdmu"
         sfdmu.mkdir(parents=True)
-        (sfdmu / "export.json").write_text(json.dumps({"objectSets": []}))
+        (sfdmu / "export.json").write_text(json.dumps({"objectSets": []}), encoding="utf-8")
         ds.REPO_ROOT = pathlib.Path(root)  # NOT a git repo
         check("git failure degrades to None rather than raising",
               ds._list_tracked_export_jsons(sfdmu) is None)

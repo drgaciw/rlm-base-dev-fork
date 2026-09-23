@@ -137,7 +137,7 @@ class StepError(RuntimeError):
 # ----------------------------------------------------------------------
 def _run(args, timeout=300):
     env = {**os.environ, "SF_TEMP_SHOW_SECRETS": "true"}
-    p = subprocess.run(args, capture_output=True, text=True, env=env, timeout=timeout)
+    p = subprocess.run(args, capture_output=True, text=True, env=env, timeout=timeout, encoding="utf-8")
     return p.returncode, p.stdout, p.stderr
 
 
@@ -165,7 +165,7 @@ def sf_query(org, soql):
 
 def sf_apex(org, code):
     """Run anonymous Apex; return the USER_DEBUG lines."""
-    with tempfile.NamedTemporaryFile("w", suffix=".apex", delete=False) as fh:
+    with tempfile.NamedTemporaryFile("w", suffix=".apex", delete=False, encoding="utf-8") as fh:
         fh.write(code)
         path = fh.name
     try:

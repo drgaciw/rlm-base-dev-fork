@@ -42,7 +42,7 @@ Exit codes follow `check_branch_scope.py`, so a tool error is never read as a ve
 0 = every selected gating check passed · 1 = at least one failed · 2 = usage or tool error.
 
 Usage:
-    python scripts/ai/pr_gate.py --base origin/264        # select from the diff vs a ref
+    python scripts/ai/pr_gate.py --base origin/main       # select from the diff vs a ref
     python scripts/ai/pr_gate.py --changed-files-from f   # one path per line (tests, CI)
     python scripts/ai/pr_gate.py --all                    # ignore selection, run everything
     python scripts/ai/pr_gate.py --list                   # print the matrix, run nothing
@@ -76,10 +76,35 @@ DEPS = {
     "requests": "requests",
 }
 
-# What `--requirements` emits, so CI installs only what the selection needs. CumulusCI is
-# pinned to the version `prepare-rlm-org.yml` installs: two workflows resolving different
-# CumulusCI versions would let a flow-citation check pass here and fail there.
-PINS = {"cumulusci": "cumulusci==4.8.1"}
+def _read_tool_versions():
+    """Parse `config/tool-versions.env` into a dict of KEY -> VALUE.
+
+    The single source of pinned tool versions (WP-09): `prepare-rlm-org.yml` sources it into
+    `$GITHUB_ENV` and the Dockerfile reads it as build args. This gate used to restate the
+    CumulusCI pin as a literal here, which is exactly how it drifted from the workflow before
+    (finding C5: 4.0.0 doc floor vs. 4.8.1 pin vs. "4.10.x" in comments) — reading the shared
+    file instead of a second literal is the fix, so a version bump only ever happens in one
+    place. Plain `KEY=VALUE` lines only: comments and blanks are skipped, and no quoting or
+    interpolation is attempted because the file itself uses none.
+    """
+    path = os.path.join(REPO_ROOT, "config", "tool-versions.env")
+    versions = {}
+    with open(path, encoding="utf-8") as fh:
+        for line in fh:
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, value = line.partition("=")
+            versions[key.strip()] = value.strip()
+    return versions
+
+
+TOOL_VERSIONS = _read_tool_versions()
+
+# What `--requirements` emits, so CI installs only what the selection needs. CumulusCI's
+# version comes from `config/tool-versions.env`, the single source `prepare-rlm-org.yml` and
+# the Dockerfile also pin from — not a second literal here that could drift from it again.
+PINS = {"cumulusci": f"cumulusci=={TOOL_VERSIONS['CUMULUSCI_VERSION']}"}
 
 # Installed alongside a package, because installing only the package leaves it unusable.
 # CumulusCI imports `fs`, which imports `pkg_resources`, which Python 3.12+ venvs do not
@@ -121,10 +146,49 @@ CHECKS = [
         # _PATH_ROOTS and _ROOT_FILES; tests/test_pr_gate.py reads them back out of the
         # script and fails if the two lists diverge. Broad selection is affordable here
         # because this is the cheapest check in the matrix (~0.1s).
+        # CONTRIBUTING.md (A-L3): not a manifest-cited path (_PATH_ROOTS/_ROOT_FILES don't
+        # name it), but _audit_release_identity() reads it directly to verify it names the
+        # active pr_base_branch — a genuine read this check's own audit performs, so an edit
+        # to it has to select the check the same as any other file the audit opens.
         triggers=[".agents/", ".claude/", ".cursor/", ".github/", "config/", "datasets/",
                   "docs/", "force-app/", "orgs/", "postman/", "robot/", "scripts/",
                   "tasks/", "templates/", "unpackaged/",
-                  "AGENTS.md", "CLAUDE.md", "REVIEW.md", "README.md", "cumulusci.yml"],
+                  "AGENTS.md", "CLAUDE.md", "REVIEW.md", "README.md", "CONTRIBUTING.md",
+                  "cumulusci.yml"],
+        deps=[], gating=True,
+    ),
+    dict(
+        name="claude_rules_sync",
+        cmd=["python", "scripts/ai/sync_claude_rules.py", "--check"],
+        # WP-02's generator contract (ARCHITECT_REVIEW.md §4): every `.cursor/rules/*.mdc` is
+        # the source and every `.claude/rules/*.md` is generated from it. `--check` exits 1 on
+        # drift between the two trees without writing either. Both trees are triggers, not only
+        # the generated one: hand-editing the *source* .mdc without regenerating drifts the pair
+        # exactly as much as hand-editing the generated .md does.
+        triggers=[".cursor/rules/", ".claude/rules/", "scripts/ai/sync_claude_rules.py"],
+        deps=[], gating=True,
+    ),
+    dict(
+        name="sync_claude_rules_suite",
+        cmd=["python", "tests/test_sync_claude_rules.py"],
+        # Offline fixtures for the generator itself (marker preservation, `globs` -> `paths:`
+        # conversion, `--check`/`--write` exit codes) — stdlib-only, so it gates on its own
+        # reason regardless of what the live `.cursor/`/`.claude/` rule trees currently hold.
+        # scripts/ai/ rather than the script alone: the suite resolves the module via
+        # `sys.path.insert(0, REPO/"scripts"/"ai")`, so it reads the directory itself, not
+        # only the one file.
+        triggers=["scripts/ai/", "tests/test_sync_claude_rules.py"],
+        deps=[], gating=True,
+    ),
+    dict(
+        name="link_skills_suite",
+        cmd=["python", "tests/test_link_skills.py"],
+        # Stub detection, junction/symlink `--fix`, and `--check` idempotency (WP-03 #8-9),
+        # exercised against a throwaway git repo — never this checkout's real
+        # `.claude/skills/` or `.agents/skills/`. Those real trees are triggers anyway: a
+        # regression in the repair logic matters exactly when they are what changed.
+        triggers=["scripts/ai/link_skills.py", ".claude/skills/", ".agents/skills/",
+                  "tests/test_link_skills.py"],
         deps=[], gating=True,
     ),
     dict(
@@ -336,7 +400,7 @@ CHECKS = [
         triggers=["tasks/", "scripts/", "tests/", "datasets/", "cumulusci.yml",
                   "force-app/", "unpackaged/",
                   ".agents/", ".claude/", ".cursor/", "docs/references/",
-                  "AGENTS.md", "CLAUDE.md", "README.md"],
+                  "AGENTS.md", "CLAUDE.md", "README.md", ".gitnexusrc"],
         deps=[], gating=True,
     ),
     dict(
@@ -437,8 +501,59 @@ CHECKS = [
         # guarantee has to hold from this side too: an edit to the workflow alone must run the
         # suite that judges it. The enumeration gate below demanded this trigger the moment the
         # assertion was written, which is the intended order.
+        #
+        # config/tool-versions.env (WP-10): the suite reads it directly to assert the gate's
+        # PINS value matches the single source of the CumulusCI version, so a bump there has to
+        # select the suite that checks it stayed in sync.
         triggers=["scripts/ai/", "tests/", ".github/workflows/prepare-rlm-org.yml",
-                  ".github/workflows/pr-checks.yml"],
+                  ".github/workflows/pr-checks.yml", "config/tool-versions.env"],
+        deps=[], gating=True,
+    ),
+    dict(
+        name="rlm_sfdmu_redaction",
+        cmd=["python", "tests/test_rlm_sfdmu_redaction.py"],
+        # WP-07's security fixes to tasks/rlm_sfdmu.py: no accessToken (or other token-shaped
+        # value) reaches the logger or a shell command line, the access-token-as-username
+        # fallback is gone, subprocess.run always takes list argv (never shell=True), and
+        # export.json with live credentials is written only to a temp copy. `import
+        # tasks.rlm_sfdmu` makes tasks/rlm_sfdmu.py a required trigger under the import-coverage
+        # rule in tests/test_pr_gate.py, independent of this comment.
+        triggers=["tasks/rlm_sfdmu.py", "tests/test_rlm_sfdmu_redaction.py"],
+        deps=["requests"], gating=True,
+    ),
+    dict(
+        name="rlm_rest_base_suite",
+        cmd=["python", "tests/test_rlm_rest_base.py"],
+        # WP-08's shared REST helper: api_version() resolution order (override > org_config >
+        # project_config > sfdx-project.json > fallback), headers(), base_url(), and
+        # request()'s default (10, 120) timeout. `requests` is declared even though the suite
+        # mocks it, because tasks/rlm_rest_base.py imports it unconditionally at module load.
+        # sfdx-project.json is a trigger because the suite reads the real repo copy to cover
+        # api_version()'s file-based fallback rung, not only a synthetic one.
+        triggers=["tasks/rlm_rest_base.py", "tests/test_rlm_rest_base.py",
+                  "sfdx-project.json"],
+        deps=["requests"], gating=True,
+    ),
+    dict(
+        name="rlm_context_service_suite",
+        cmd=["python", "tests/test_rlm_context_service.py"],
+        # ManageContextDefinition._make_request()/_fetch_context_definition() against a
+        # monkeypatched tasks.rlm_rest_base.request. Both modules are triggers because the
+        # suite pins the delegation between them, not only rlm_context_service.py's own logic.
+        triggers=["tasks/rlm_context_service.py", "tasks/rlm_rest_base.py",
+                  "tests/test_rlm_context_service.py"],
+        deps=["requests"], gating=True,
+    ),
+    dict(
+        name="expression_set_schema_parity",
+        cmd=["python", "tests/test_expression_set_schema_parity.py"],
+        # The canonical (tasks/expression_set_schema.py) and vendored
+        # (scripts/expression_sets/_schema.py) validators already drifted once (B3): the
+        # vendored copy validated overlay `labels` and an addVariables/addSteps output clash,
+        # the canonical one did neither. Runs a shared fixture set through both and asserts
+        # they agree; hermetic and stdlib-only, so it gates on its own reason.
+        triggers=["tasks/expression_set_schema.py", "scripts/expression_sets/_schema.py",
+                  "tests/test_expression_set_schema_parity.py"],
         deps=[], gating=True,
     ),
     dict(
@@ -468,6 +583,27 @@ CHECKS = [
                   "tests/test_generate_cci_reference.py", "pyproject.toml"],
         deps=["pytest", "PyYAML"], gating=True,
     ),
+    dict(
+        name="check_text_encoding_suite",
+        cmd=["python", "tests/test_check_text_encoding.py"],
+        # Unit fixtures for the AST-based encoding checker itself (I2/WP-14) — hermetic, so it
+        # gates for its own reason independent of what text_encoding_gate below finds live.
+        # "scripts/lint/" (the directory, not only the one file) because the suite's own
+        # module-resolution path references the directory itself, not only check_text_encoding.py.
+        triggers=["scripts/lint/", "tests/test_check_text_encoding.py"],
+        deps=[], gating=True,
+    ),
+    dict(
+        name="text_encoding_gate",
+        # The wave-2 repo-wide zero-count exit criterion (§6.C, I2): text-mode I/O that relies
+        # on the locale encoding, across the four trees the wave-1 AST scan covered. Triggers
+        # are exactly those four roots (any .py under them) plus the checker itself — not a
+        # bare *.py suffix, which would over-select on unrelated trees (datasets/, postman/)
+        # the checker never scans.
+        cmd=["python", "scripts/lint/check_text_encoding.py", "tasks", "scripts", "tests", "robot"],
+        triggers=["tasks/", "scripts/", "tests/", "robot/"],
+        deps=[], gating=True,
+    ),
 ]
 
 # Suites that need nothing but the standard library, run as one check. Enumerated rather
@@ -488,7 +624,9 @@ STDLIB_SUITES = [
     "tests/test_df_workshop_replay.py",
     "tests/test_expression_sets_toolkit.py",
     "tests/test_fix_scratch_identity.py",
+    "tests/test_gitnexus_guard.py",
     "tests/test_post_process_extraction.py",
+    "tests/test_protect_generated_hook.py",
     "tests/test_qb_multicurrency_data.py",
     "tests/test_renewal_bucket_planner.py",
     "tests/test_rlm_apex_file.py",
@@ -587,7 +725,11 @@ def unlisted_suites():
                 continue
             if not name.endswith((".py", ".sh")):
                 continue
-            found.add(os.path.relpath(os.path.join(root, name), REPO_ROOT))
+            # Normalised to forward slashes: every trigger, CLAIMED_SUITES entry and
+            # EXCLUDED_SUITES key in this file is written that way, but os.path.relpath uses
+            # os.sep — backslashes on Windows — so an un-normalised path here matched none of
+            # them and reported every suite in the repo as unclaimed on a native Windows run.
+            found.add(os.path.relpath(os.path.join(root, name), REPO_ROOT).replace(os.sep, "/"))
     # A directory claim covers only the .py files under it, because the checks that claim
     # directories invoke pytest. A shell suite added under tests/build_harness/ would
     # otherwise read as claimed while nothing ran it and no exclusion recorded the decision
@@ -657,7 +799,11 @@ def git(args, purpose):
     failed command is indistinguishable from a clean tree.
     """
     try:
-        out = subprocess.run(["git", *args], cwd=REPO_ROOT, capture_output=True, text=True)
+        # encoding="utf-8"/errors="replace" for the same reason run() below pins them: `text=True`
+        # alone follows the platform locale (cp1252 on Windows), and git's output — a non-ASCII
+        # path, say — can carry a byte that locale cannot decode.
+        out = subprocess.run(["git", *args], cwd=REPO_ROOT, capture_output=True, text=True,
+                             encoding="utf-8", errors="replace")
     except OSError as exc:
         die(f"could not run git ({purpose}): {exc}")
     if out.returncode != 0:
@@ -711,8 +857,15 @@ def run(cmd):
     started = time.time()
     try:
         # Bounded, so one hung check cannot burn the whole CI job's budget with no output.
+        # encoding="utf-8" explicitly: `text=True` alone decodes with the platform locale
+        # (cp1252 on Windows), and a child that printed one non-cp1252 byte raised inside
+        # subprocess's own reader thread — `proc.stdout`/`proc.stderr` came back None, and
+        # `proc.stdout + proc.stderr` below then raised TypeError, turning a decoding hiccup
+        # into a crash of the whole gate rather than a report about the one check.
+        # errors="replace" so a genuinely undecodable byte degrades the report instead of
+        # repeating that crash.
         proc = subprocess.run(argv, cwd=REPO_ROOT, capture_output=True, text=True,
-                              timeout=CHECK_TIMEOUT)
+                              encoding="utf-8", errors="replace", timeout=CHECK_TIMEOUT)
     except subprocess.TimeoutExpired:
         # A timeout stays a check failure, not a tool error: a check that hangs is a property
         # of the change under test, unlike an interpreter that will not start.
@@ -797,7 +950,7 @@ def run_sequence(cmds):
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--base", help="git ref to diff against (e.g. origin/264)")
+    ap.add_argument("--base", help="git ref to diff against (e.g. origin/main)")
     ap.add_argument("--changed-files-from", help="file with one changed path per line")
     ap.add_argument("--all", action="store_true", help="run every check regardless of paths")
     ap.add_argument("--list", action="store_true", help="print the matrix and exit")
@@ -826,7 +979,7 @@ def main():
     else:
         if args.changed_files_from:
             try:
-                with open(args.changed_files_from) as f:
+                with open(args.changed_files_from, encoding="utf-8") as f:
                     files = [ln.strip() for ln in f if ln.strip()]
             except OSError as exc:
                 die(f"cannot read {args.changed_files_from}: {exc}")
@@ -975,4 +1128,14 @@ def main():
 
 
 if __name__ == "__main__":
+    # A child check's captured output (line 839/778) can carry non-ASCII bytes — a subprocess
+    # banner, an em dash in a docstring — that decode fine under errors="replace" but then
+    # crash on `print()` when this process's own stdout is a cp1252 console (the Windows
+    # default), which is exactly the environment a bare `python scripts/ai/pr_gate.py` runs in.
+    # `errors="replace"` degrades the one unprintable character instead of aborting the whole
+    # report. `reconfigure` needs a real, unwrapped stream, so guard for the redirected-to-file
+    # or piped case where stdout/stderr already lack the attribute.
+    for _stream in (sys.stdout, sys.stderr):
+        if hasattr(_stream, "reconfigure"):
+            _stream.reconfigure(errors="replace")
     sys.exit(main())

@@ -1,11 +1,11 @@
 ---
 name: revenue-cloud-data-model
 description: >-
-  Revenue Cloud (RLM) data model reference covering 263 objects across 9 domains.
-  Use when working with Revenue Cloud objects, understanding object relationships,
-  writing SOQL queries, building data plans, or answering questions about the
-  RLM schema. Covers PCM, Pricing, Rates, Configurator, Transactions, DRO,
-  Usage, Billing, and Approvals domains.
+  Revenue Cloud (RLM) data model reference covering the platform schema across
+  9 domains. Use when working with Revenue Cloud objects, understanding object
+  relationships, writing SOQL queries, building data plans, or answering
+  questions about the RLM schema. Covers PCM, Pricing, Rates, Configurator,
+  Transactions, DRO, Usage, Billing, and Approvals domains.
 ---
 
 # Revenue Cloud Data Model
@@ -23,7 +23,8 @@ The ERD reflects **canonical Revenue Cloud platform schema only**. Custom fields
   the same artifact the previous refresh was built from, and the same org shape, so
   the delta is not confounded by shape differences.
 - Core UDD source and the 127-entity orphan classification carried forward from the
-  262 pass (`.agents/artifacts/orphan-fields/`); not re-run for 264.
+  262 pass (`.agents/artifacts/orphan-fields/` — private tracker; may be absent);
+  not re-run for 264.
 
 **262 → 264 delta:** **70 fields added, 8 removed**, 0 type changes, 1 polymorphic
 reference-target change, 270 picklist values added and 18 removed, across 62 changed
@@ -231,6 +232,6 @@ For live org introspection, use the Salesforce DX MCP `run_soql_query` tool.
 - `scripts/erd/schema_diff/262-vs-264-diff.md` — current verified release delta (262 → 264), including the SFDMU plan `--impact` cross-reference
 - `scripts/erd/schema_diff/260-vs-262-diff.md` — previous release delta, kept for history
 
-Internal-only (not committed; intentionally git-ignored):
+Internal-only (private tracker; may be absent):
 - `.agents/artifacts/orphan-fields/orphan-field-ownership.json` — per-entity ownership classification for 127 verified entities (used by the `orphan_batch_helper.py` workflow; not required to audit any claim in this skill).
 - `docs/erds/orphan-candidates-after-batch*.md` — per-batch orphan classification reports produced by the cleanup workflow. The final outcome of the cleanup is already baked into `erd-data.json` and `validation-report.md`; the intermediate batch reports are local artifacts only.

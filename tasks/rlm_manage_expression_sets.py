@@ -139,8 +139,8 @@ class ManageExpressionSets(BaseTask):
                     from datetime import datetime
                     dt_obj = datetime.fromisoformat(last_modified.replace('Z', '+00:00'))
                     last_modified = dt_obj.strftime('%Y-%m-%d')
-                except:
-                    pass
+                except Exception as e:
+                    self.logger.debug(f"Could not parse LastModifiedDate '{last_modified}': {e}")
             
             self.logger.info(f"{dev_name:<50} {label:<50} {last_modified:<20}")
         
@@ -158,21 +158,22 @@ class ManageExpressionSets(BaseTask):
             
             # Use requests library for Tooling API calls
             import requests
-            
+            from tasks import rlm_rest_base
+
             # Get access token and instance URL
             access_token = self.org_config.access_token
             instance_url = self.org_config.instance_url
             # Get API version from project config or org config
             api_version = self._get_api_version()
-            
+
             # First, try to describe ExpressionSetDefinition object to see available fields
             describe_url = f"{instance_url}/services/data/v{api_version}/tooling/sobjects/ExpressionSetDefinition/describe"
             headers = {
                 "Authorization": f"Bearer {access_token}",
                 "Content-Type": "application/json"
             }
-            
-            describe_response = requests.get(describe_url, headers=headers)
+
+            describe_response = requests.get(describe_url, headers=headers, timeout=rlm_rest_base.DEFAULT_TIMEOUT)
             if describe_response.ok:
                 describe_data = describe_response.json()
                 field_names = [f['name'] for f in describe_data.get('fields', [])]
@@ -191,8 +192,8 @@ class ManageExpressionSets(BaseTask):
             }
             params = {"q": soql}
             
-            response = requests.get(url, headers=headers, params=params)
-            
+            response = requests.get(url, headers=headers, params=params, timeout=rlm_rest_base.DEFAULT_TIMEOUT)
+
             if not response.ok:
                 self.logger.error(f"Tooling API query failed: {response.status_code} - {response.text}")
                 raise TaskOptionsError(f"Failed to query expression sets: {response.text}")
@@ -310,8 +311,8 @@ class ManageExpressionSets(BaseTask):
                         try:
                             dt_obj = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
                             start_date = dt_obj.strftime('%Y-%m-%d %H:%M:%S')
-                        except:
-                            pass
+                        except Exception as e:
+                            self.logger.debug(f"Could not parse StartDate '{start_date}': {e}")
                     
                     self.logger.info(f"{full_name:<60} {status:<12} {rank:<6} {start_date:<25}")
                 
@@ -326,13 +327,14 @@ class ManageExpressionSets(BaseTask):
             
             # Use requests library for Tooling API calls
             import requests
-            
+            from tasks import rlm_rest_base
+
             # Get access token and instance URL
             access_token = self.org_config.access_token
             instance_url = self.org_config.instance_url
             # Get API version from project config or org config
             api_version = self._get_api_version()
-            
+
             # Query ExpressionSetDefinitionVersion using Tooling API
             soql = f"SELECT Id, FullName, Status, Rank, StartDate, Label, Description FROM ExpressionSetDefinitionVersion WHERE ExpressionSetDefinitionId = '{expression_set_id}' ORDER BY Rank ASC"
             
@@ -346,8 +348,8 @@ class ManageExpressionSets(BaseTask):
             }
             params = {"q": soql}
             
-            response = requests.get(url, headers=headers, params=params)
-            
+            response = requests.get(url, headers=headers, params=params, timeout=rlm_rest_base.DEFAULT_TIMEOUT)
+
             if not response.ok:
                 self.logger.error(f"Tooling API query failed: {response.status_code} - {response.text}")
                 raise TaskOptionsError(f"Failed to query expression set versions: {response.text}")
@@ -535,12 +537,13 @@ class ManageExpressionSets(BaseTask):
         
         # Use requests library for Tooling API calls
         import requests
-        
+        from tasks import rlm_rest_base
+
         # Get access token and instance URL
         access_token = self.org_config.access_token
         instance_url = self.org_config.instance_url
         api_version = self._get_api_version()
-        
+
         target_is_active = status == "Active"
 
         # Query ExpressionSetVersion by ApiName to get record Id.
@@ -555,8 +558,8 @@ class ManageExpressionSets(BaseTask):
         }
         params = {"q": soql}
         
-        response = requests.get(url, headers=headers, params=params)
-        
+        response = requests.get(url, headers=headers, params=params, timeout=rlm_rest_base.DEFAULT_TIMEOUT)
+
         if not response.ok:
             raise TaskOptionsError(f"Failed to query version: {response.text}")
         
@@ -588,7 +591,7 @@ class ManageExpressionSets(BaseTask):
         try:
             max_attempts = 4
             for attempt in range(1, max_attempts + 1):
-                response = requests.patch(url, headers=headers, json=payload)
+                response = requests.patch(url, headers=headers, json=payload, timeout=rlm_rest_base.DEFAULT_TIMEOUT)
                 if response.status_code in [200, 204]:
                     return True
 

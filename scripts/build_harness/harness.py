@@ -158,7 +158,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         "command": "run",
         "scenarios_file": str(scenarios_file.relative_to(ROOT)) if scenarios_file.is_absolute() and scenarios_file.is_relative_to(ROOT) else str(scenarios_file),
         "selected_scenarios": [item["scenario_id"] for item in selected],
-        "git_sha": subprocess.run(["git", "rev-parse", "HEAD"], cwd=str(ROOT), capture_output=True, text=True).stdout.strip(),
+        "git_sha": subprocess.run(["git", "rev-parse", "HEAD"], cwd=str(ROOT), capture_output=True, text=True, encoding="utf-8").stdout.strip(),
         "prepare_steps_signature": _prepare_steps_signature(steps),
     }
     write_json(run_dir / "run_manifest.json", run_manifest)

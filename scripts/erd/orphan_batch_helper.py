@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -48,13 +49,13 @@ def _load_ownership(path: Path) -> Tuple[dict, bool]:
     """
     if not path.exists():
         return {"by_entity": {}}, True
-    with open(path) as f:
+    with open(path, encoding="utf-8") as f:
         return json.load(f), False
 
 
 def parse_orphan_report(report_path: Path) -> Dict[str, Set[str]]:
     """Parse a cleanup_orphan_erd_fields.py report into {object: {field, ...}}."""
-    with open(report_path) as f:
+    with open(report_path, encoding="utf-8") as f:
         report = f.read()
     sections = re.split(r"(?=^## )", report, flags=re.MULTILINE)
     orphans: Dict[str, Set[str]] = {}
@@ -110,7 +111,7 @@ def cmd_prepare(args):
     already_verified = set(own["by_entity"].keys())
 
     # Load ERD for domain
-    with open(ERD_DATA) as f:
+    with open(ERD_DATA, encoding="utf-8") as f:
         erd = json.load(f)
 
     # Build remaining list
@@ -142,7 +143,7 @@ def cmd_prepare(args):
     out_dir = Path(args.output_dir) if args.output_dir else ARTIFACTS
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / f"orphan-fields-batch{args.batch}-input.json"
-    with open(out_path, "w") as f:
+    with open(out_path, "w", encoding="utf-8") as f:
         json.dump(output, f, indent=2)
 
     print(f"\nRemaining unverified entities: {len(remaining)}")
@@ -202,7 +203,7 @@ def cmd_apply(args):
     shutil.copy(ERD_DATA, backup)
 
     # Apply
-    with open(ERD_DATA) as f:
+    with open(ERD_DATA, encoding="utf-8") as f:
         erd = json.load(f)
 
     removed = 0
@@ -228,7 +229,7 @@ def cmd_apply(args):
         "domains": sorted(set(o.get("domain", "Unknown") for o in erd["objects"].values())),
     }
 
-    with open(ERD_DATA, "w") as f:
+    with open(ERD_DATA, "w", encoding="utf-8") as f:
         json.dump(erd, f, indent=2)
 
     print(f"\nApplied removals:")
@@ -273,7 +274,13 @@ def cmd_validate(args):
         "--concurrency", "15",
     ]
     print(f"Running: {' '.join(cmd)}")
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    # PYTHONUTF8=1: cleanup_orphan_erd_fields.py prints non-ASCII (an em-dash) to
+    # stdout, which it would otherwise encode with the platform default -- the
+    # Windows console codepage, not UTF-8 -- making this capture's
+    # encoding="utf-8" raise UnicodeDecodeError. Forcing the child into UTF-8
+    # mode keeps both sides of the pipe agreeing.
+    result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8",
+                            env=dict(os.environ, PYTHONUTF8="1"))
     print(result.stdout[-1000:] if result.stdout else "")
     if result.returncode != 0:
         print(result.stderr[-1000:] if result.stderr else "", file=sys.stderr)
@@ -288,9 +295,12 @@ def cmd_validate(args):
     # fails at import on 3.9), and on a workstation where `python3` is the pyenv shim it
     # can easily be 3.9 even when this helper was launched under the CumulusCI venv.
     print("\nRegenerating HTML...")
+    # PYTHONUTF8=1: build_erds.py prints non-ASCII (checkmarks) to stdout -- see
+    # the comment above the other subprocess.run() in this function.
     html_result = subprocess.run(
         [sys.executable, str(REPO / "scripts" / "erd" / "build_erds.py")],
-        capture_output=True, text=True,
+        capture_output=True, text=True, encoding="utf-8",
+        env=dict(os.environ, PYTHONUTF8="1"),
     )
     if html_result.returncode != 0:
         print(

@@ -484,7 +484,7 @@ class SnapshotSalesforceHelp(BaseTask):
 
         if manifest_path.exists():
             try:
-                with manifest_path.open() as f:
+                with manifest_path.open(encoding="utf-8") as f:
                     existing = json.load(f)
                 self.logger.info(
                     f"Loaded existing manifest with {len(existing.get('articles', []))} articles"
@@ -509,7 +509,7 @@ class SnapshotSalesforceHelp(BaseTask):
         manifest["stats"] = self._compute_stats(manifest)
         self._update_area_entry(manifest)
         manifest_path.parent.mkdir(parents=True, exist_ok=True)
-        with manifest_path.open("w") as f:
+        with manifest_path.open("w", encoding="utf-8") as f:
             json.dump(manifest, f, indent=2, ensure_ascii=False)
 
     def _update_area_entry(self, manifest: Dict[str, Any]) -> None:

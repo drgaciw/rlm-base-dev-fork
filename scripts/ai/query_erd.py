@@ -20,7 +20,7 @@ ERD_PATH = Path(__file__).resolve().parent.parent.parent / "docs" / "erds" / "er
 
 def load_erd():
     try:
-        with open(ERD_PATH) as f:
+        with open(ERD_PATH, encoding="utf-8") as f:
             return json.load(f)
     except FileNotFoundError:
         print(f"Error: ERD data file not found at {ERD_PATH}")
