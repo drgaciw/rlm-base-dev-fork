@@ -17,7 +17,7 @@ repos:
         # a whitespace fixer mutating them is a silent data change, not a lint.
         exclude: '\.md$|^docs/salesforce/|^datasets/'
       - id: end-of-file-fixer
-        exclude: '^docs/salesforce/|^datasets/'
+        exclude: "^docs/salesforce/|^datasets/"
       - id: check-yaml
         exclude: '^\.github/workflows/' # actionlint (CI) understands GHA-specific YAML extensions this doesn't
       - id: check-merge-conflict
