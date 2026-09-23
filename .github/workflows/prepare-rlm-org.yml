@@ -73,7 +73,7 @@ jobs:
           gh pr edit "$PR_NUMBER" --repo "$REPO" --remove-label "ci:prepare-org" || true
 
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           persist-credentials: false
 
