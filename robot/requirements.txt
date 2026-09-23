@@ -6,4 +6,4 @@ robotframework>=6,<8
 robotframework-seleniumlibrary>=6,<7
 selenium>=4.10,<5
 webdriver-manager>=4,<5
-urllib3>=2.6.3
+urllib3>=2.8.0
