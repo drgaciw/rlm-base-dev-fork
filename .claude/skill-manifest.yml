@@ -74,7 +74,7 @@ foundations:
       purpose: "Revenue Cloud object/field schema reference; backed by erd-data.json"
       consumed_by_pmos: [spec, technical-review, prd]
       provenance: hand-curated + erd-data.json
-      caveats: []  # 213-vs-263 discrepancy resolved (refresh in feat/262-erd-refresh-and-schema-diff-tooling — both report 263); v67.0 baseline aligned
+      caveats: [] # 213-vs-263 discrepancy resolved (refresh in feat/262-erd-refresh-and-schema-diff-tooling — both report 263); v67.0 baseline aligned
 
     - id: usage-consumption
       path: .cursor/skills/usage-consumption/SKILL.md
@@ -140,7 +140,14 @@ foundations:
     - id: revenue-cloud-docs
       path: .cursor/skills/revenue-cloud-docs/SKILL.md
       purpose: "Help portal mirror access patterns; grep/extract/diff"
-      consumed_by_pmos: [sales-enablement, demo-script, presentation, documentation, release-notes]
+      consumed_by_pmos:
+        [
+          sales-enablement,
+          demo-script,
+          presentation,
+          documentation,
+          release-notes
+        ]
       provenance: Playwright + shadow-DOM walker scrape
       caveats: []
 
@@ -157,12 +164,12 @@ foundations:
       path: .cursor/skills/qb-demo-script/SKILL.md
       purpose: "Generate the QuantumBit demo-script canvas per Salesforce release"
       output_template: docs/enablement/{release}/qb-demo-script.md
-      consumed_by_pmos: []  # PMOS demo-script may later supplement narrative voice once cross-repo mirroring lands (no owner or date assigned)
+      consumed_by_pmos: [] # PMOS demo-script may later supplement narrative voice once cross-repo mirroring lands (no owner or date assigned)
       grounding_inputs:
-        - foundations.grounding.qb_scenario       # canonical demo data
+        - foundations.grounding.qb_scenario # canonical demo data
         - foundations.grounding.feature_index_active
         - foundations.grounding.help_corpus_active
-        - foundations.grounding.cci_reference     # for active feature flags
+        - foundations.grounding.cci_reference # for active feature flags
       modes: [regenerate, refresh]
       first_release: "262"
 
@@ -363,7 +370,7 @@ foundations:
     - id: pmos-integration
       path: .cursor/skills/pmos-integration/SKILL.md
       purpose: "Cross-repo skill-manifest pattern connecting Foundations and PMOS; explains the temporal split (PMOS = future state, Foundations = current state), resolver mechanics, and per-skill opt-in"
-      consumed_by_pmos: []  # PMOS-side mirror not yet authored; no owner or date assigned
+      consumed_by_pmos: [] # PMOS-side mirror not yet authored; no owner or date assigned
       tooling:
         - scripts/ai/skill_manifest.py
       governs: .claude/skill-manifest.yml
@@ -417,7 +424,7 @@ foundations:
 
     # Phase 6.2 NEW (not yet implemented)
     - id: check_pmos_prd
-      class_path: tasks.check_pmos_prd.CheckPmosPrd  # NOT YET IMPLEMENTED
+      class_path: tasks.check_pmos_prd.CheckPmosPrd # NOT YET IMPLEMENTED
       purpose: "Validate PMOS PRD frontmatter against Foundations corpus"
       status: designed_not_built
       see: .agents/artifacts/integration-staging/pmos-integration.md
@@ -446,7 +453,7 @@ foundations:
       path: docs/salesforce/264/help/articles/
       manifest: docs/salesforce/264/help/manifest.json
       index: docs/salesforce/264/help/index.md
-      article_count: 1131  # = manifest.json stats.captured = files on disk, verified 2026-09-22 (3 of 1134 discovered errored, see stats.errored); becomes generator-computed when generate_skill_manifest lands (todo 132)
+      article_count: 1131 # = manifest.json stats.captured = files on disk, verified 2026-09-22 (3 of 1134 discovered errored, see stats.errored); becomes generator-computed when generate_skill_manifest lands (todo 132)
       release: "264"
       season: "Winter '27"
       api_version: v68.0
@@ -460,7 +467,7 @@ foundations:
       path: docs/salesforce/262/help/articles/
       manifest: docs/salesforce/262/help/manifest.json
       index: docs/salesforce/262/help/index.md
-      article_count: 935  # = len(manifest.json articles) = files on disk, verified 2026-08-16
+      article_count: 935 # = len(manifest.json articles) = files on disk, verified 2026-08-16
       release: "262"
       season: "Summer '26"
       api_version: v67.0
@@ -485,7 +492,8 @@ foundations:
       purpose: "Canonical QB demo data (Infinitech, Global Media, QB-COMPLETE, QB-QRack-750)"
       shape: qb/en-US
       line_count: 486
-      consumed_by_pmos: [demo-script, demo-flow, demo-data, presentation, sales-enablement]
+      consumed_by_pmos:
+        [demo-script, demo-flow, demo-data, presentation, sales-enablement]
 
     # Per-release outputs of the qb-demo-script skill. Registered here so
     # consumers can resolve a release-specific canvas via
@@ -496,8 +504,8 @@ foundations:
       purpose: "QuantumBit demo-script canvas, Release 262 (Summer '26)"
       produced_by_skill: qb-demo-script
       release: "262"
-      status: draft  # awaits SME pass for Setup-UI, Known Bugs, image capture, Slack publish
-      consumed_by_pmos: []  # PMOS narrative-polish pass is opt-in, not yet scheduled
+      status: draft # awaits SME pass for Setup-UI, Known Bugs, image capture, Slack publish
+      consumed_by_pmos: [] # PMOS narrative-polish pass is opt-in, not yet scheduled
 
     feature_index_active:
       path: docs/salesforce/262/feature-index.md
@@ -539,7 +547,7 @@ pmos:
   repo_url: https://git.soma.salesforce.com/bgaldino/pmos-revenue-cloud
   role: author
   maintainer: Brian Galdino
-  optional: true   # discovery may legitimately fail on Foundations-only clones
+  optional: true # discovery may legitimately fail on Foundations-only clones
   local_path_hints:
     - "$PMOS_REPO_ROOT"
     - "$RC_WORKSPACE/pmos"
@@ -555,8 +563,15 @@ pmos:
     - id: prd
       path: .claude/skills/prd/SKILL.md
       purpose: "Author a PRD with grounded frontmatter"
-      consumed_by_foundations: []  # Foundations doesn't author PRDs
-      stakeholder_review: [engineering-lead, ux-designer, csm, product-strategist, technical-architect]
+      consumed_by_foundations: [] # Foundations doesn't author PRDs
+      stakeholder_review:
+        [
+          engineering-lead,
+          ux-designer,
+          csm,
+          product-strategist,
+          technical-architect
+        ]
 
     - id: sales-enablement
       path: .claude/skills/sales-enablement/SKILL.md
@@ -600,8 +615,8 @@ pmos:
     - id: multi-agent-review
       path: .claude/skills/multi-agent-review/SKILL.md
       purpose: "Parallel invocation of 5 stakeholder agents for review"
-      consumed_by_foundations: []  # pattern Foundations may adopt later
-      adopts_pattern: true  # flag for skills-consolidation-plan §8
+      consumed_by_foundations: [] # pattern Foundations may adopt later
+      adopts_pattern: true # flag for skills-consolidation-plan §8
 
   # Grounding artifacts PMOS holds canonically (subset)
   context_files:
@@ -614,7 +629,7 @@ pmos:
         - "Header says 'Winter 26 (Current)' — Tier 0 hygiene release-version inconsistency"
 
   knowledge_corpus:
-    base_path: knowledge/                # repo root, NOT under .claude/
+    base_path: knowledge/ # repo root, NOT under .claude/
     total_lines: 25430
     areas:
       - id: lenny-podcast
@@ -638,11 +653,11 @@ pmos:
         purpose: "EMPTY placeholder — Salesforce Help mirror is in Foundations"
 
   packaged_knowledge:
-    base_path: packages/available/      # repo root, NOT under .claude/
-    total_lines: 3842                   # verified 2026-05-24
+    base_path: packages/available/ # repo root, NOT under .claude/
+    total_lines: 3842 # verified 2026-05-24
     package_count: 11
-    knowledge_file_count: 112           # ~112 deck-extracted per-feature files across all packages
-    release_headers:                    # the per-feature files carry these Release: headers
+    knowledge_file_count: 112 # ~112 deck-extracted per-feature files across all packages
+    release_headers: # the per-feature files carry these Release: headers
       "Winter '25": 45
       "Spring '25 (254)": 55
       "Summer '25": 1
@@ -669,20 +684,20 @@ pmos:
       - id: revenue-cloud-integrations
         knowledge_files: 1
       - id: revenue-cloud-contracts
-        knowledge_files: 0              # README + package.json only
+        knowledge_files: 0 # README + package.json only
 
   prd_corpus:
     base_path: docs/Releases/
     release_dirs:
-      - "260/"                          # 1 PRD: DRO Enhancements
-      - "Spring '26 (262)/"             # 2 PRDs — directory wrongly named per Tier 0 H10
-      - "264/"                          # 1 PRD: Agentforce
+      - "260/" # 1 PRD: DRO Enhancements
+      - "Spring '26 (262)/" # 2 PRDs — directory wrongly named per Tier 0 H10
+      - "264/" # 1 PRD: Agentforce
 
   workflows:
     base_path: .claude/skills/workflows/definitions/
     workflows:
       - feature-development
-      - release-preparation             # status → release-notes → launch → demo-script
+      - release-preparation # status → release-notes → launch → demo-script
       - problem-exploration
 
 # ─── Studio-wide concerns (neither repo owns alone) ─────────────────────────
