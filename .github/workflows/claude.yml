@@ -38,11 +38,11 @@ jobs:
       group: claude-${{ github.event.issue.number || github.event.pull_request.number }}
       cancel-in-progress: false
     permissions:
-      contents: write        # required if Claude makes code changes
-      pull-requests: write   # required to post review comments
-      issues: write          # required to post issue comments
-      id-token: write        # required by claude-code-action for GitHub OIDC token setup
-      actions: read          # required to read CI results on PRs
+      contents: write # required if Claude makes code changes
+      pull-requests: write # required to post review comments
+      issues: write # required to post issue comments
+      id-token: write # required by claude-code-action for GitHub OIDC token setup
+      actions: read # required to read CI results on PRs
 
     steps:
       - name: Checkout repository

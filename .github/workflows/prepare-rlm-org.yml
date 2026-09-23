@@ -168,13 +168,13 @@ jobs:
 
       - name: Run prepare_rlm_org
         env:
-          SF_TEMP_SHOW_SECRETS: "true"  # CCI reads the scratch token for REST throughout the flow
+          SF_TEMP_SHOW_SECRETS: "true" # CCI reads the scratch token for REST throughout the flow
         run: |
           cci flow run prepare_rlm_org --org "$ORG_ALIAS"
 
       - name: Delete scratch org
         if: always()
         env:
-          SF_TEMP_SHOW_SECRETS: "true"  # CCI reads org info to delete the scratch
+          SF_TEMP_SHOW_SECRETS: "true" # CCI reads org info to delete the scratch
         run: |
           cci org scratch_delete "$ORG_ALIAS" || true
