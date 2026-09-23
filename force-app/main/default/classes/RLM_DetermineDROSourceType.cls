@@ -1,4 +1,4 @@
-public class RLM_DetermineDROSourceType {
+public with sharing class RLM_DetermineDROSourceType {
     @InvocableMethod(label='Determine DRO Source Type' description='Returns string value of source object that initiated DRO Fulfillment' category='RLM SE TAT')
     public static List<String> returnDROSourceObjectType(List<droSourceInfo> sourceInfoArray){
 

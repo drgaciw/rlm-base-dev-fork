@@ -28,7 +28,7 @@ review-loop fixes ("fix stale description", "update README task name",
 
 - **DO NOT** duplicate procedural content across `README.md`, `AGENTS.md`, and skill files — keep one source and add pointers.
 - **DO NOT** re-add a hand-maintained task listing (e.g. the removed `docs/references/cci-task-reference.md`). The single source for project tasks is the generated `.cursor/skills/cci-orchestration/tasks-reference.md` (run `python scripts/ai/generate_cci_reference.py`); for CumulusCI built-in tasks use `cci task list` / `cci task info <name>`.
-- **DO NOT** edit `CLAUDE.md` — it is a symlink to `AGENTS.md`.
+- **DO NOT** edit `CLAUDE.md` — it imports `AGENTS.md` via `@AGENTS.md`; edit `AGENTS.md` only.
 - **DO NOT** skip the plan README when changing SFDMU plan behavior.
 
 ---
@@ -49,8 +49,8 @@ The core lookup: **when X changes, verify Y**.
 | `orgs/*.json` (scratch org definitions) | `docs/guides/org-operations.md` Quick Start if it names specific configs |
 | `scripts/apex/*.apex` | `troubleshooting/SKILL.md` if it references the script |
 | `.forceignore` | No doc update, but verify retrieve/deploy intent is consistent |
-| `scripts/ai/*.py` | The skill that owns the script (see `AGENTS.md` **Script Reference** for the owner). Only a brand-new script *directory* earns an `AGENTS.md` row |
-| **New** `scripts/*.py` (top level) | `AGENTS.md` Repository Layout — top-level utilities are easy to add and never document |
+| `scripts/ai/*.py` | The skill that owns the script (see `scripts/ai/README.md` for the owner). Only a brand-new script *directory* earns a mention in `AGENTS.md`'s Skill Catalog pointer |
+| **New** `scripts/*.py` (top level) | `docs/references/repository-layout.md` — top-level utilities are easy to add and never document |
 | **New** `scripts/apex/*.apex` | `troubleshooting/SKILL.md` (if it diagnoses a failure) and `.cursor/rules/apex-scripts.mdc` (if it establishes a pattern) |
 | **New** `docs/guides/*.md` | Guide tables in `docs/index.md` (linked from `README.md`) — an unindexed guide is invisible |
 | `unpackaged/**/classes/*.cls` behavior change | `docs/references/revenue-cloud-permissions.md` if the class is permission-gated — especially when its **destructive scope** grows |
@@ -183,7 +183,7 @@ Understanding where truth lives prevents duplication drift.
 | ----- | -------- | ------------------- |
 | Generated CCI refs | `.cursor/skills/cci-orchestration/tasks-reference.md`, `.cursor/skills/cci-orchestration/flows-reference.md`, `.cursor/skills/cci-orchestration/feature-flags.md` | `python scripts/ai/generate_cci_reference.py` |
 | SFDMU plan READMEs | `datasets/sfdmu/**/README.md` (e.g. `datasets/sfdmu/qb/en-US/*/README.md`, `datasets/sfdmu/mfg/README.md`, `datasets/sfdmu/procedure-plans/README.md`) | Must match the plan's `export.json` + CSVs — enforce with `python scripts/ai/check_plan_readme_consistency.py --strict` (counts, operations, externalIds, object presence) |
-| Agent instructions | `AGENTS.md` (`CLAUDE.md` is a symlink) | Single source; edit `AGENTS.md` only |
+| Agent instructions | `AGENTS.md` (`CLAUDE.md` imports it via `@AGENTS.md`) | Single source; edit `AGENTS.md` only |
 | Human setup / reference | `README.md`, `docs/index.md`, `docs/guides/` | Manual — skills-first entry point, navigation, installation and operations; task/flow/flag tables remain generated |
 | Skill files | `.cursor/skills/*/SKILL.md` + sub-files | Manual — cross-references to task names, paths |
 | Guides and features | `docs/guides/`, `docs/features/`, `docs/references/` | Manual prose; watch for stale task/flow names |
@@ -194,7 +194,7 @@ Understanding where truth lives prevents duplication drift.
 ## Verification Commands
 
 ```bash
-python scripts/ai/pr_gate.py --base origin/264            # all of the below, selected by your diff
+python scripts/ai/pr_gate.py --base origin/main            # all of the below, selected by your diff
 python scripts/ai/generate_cci_reference.py              # regenerate references
 git diff .cursor/skills/cci-orchestration/               # should show only intended changes
 python scripts/validate_sfdmu_v5_datasets.py             # plan v5 compliance — should PASS (0 Critical, 0 High) on a clean tree

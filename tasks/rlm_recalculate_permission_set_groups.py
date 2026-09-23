@@ -11,6 +11,8 @@ import time
 from typing import List
 import requests
 
+from tasks import rlm_rest_base
+
 try:
     from cumulusci.core.tasks import BaseTask
     from cumulusci.core.exceptions import TaskOptionsError
@@ -250,7 +252,7 @@ class RecalculatePermissionSetGroups(BaseTask):
 
     def _query(self, soql: str):
         url = f"{self.org_config.instance_url}/services/data/v{self._api_version()}/query"
-        response = requests.get(url, headers=self._headers(), params={"q": soql})
+        response = requests.get(url, headers=self._headers(), params={"q": soql}, timeout=rlm_rest_base.DEFAULT_TIMEOUT)
         if not response.ok:
             raise TaskOptionsError(f"SOQL query failed: {response.status_code} {response.text}")
         return response.json().get("records", [])
@@ -261,7 +263,7 @@ class RecalculatePermissionSetGroups(BaseTask):
             f"{self.org_config.instance_url}/services/data/"
             f"v{self._api_version()}/{base}/PermissionSetGroup/{record_id}"
         )
-        response = requests.patch(url, headers=self._headers(), json=payload)
+        response = requests.patch(url, headers=self._headers(), json=payload, timeout=rlm_rest_base.DEFAULT_TIMEOUT)
         if response.status_code not in (200, 204):
             raise TaskOptionsError(
                 f"PermissionSetGroup update failed: {response.status_code} {response.text}"

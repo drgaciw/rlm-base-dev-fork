@@ -21,6 +21,7 @@ Run: python tests/test_skill_manifest_audit.py   (needs PyYAML; no org, no netwo
 """
 
 import io
+import json
 import os
 import sys
 from contextlib import redirect_stdout
@@ -57,11 +58,11 @@ def audit(root, cited, *, create_private):
     """Run the audit over a throwaway tree citing one local-only path."""
     tracked = Path(root, "docs", "real.md")
     tracked.parent.mkdir(parents=True, exist_ok=True)
-    tracked.write_text("tracked\n")
+    tracked.write_text("tracked\n", encoding="utf-8")
     if create_private:
         target = Path(root, cited)
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text("private\n")
+        target.write_text("private\n", encoding="utf-8")
     section = {
         "_resolved": _Resolved(root),
         # A real path alongside the local-only one, so a pass cannot come from an
@@ -118,11 +119,144 @@ check("the exempt prefix is anchored with a separator",
       skill_manifest.LOCAL_ONLY_PREFIXES == (".agents/artifacts/",),
       skill_manifest.LOCAL_ONLY_PREFIXES)
 
+
+# ─── _audit_release_identity: release-identity drift detection ─────────────
+#
+# `.agents/context/project-memory.json` is the single source of truth for
+# release identity (release_active, release_prior_ga, api_version_active,
+# pr_base_branch). Finding A7/A8 (docs/ARCHITECT_REVIEW.md) was that this
+# identity had already drifted in ~8 hand-written places, including this
+# manifest's own erd_data/help_corpus_active grounding pointing at a stale
+# capture after a fresher one existed on disk. These checks build a minimal,
+# internally-consistent fixture tree and then perturb one fact at a time to
+# confirm each kind of drift is actually caught, not just resolvable.
+
+def _write(path: Path, content: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content, encoding="utf-8")
+
+
+def _release_fixture(root: str, **overrides):
+    """Build a self-consistent release-identity fixture tree and manifest dict.
+
+    `overrides` replaces top-level keys of the returned manifest dict (e.g.
+    `salesforce_release_active="262"`) so a caller can introduce exactly one
+    drift without hand-rebuilding the whole fixture.
+    """
+    root_path = Path(root)
+    _write(root_path / ".agents" / "context" / "project-memory.json", json.dumps({
+        "release_active": "264",
+        "release_prior_ga": "262",
+        "api_version_active": "v68.0",
+        "pr_base_branch": "main",
+    }))
+    _write(root_path / "README.md", "This branch: Release 264 (Winter '27), API v68.0.\n")
+    _write(root_path / "CONTRIBUTING.md", "Target base branch `main` (Release 264, API v68.0).\n")
+    _write(root_path / "docs" / "index.md", "main is the Release 264 (API v68.0) line.\n")
+    _write(root_path / "docs" / "erds" / "erd-data.json", json.dumps({
+        "metadata": {"release": "264", "apiVersion": "68.0"},
+        "stats": {"totalFields": 4252},
+    }))
+    _write(root_path / "docs" / "salesforce" / "264" / "help" / "manifest.json", json.dumps({
+        "release": "264",
+        "stats": {"captured": 1131},
+    }))
+    manifest = {
+        "_self_repo_root": str(root_path),
+        "salesforce_release_active": "264",
+        "salesforce_release_prior_ga": "262",
+        "api_version_active": "v68.0",
+        "foundations": {
+            "grounding": {
+                "erd_data": {"release": "264", "api_version": "v68.0", "field_count": 4252},
+                "help_corpus_active": {
+                    "release": "264",
+                    "path": "docs/salesforce/264/help/articles/",
+                    "article_count": 1131,
+                },
+            }
+        },
+    }
+    manifest.update(overrides)
+    return manifest
+
+
+with TemporaryDirectory() as root:
+    manifest = _release_fixture(root)
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        ok = skill_manifest._audit_release_identity(manifest)
+    out = buf.getvalue()
+    check("a self-consistent fixture passes", ok is True, out)
+    check("a passing run reports OK, not ERROR", "[ERROR]" not in out, out)
+
+with TemporaryDirectory() as root:
+    # Manifest top-level disagrees with project-memory.json (the A7 shape:
+    # CONTRIBUTING said `main` while AGENTS.md gated against `origin/264`).
+    manifest = _release_fixture(root, salesforce_release_active="262")
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        ok = skill_manifest._audit_release_identity(manifest)
+    out = buf.getvalue()
+    check("manifest top-level drift from project-memory.json fails", ok is False, out)
+    check("the failure names salesforce_release_active", "salesforce_release_active" in out, out)
+
+with TemporaryDirectory() as root:
+    # README stops mentioning the active release (drift in a prose doc).
+    manifest = _release_fixture(root)
+    _write(Path(root) / "README.md", "This branch: Release 262 (Summer '26), API v67.0.\n")
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        ok = skill_manifest._audit_release_identity(manifest)
+    out = buf.getvalue()
+    check("a stale README fails the audit", ok is False, out)
+    check("the failure names README.md", "README.md" in out, out)
+
+with TemporaryDirectory() as root:
+    # erd_data grounding is stale relative to the actual erd-data.json on disk
+    # (the exact A8 shape: manifest says 4,190 fields, the file says 4,252).
+    manifest = _release_fixture(root)
+    manifest["foundations"]["grounding"]["erd_data"]["field_count"] = 4190
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        ok = skill_manifest._audit_release_identity(manifest)
+    out = buf.getvalue()
+    check("stale erd_data.field_count fails the audit", ok is False, out)
+    check("the failure names erd-data.json", "erd-data.json" in out, out)
+
+with TemporaryDirectory() as root:
+    # help_corpus_active still points at the prior-GA release even though the
+    # active release's corpus is captured on disk (the exact A8 shape).
+    manifest = _release_fixture(root)
+    manifest["foundations"]["grounding"]["help_corpus_active"] = {
+        "release": "262",
+        "path": "docs/salesforce/262/help/articles/",
+        "article_count": 935,
+    }
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        ok = skill_manifest._audit_release_identity(manifest)
+    out = buf.getvalue()
+    check("stale help_corpus_active fails the audit", ok is False, out)
+    check("the failure names the active release", "264" in out, out)
+
+with TemporaryDirectory() as root:
+    # project-memory.json itself is absent -- the SSOT is missing, not just
+    # disagreeing, and that must fail loudly rather than default to "OK".
+    manifest = _release_fixture(root)
+    (Path(root) / ".agents" / "context" / "project-memory.json").unlink()
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        ok = skill_manifest._audit_release_identity(manifest)
+    out = buf.getvalue()
+    check("a missing project-memory.json fails the audit", ok is False, out)
+    check("the failure names project-memory.json", "project-memory.json" in out, out)
+
 print("\n" + "=" * 100)
 if FAILED:
     print(f"{len(FAILED)} FAILED: {', '.join(FAILED)}")
     sys.exit(1)
-EXPECTED = 13
+EXPECTED = 13 + 2 + 2 + 2 + 2 + 2 + 2
 if PASSED != EXPECTED:
     print(f"{PASSED} checks passed but {EXPECTED} were expected — update EXPECTED "
           "deliberately when adding or removing a check")

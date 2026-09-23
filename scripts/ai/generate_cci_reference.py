@@ -77,6 +77,21 @@ def load_cci() -> dict:
 # Tasks reference
 # ---------------------------------------------------------------------------
 
+def _github_anchor(text: str, seen: dict[str, int]) -> str:
+    """GitHub's heading-to-anchor slug: lowercase, strip punctuation (keep
+    word chars/spaces/hyphens), spaces to hyphens, and de-duplicate with a
+    `-1`/`-2`/... suffix -- the same rule GitHub's own renderer uses, so a
+    generated `[Group](#group)` link resolves on github.com and in any
+    renderer that follows the same convention (most do)."""
+    slug = re.sub(r"[^\w\- ]", "", text.lower()).strip()
+    slug = re.sub(r"\s+", "-", slug)
+    if slug in seen:
+        seen[slug] += 1
+        return f"{slug}-{seen[slug]}"
+    seen[slug] = 0
+    return slug
+
+
 def generate_tasks_reference(data: dict) -> str:
     # `or {}` guards an empty top-level `tasks:` (YAML null) against AttributeError.
     tasks: dict = data.get("tasks") or {}
@@ -95,9 +110,22 @@ def generate_tasks_reference(data: dict) -> str:
         "",
         f"**{len(tasks)} tasks** across **{len(by_group)} groups**.",
         "",
-        "---",
-        "",
     ]
+
+    # A-M5 (wave 2): a TOC generated here, rather than left for a human to
+    # maintain by hand, is the only version of a TOC that cannot drift from the
+    # groups actually below it -- this file has no `--check`/`--write` split, so
+    # a hand-authored TOC would silently stale the moment a group was
+    # added/renamed/removed, exactly the failure mode WP-04's AC5 flagged.
+    seen_anchors: dict[str, int] = {}
+    lines.append("**Groups:**")
+    lines.append("")
+    for group in sorted(by_group):
+        anchor = _github_anchor(group, seen_anchors)
+        lines.append(f"- [{group}](#{anchor}) ({len(by_group[group])})")
+    lines.append("")
+    lines.append("---")
+    lines.append("")
 
     for group in sorted(by_group):
         task_list = by_group[group]
@@ -391,7 +419,11 @@ def write_file(path: Path, content: str, dry_run: bool) -> None:
             print(f"\n... ({len(content) - 2000} more characters)")
         return
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(content, encoding="utf-8")
+    # newline="\n": write_text() otherwise translates "\n" to os.linesep on
+    # Windows, so this same content diffs against the LF-normalized committed
+    # blob (.gitattributes) on every Windows run even though nothing changed
+    # (A-L2/I3 -- this was the actual cause of what looked like reference drift).
+    path.write_text(content, encoding="utf-8", newline="\n")
     print(f"  Wrote {path.relative_to(ROOT)} ({len(content):,} chars)")
 
 
@@ -430,4 +462,11 @@ def main():
 
 
 if __name__ == "__main__":
+    # A-L3: generated content (feature-flags.md's "step N -> ref" usage index) carries
+    # non-ASCII characters like the arrow, and --dry-run prints a preview of it straight
+    # to stdout -- which crashes (or silently corrupts) under the cp1252 console codepage
+    # Windows defaults to. errors="replace" degrades the unprintable character instead.
+    for _stream in (sys.stdout, sys.stderr):
+        if hasattr(_stream, "reconfigure"):
+            _stream.reconfigure(errors="replace")
     main()

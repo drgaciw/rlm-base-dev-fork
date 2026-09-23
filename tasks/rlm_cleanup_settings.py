@@ -103,7 +103,7 @@ class CleanupSettingsForDev(BaseTask):
                 config_path = Path(config_file)
             
             if config_path.exists():
-                with open(config_path, 'r') as f:
+                with open(config_path, 'r', encoding='utf-8') as f:
                     config = json.load(f)
                     features = set(config.get('features', []))
                     self.logger.debug(f"Read {len(features)} features from {config_path}")
@@ -432,7 +432,7 @@ class CleanupSettingsForDev(BaseTask):
         
         try:
             # Read current .forceignore
-            with open(forceignore_path, 'r') as f:
+            with open(forceignore_path, 'r', encoding='utf-8') as f:
                 lines = f.readlines()
             
             # Find all RLM_TSO entries (both active and commented)
@@ -460,7 +460,7 @@ class CleanupSettingsForDev(BaseTask):
                     for idx in indices_to_remove:
                         lines.pop(idx)
                     
-                    with open(forceignore_path, 'w') as f:
+                    with open(forceignore_path, 'w', encoding='utf-8') as f:
                         f.writelines(lines)
                     self.logger.info("RLM_TSO removed from .forceignore (tso=true - will be deployed)")
                 else:
@@ -503,7 +503,7 @@ class CleanupSettingsForDev(BaseTask):
                         lines.append(f"\n{RLM_TSO_comment}\n")
                         lines.append(f"{RLM_TSO_entry}\n")
                     
-                    with open(forceignore_path, 'w') as f:
+                    with open(forceignore_path, 'w', encoding='utf-8') as f:
                         f.writelines(lines)
                     self.logger.info("RLM_TSO added to .forceignore (tso=false - excluded from deployment)")
                 else:

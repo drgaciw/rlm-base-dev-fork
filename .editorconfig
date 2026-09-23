@@ -1,0 +1,28 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+
+# Python (PEP 8) and Apex/CumulusCI YAML task defs follow 4-space convention.
+[*.{py,cls,trigger,apex,cmp,page,component}]
+indent_size = 4
+
+# Markdown: trailing whitespace is meaningful (two spaces = hard line break),
+# and generated Help/dev-guide snapshots (docs/salesforce/**) are not
+# hand-edited — see .gitattributes linguist-generated entries.
+[*.md]
+trim_trailing_whitespace = false
+
+[Makefile]
+indent_style = tab
+
+# No [*.{bat,cmd}] CRLF override: .gitattributes' `* text=auto eol=lf`
+# default has no per-extension carve-out for .bat/.cmd, so a CRLF section
+# here would contradict what git actually normalizes line endings to on
+# checkout/commit. No such files are tracked today; add the carve-out to
+# .gitattributes first if one is ever added.

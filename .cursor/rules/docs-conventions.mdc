@@ -1,0 +1,22 @@
+---
+description: Documentation filename and placement conventions for docs/
+globs: docs/**/*.md
+alwaysApply: false
+---
+
+# Documentation Conventions
+
+All `.md` files under `docs/` use **lower-kebab-case** filenames.
+Placement:
+
+| Directory | Content |
+|-----------|---------|
+| `docs/guides/` | How-to guides (constraints setup, docgen, build guides) |
+| `docs/references/` | Reference material (CCI tasks, permissions, decision tables) |
+| `docs/analysis/` | Technical analysis documents |
+| `docs/features/` | Feature design docs (UX assembly, E2E framework, etc.) |
+| `docs/api/` | API documentation and interactive viewers |
+| `docs/enablement/` | Hands-on exercises: `master/` (living source), `{version}/` (release extracts), `_template/` |
+| `docs/erds/` | ERD diagrams (Mermaid source + HTML viewer) |
+| `docs/salesforce/{version}/` | Per-release feature indexes and Help portal snapshots |
+| `docs/integration/` | Integration-related documentation |

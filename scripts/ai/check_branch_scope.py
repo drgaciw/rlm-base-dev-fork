@@ -95,26 +95,51 @@ removing the fetch or letting it fail silently.
 
 Examples:
     python scripts/ai/check_branch_scope.py --pr 370       # both signals
-    python scripts/ai/check_branch_scope.py                # HEAD vs origin/264
+    python scripts/ai/check_branch_scope.py                # HEAD vs origin/main
     python scripts/ai/check_branch_scope.py --base origin/main --head my-branch
 """
 from __future__ import annotations
 
 import argparse
 import json
+import shutil
 import subprocess
 import sys
 
-DEFAULT_BASE = "origin/264"
+DEFAULT_BASE = "origin/main"
 
 
 class ToolError(Exception):
     """A git/gh invocation failed -- distinct from a finding about the branch."""
 
 
+_TOOL_CACHE: dict[str, str] = {}
+
+
+def _resolve_tool(name):
+    """Full path to `name` if PATH resolution finds one, else `name` unchanged.
+
+    `subprocess.run(["gh", ...])` with `shell=False` resolves a bare command
+    via raw `CreateProcess` on Windows, which only auto-appends ``.exe`` --
+    never the rest of PATHEXT -- so a `gh`/`git` installed as a `.cmd`/`.ps1`
+    shim (common for tools installed via scoop/winget, and how this repo's
+    own test stubs have to be shaped to be found at all -- A-L5) would
+    silently fall through to whatever *other* gh/git happens to sit later on
+    PATH, or fail outright. `shutil.which()` does the full PATHEXT-aware
+    search and returns a path with its real extension, which `CreateProcess`
+    *can* run directly (`.cmd`/`.bat` get the same `cmd.exe /c` wrapping a
+    shell would give them). Cached per name since PATH does not change
+    mid-run.
+    """
+    if name not in _TOOL_CACHE:
+        _TOOL_CACHE[name] = shutil.which(name) or name
+    return _TOOL_CACHE[name]
+
+
 def _run(args, check=True):
+    args = [_resolve_tool(args[0]), *args[1:]]
     try:
-        proc = subprocess.run(args, capture_output=True, text=True)
+        proc = subprocess.run(args, capture_output=True, text=True, encoding="utf-8")
     except OSError as exc:
         # A missing `git`/`gh` must not exit 1: that is the code reserved for
         # "this branch carries foreign commits", and a gate keyed on exit status
@@ -140,8 +165,8 @@ def _is_ancestor(ancestor, descendant):
     """
     try:
         proc = subprocess.run(
-            ["git", "merge-base", "--is-ancestor", ancestor, descendant],
-            capture_output=True, text=True)
+            [_resolve_tool("git"), "merge-base", "--is-ancestor", ancestor, descendant],
+            capture_output=True, text=True, encoding="utf-8")
     except OSError as exc:
         raise ToolError(f"could not run 'git': {exc}") from exc
     if proc.returncode not in (0, 1):

@@ -54,8 +54,8 @@ agent that can read repository files.
 - **DO NOT** make a Cursor rule the only source of guidance. Cursor rules are
   supplemental; non-Cursor agents must be able to read equivalent instructions
   from `AGENTS.md` or a skill.
-- **DO NOT** edit `CLAUDE.md`; it is an entry-point pointer/symlink to
-  `AGENTS.md` in this repository pattern.
+- **DO NOT** edit `CLAUDE.md`; it is an entry-point pointer that imports
+  `AGENTS.md` via `@AGENTS.md` in this repository pattern.
 - **DO NOT** register PMOS-facing skills in `.claude/skill-manifest.yml` without
   a clear `purpose`, valid `path`, and explicit `consumed_by_pmos` value.
 - **DO NOT** write a procedure around hardcoded instance names — a specific model,
@@ -194,22 +194,33 @@ description: >-
 ### Native discovery links
 
 Keep skill content under `.cursor/skills/<name>/`. For each top-level skill,
-track a relative directory symlink in both `.agents/skills/` and
+track a relative directory link in both `.agents/skills/` and
 `.claude/skills/`, targeting `../../.cursor/skills/<name>`. Link the whole
 directory so supporting files remain available; do not copy skill bodies.
 When adding or retiring a skill, update both link sets in the same change.
 
-For a new skill, run from the repository root, replacing `skill-name`:
+For a new skill, run from the repository root:
+
+```sh
+python scripts/ai/link_skills.py --fix
+```
+
+**Windows-safe:** it creates directory junctions (`mklink /J`, no admin
+rights or Developer Mode needed) and symlinks elsewhere, then marks the
+paths `skip-worktree`. Run `--check` first to see which skills are missing
+links (including stub files left by a checkout that couldn't materialize a
+symlink). Manual POSIX equivalent when the script is unavailable:
 
 ```sh
 ln -s ../../.cursor/skills/skill-name .agents/skills/skill-name
 ln -s ../../.cursor/skills/skill-name .claude/skills/skill-name
 ```
 
-Verify both paths resolve after a fresh Git checkout and are tracked as
-symlinks (mode `120000` in `git ls-files -s`). Check the client's native
-listing for missing or duplicate entries, then invoke one representative
-skill. Record the tested client/version and any unavailable clients rather
+Verify both paths resolve after a fresh checkout. On Windows, confirm
+`link_skills.py --check` reports the skill linked and the directory shows
+real files, not a stub (junctions have no `git ls-files -s` symlink mode).
+On POSIX, confirm mode `120000`. Check the client's native listing, then
+invoke one representative skill; record the tested client/version rather
 than claiming universal support. See
 [the discovery guide](../../../docs/guides/agent-skill-discovery.md) for
 client verification and the catalog fallback.
@@ -244,10 +255,14 @@ narrative. Keep detailed reference material in linked sub-files.
 
 ## Progressive Disclosure: When to Split Sub-Files
 
+**Hard budget: a `SKILL.md` must not exceed 500 lines.** Split before you reach
+it — `python scripts/ai/analyze_agent_tooling.py check` gates this. Start new
+top-level skills from [`SKILL_TEMPLATE.md`](SKILL_TEMPLATE.md) so the
+split-friendly shape is there from the first commit.
+
 Split a sub-file when any of these are true:
 
-- The top-level skill is becoming difficult to scan or is approaching a few
-  hundred lines.
+- The top-level skill is over, or approaching, the 500-line budget.
 - Only some tasks need the content, such as one product domain, one framework,
   one release, or one advanced troubleshooting path.
 - The content is reference-heavy: generated indexes, object maps, feature
@@ -292,12 +307,14 @@ rule.
 
 ### `AGENTS.md`
 
-Update `AGENTS.md` for:
+`AGENTS.md` no longer carries a per-skill index or a per-script-directory
+table — both were replaced by pointers to `.cursor/skills/README.md` (Skill
+Catalog) and `scripts/ai/README.md` (general script reference) to keep the
+file within its byte budget. A new top-level skill or script directory is
+registered in those two files, not in `AGENTS.md` itself.
 
-- New top-level skill rows in **AI Agent Skill Index**.
-- A new *directory* of helper scripts, as one row in **Script Reference** naming
-  the owning skill — never the individual commands.
-- New universal safety guards or project-wide conventions.
+Update `AGENTS.md` only for new universal safety guards (the DO NOT list) or
+project-wide conventions that belong in the shared contract.
 
 Do **not** update `AGENTS.md` for a new sub-file (the parent `SKILL.md` owns
 that) or a new Cursor rule (`.cursor/skills/README.md` owns that).
@@ -392,7 +409,7 @@ client smoke tests below; they do not establish native client discovery.
    - Parse the entry point's YAML frontmatter. Check that `name` matches the
      directory and that both fields meet the constraints above. Read the
      description alone to confirm it identifies when to choose this skill.
-   - For a **top-level skill**: confirm `AGENTS.md` Skill Index lists it.
+   - For a **top-level skill**: confirm `.cursor/skills/README.md` Skill Router lists it.
    - For a **sub-file**: confirm the parent `SKILL.md` describes it. That is the
      only registry — `AGENTS.md` deliberately has no second-level index, so a
      sub-file its parent omits cannot be found from any entry point. This is
@@ -431,9 +448,8 @@ Do:
 2. Include Quick Rules, DO NOT, Entry Conditions, Examples, and Validation
    Checks.
 3. Add a Skill Router row in `.cursor/skills/README.md`.
-4. Add an AI Agent Skill Index row in `AGENTS.md`.
-5. Add a manifest entry if PMOS or cross-repo consumers should discover it.
-6. Run validation checks and commit all touched files together.
+4. Add a manifest entry if PMOS or cross-repo consumers should discover it.
+5. Run validation checks and commit all touched files together.
 
 ### Example 2 — Add a focused sub-file
 
@@ -473,9 +489,9 @@ python scripts/validate_sfdmu_v5_datasets.py
 Also review:
 
 - `git diff --stat` for unintended generated or runtime files.
-- `AGENTS.md` Skill Index and Script Reference tables, plus `wc -c AGENTS.md`
-  against the 25,000-byte repository ceiling; check a fresh client session for
-  truncation after changing root instructions.
+- `wc -c AGENTS.md` against the 12,288-byte repository ceiling (`python
+  scripts/ai/analyze_agent_tooling.py check` enforces this); check a fresh
+  client session for truncation after changing root instructions.
 - `.cursor/skills/README.md` Skill Router and File-Specific Rules tables.
 - The parent `SKILL.md`'s own sub-file list, for any sub-file you added.
 - `.github/copilot-instructions.md` quick-start and entry-point guidance.

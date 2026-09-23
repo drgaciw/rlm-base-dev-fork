@@ -62,7 +62,7 @@ Ordered by priority. Weight the first two above everything else.
 5. **Verification** — is the claim actually tested, and by something that would fail if
    the behaviour regressed?
 6. **Documentation drift** — does a doc, README or skill now say something untrue?
-   `AGENTS.md` → *Documentation consistency* has the change-surface map.
+   `.cursor/skills/doc-consistency/SKILL.md` has the change-surface map.
 
 ---
 

@@ -1,0 +1,28 @@
+version: 2
+updates:
+  # GitHub Actions used across .github/workflows/**. Actions pinned to a
+  # commit SHA (see config/tool-versions.env and the workflow files for the
+  # `# vX.Y.Z` comment convention) still get PRs here — Dependabot bumps the
+  # SHA and updates the trailing version comment.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+
+  # Robot Framework toolchain (robot/requirements.txt: robotframework,
+  # robotframework-seleniumlibrary, selenium, webdriver-manager). This is the
+  # only real Python dependency manifest in the repo — root pyproject.toml
+  # declares no [project] dependencies on purpose (see its header comment),
+  # so a "/" directory entry here would be a no-op. ruff's pin
+  # (.github/workflows/pr-checks.yml, .pre-commit-config.yaml) and
+  # CumulusCI/sf CLI/SFDMU (config/tool-versions.env) are bumped manually.
+  - package-ecosystem: "pip"
+    directory: "/robot"
+    schedule:
+      interval: "weekly"
+
+  # LWC toolchain (package.json: eslint, prettier, sfdx-lwc-jest).
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"

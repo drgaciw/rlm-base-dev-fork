@@ -130,7 +130,11 @@ WINDOW = 3
 # citation, row, headline or whole file leaving the audit shows up as a smaller
 # number instead of as "all checks passed" — the failure mode the per-site guards
 # above exist to prevent, and the reason `tests/test_branch_scope.py` pins its own.
-EXPECTED_CHECKS = 102
+# A-H1 (wave 2): the "covering N objects" derived check (prose_object_total) was
+# retired above when WP-04 generalized the SKILL.md description away from that
+# phrasing, dropping it from 102 to 99 (the retired pattern used to contribute its
+# own "_is_cited" check plus one per-hit check; removing it removes both).
+EXPECTED_CHECKS = 99
 
 ERD_DATA = os.path.join(REPO_ROOT, "docs", "erds", "erd-data.json")
 SKILL = os.path.join(
@@ -231,7 +235,7 @@ def fold(raw):
 
 
 def load():
-    with open(ERD_DATA) as f:
+    with open(ERD_DATA, encoding="utf-8") as f:
         erd = json.load(f)
     objects = erd.get("objects", {})
     per_domain = {}
@@ -255,7 +259,7 @@ def mermaid_entities(stem):
     """
     path = os.path.join(ERD_DIR, f"{stem}.mermaid")
     names = set()
-    with open(path) as f:
+    with open(path, encoding="utf-8") as f:
         for line in f.read().split("\n")[1:]:
             s = line.strip()
             if not s or s.startswith("%%"):
@@ -287,7 +291,7 @@ def rel(path):
 def domain_overview_rows():
     """Parse the Domain Overview table: [(lineno, row label, claimed count)]."""
     rows = []
-    with open(SKILL) as f:
+    with open(SKILL, encoding="utf-8") as f:
         lines = f.read().split("\n")
     in_table = False
     for lineno, line in enumerate(lines, 1):
@@ -327,7 +331,7 @@ def main():
     print("domain color mappings")
     maps = []
     for script in ("scripts/erd/build_erds.py", "scripts/erd/validate_erd_against_org.py"):
-        with open(os.path.join(REPO_ROOT, script)) as f:
+        with open(os.path.join(REPO_ROOT, script), encoding="utf-8") as f:
             tree = ast.parse(f.read(), filename=script)
         # Read the constants without importing the live-org validator's dependencies.
         maps.append(next(
@@ -350,7 +354,7 @@ def main():
     check("each_short_domain_has_one_color", not conflicts,
           f"aliases for the same displayed domain disagree: {conflicts}")
 
-    with open(os.path.join(ERD_DIR, "revenue-cloud-erd.html")) as f:
+    with open(os.path.join(ERD_DIR, "revenue-cloud-erd.html"), encoding="utf-8") as f:
         html = f.read()
     marker = "const D="
     assignment = html[html.index(marker) + len(marker):].lstrip()
@@ -396,7 +400,7 @@ def main():
                   "TRIPLE_SITES deliberately or fix the path; skipping it silently is "
                   "how a file leaves the audit")
             continue
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             lines = f.read().split("\n")
         here = 0
         for i, line in enumerate(lines):
@@ -431,7 +435,7 @@ def main():
         "Total Domains": len(per_domain),
     }
     readme = os.path.join(REPO_ROOT, "docs", "erds", "README.md")
-    with open(readme) as f:
+    with open(readme, encoding="utf-8") as f:
         readme_lines = f.read().split("\n")
     for label, expected in stat_bullets.items():
         hits = [
@@ -470,7 +474,7 @@ def main():
           f"no diagram: {only_data} — every domain needs a `<stem>.mermaid` and a line "
           "in both inventories")
     for path in MERMAID_INVENTORIES:
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             body = f.read()
         for stem, count in sorted(drawn.items()):
             # Three phrasings, because there are three in the docs: `(N entities)`, a
@@ -544,7 +548,7 @@ def main():
         # further down (`approvals.md`: "2 objects across 2 objectSets"), so a fixed
         # window that the front matter outgrew would start checking the wrong number
         # instead of reporting a missing one.
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             head = []
             for line in f.read().split("\n"):
                 if line.startswith("## "):
@@ -618,10 +622,17 @@ def main():
     # found by listing every ERD-justifiable numeral in these docs and subtracting the
     # gated ones, rather than by reading for it. Rounds 3 and 5 each surfaced one more
     # loose citation because the sweep looked for the phrasings it already knew.
+    # "covering N objects" was retired here (A-H1, wave 2): WP-04 generalized the
+    # revenue-cloud-data-model SKILL.md frontmatter `description` to "covering the
+    # platform schema across 9 domains" specifically so it would stop needing a hand
+    # update on every ERD refresh, matching how every other frontmatter description in
+    # `.cursor/skills/` is written. The object total is still gated below via the
+    # "N-object schema" phrasing (`hyphenated_object_total`, SKILL.md's Quick Start
+    # section), so re-adding a `covering N objects` requirement here would just
+    # resurrect the maintenance burden WP-04 removed it to avoid.
     derived = {
         r"excluding those variants gives (\d+)": ("excluding_core_total", excluding_core),
         r"(\d+) raw labels": ("raw_label_count", raw_labels),
-        r"covering ([\d,]+) objects": ("prose_object_total", len(erd["objects"])),
         r"([\d,]+)-object schema": ("hyphenated_object_total", len(erd["objects"])),
     }
     for pattern, (name, expected) in derived.items():
@@ -631,7 +642,7 @@ def main():
         for path in dict.fromkeys([SKILL, *TRIPLE_SITES]):
             if not os.path.isfile(path):
                 continue
-            with open(path) as f:
+            with open(path, encoding="utf-8") as f:
                 for lineno, line in enumerate(f.read().split("\n"), 1):
                     for m in re.finditer(pattern, line):
                         hits.append((path, lineno, num(m.group(1))))
@@ -646,7 +657,7 @@ def main():
     for path in TRIPLE_SITES:
         if not os.path.isfile(path):
             continue
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             for lineno, line in enumerate(f.read().split("\n"), 1):
                 for m in claim.finditer(line):
                     claims += 1

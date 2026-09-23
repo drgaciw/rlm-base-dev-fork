@@ -213,7 +213,10 @@ class FileBasedAnonymousApexTask(SFDXBaseTask):
         # Write to temporary file with restricted permissions
         # mkstemp creates the file with mode 0600 (owner read/write only) for security
         # Returns (file_descriptor, path) - we must close the fd or use fdopen
-        temp_fd, temp_path = tempfile.mkstemp(suffix='.apex', text=True)
+        # Binary fd: os.fdopen() below owns text/encoding via its own io layer,
+        # avoiding double newline translation that mkstemp(text=True) plus a
+        # text-mode fdopen() would cause on Windows.
+        temp_fd, temp_path = tempfile.mkstemp(suffix='.apex')
         try:
             # Write the prepared Apex to the temp file
             with os.fdopen(temp_fd, 'w', encoding='utf-8') as f:
@@ -407,6 +410,8 @@ class FileBasedAnonymousApexTask(SFDXBaseTask):
                 command,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 check=False,  # Don't raise on non-zero exit; we'll handle it
                 timeout=APEX_EXECUTION_TIMEOUT_SECONDS
             )

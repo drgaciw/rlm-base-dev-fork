@@ -55,13 +55,13 @@ def _check(passes, readme_rows, extra_readme_lines=None, csvs=None, export_optio
         plan.mkdir()
         export_data = {"objectSets": [{"objects": p} for p in passes]}
         export_data.update(export_options or {})
-        (plan / "export.json").write_text(json.dumps(export_data))
+        (plan / "export.json").write_text(json.dumps(export_data), encoding="utf-8")
         for name, body in (csvs or {}).items():
             (plan / name).parent.mkdir(parents=True, exist_ok=True)
-            (plan / name).write_text(body)
+            (plan / name).write_text(body, encoding="utf-8")
         lines = ["# Test Plan", "", "## Objects", "", OBJECT_TABLE_HEADER, OBJECT_TABLE_SEP,
                  *readme_rows, "", *(extra_readme_lines or [])]
-        (plan / "README.md").write_text("\n".join(lines) + "\n")
+        (plan / "README.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
         return C.check_plan(str(plan))
 
 

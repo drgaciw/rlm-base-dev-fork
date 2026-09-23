@@ -46,6 +46,11 @@ jobs:
        github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     timeout-minutes: 120
+    # Gates access to SFDX_AUTH_URL (a live Dev Hub credential) behind a
+    # protected GitHub environment. This workflow alone cannot enforce
+    # required reviewers or a deployment branch policy — that must be
+    # configured once in the repo's Settings → Environments → devhub.
+    environment: devhub
     env:
       # Dispatch uses the provided inputs; label-triggered PR runs derive a
       # per-PR alias and default to the `dev` scratch config.
@@ -69,22 +74,35 @@ jobs:
 
       - name: Checkout repository
         uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
-      - name: Set up Python 3.13
+      - name: Load pinned tool versions
+        # $GITHUB_ENV requires every non-blank line to be NAME=VALUE — a
+        # straight `cat` of config/tool-versions.env fails on its first line
+        # (a `#` comment), so comments/blanks are filtered out first.
+        run: grep -E '^[A-Za-z_][A-Za-z0-9_]*=' config/tool-versions.env >> "$GITHUB_ENV"
+
+      - name: Set up Python
         uses: actions/setup-python@v6
         with:
-          python-version: "3.13"
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+          cache-dependency-path: |
+            config/tool-versions.env
+            robot/requirements.txt
 
-      - name: Set up Node.js 24.16.0
+      - name: Set up Node.js
         uses: actions/setup-node@v5
         with:
-          # Pinned to an exact 24.x minor. node-version "24" floats to "latest 24.x",
-          # which moved 24.16.0 → 24.17.0; on 24.17.0 the npm-installed sf CLI exits 13
-          # on `sf org login` ("Detected unsettled top-level await" in the CLI entrypoint).
-          # 24.16.0 is the last-known-good — Prepare RLM Org succeeded on it 2026-06-11
-          # (run 27314890121). Re-float to "24" once a newer 24.x or sf CLI release restores
+          # Pinned to an exact 24.x minor (config/tool-versions.env). node-version
+          # "24" floats to "latest 24.x", which moved 24.16.0 → 24.17.0; on 24.17.0
+          # the npm-installed sf CLI exits 13 on `sf org login` ("Detected
+          # unsettled top-level await" in the CLI entrypoint). 24.16.0 is the
+          # last-known-good — Prepare RLM Org succeeded on it 2026-06-11 (run
+          # 27314890121). Re-float once a newer 24.x or sf CLI release restores
           # compatibility (tracked alongside check-cci-token-fix.yml).
-          node-version: "24.16.0"
+          node-version: ${{ env.NODE_VERSION }}
 
       - name: Cache npm download cache
         uses: actions/cache@v5
@@ -94,13 +112,15 @@ jobs:
 
       - name: Install sf CLI and SFDMU plugin
         run: |
-          # 2.147.7 (was 2.127.2, pinned 2026-06). The 264 build reaches
+          # Versions pinned in config/tool-versions.env. sf CLI: 2.147.7 (was
+          # 2.127.2, pinned 2026-06) because the 264 build reaches
           # `prepare_agents` → `sf agent activate`, part of the authoring-bundle
-          # path this release moved to; 2.127.2 predates that work and failed there
-          # while 2.147.7 completes the same flow locally. Keep this within one or
-          # two minors of what developers run, since the agent commands are moving.
-          npm install -g @salesforce/cli@2.147.7
-          yes | sf plugins install sfdmu@5.8.0
+          # path this release moved to; 2.127.2 predates that work and failed
+          # there while 2.147.7 completes the same flow locally. Keep this
+          # within one or two minors of what developers run, since the agent
+          # commands are moving.
+          npm install -g "@salesforce/cli@${SF_CLI_VERSION}"
+          yes | sf plugins install "sfdmu@${SFDMU_VERSION}"
           sf --version
           sf plugins
 
@@ -108,7 +128,7 @@ jobs:
         run: |
           python -m venv .venv
           .venv/bin/pip install --upgrade pip "setuptools>=75.4,<77"
-          .venv/bin/pip install "cumulusci==4.8.1"
+          .venv/bin/pip install "cumulusci==${CUMULUSCI_VERSION}"
           .venv/bin/pip install -r robot/requirements.txt
           echo "$(pwd)/.venv/bin" >> $GITHUB_PATH
           .venv/bin/cci version
@@ -126,8 +146,10 @@ jobs:
           cci task run validate_setup
 
       - name: Authenticate Dev Hub
+        env:
+          SFDX_AUTH_URL: ${{ secrets.SFDX_AUTH_URL }}
         run: |
-          echo "${{ secrets.SFDX_AUTH_URL }}" > /tmp/sfdx-auth-url.txt
+          printf '%s' "$SFDX_AUTH_URL" > /tmp/sfdx-auth-url.txt
           sf org login sfdx-url --sfdx-url-file /tmp/sfdx-auth-url.txt --set-default-dev-hub --alias devhub
           rm /tmp/sfdx-auth-url.txt
 
@@ -146,13 +168,13 @@ jobs:
 
       - name: Run prepare_rlm_org
         env:
-          SF_TEMP_SHOW_SECRETS: "true"  # CCI reads the scratch token for REST throughout the flow
+          SF_TEMP_SHOW_SECRETS: "true" # CCI reads the scratch token for REST throughout the flow
         run: |
           cci flow run prepare_rlm_org --org "$ORG_ALIAS"
 
       - name: Delete scratch org
         if: always()
         env:
-          SF_TEMP_SHOW_SECRETS: "true"  # CCI reads org info to delete the scratch
+          SF_TEMP_SHOW_SECRETS: "true" # CCI reads org info to delete the scratch
         run: |
           cci org scratch_delete "$ORG_ALIAS" || true

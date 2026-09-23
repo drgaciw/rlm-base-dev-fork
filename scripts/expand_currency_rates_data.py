@@ -60,7 +60,7 @@ def load_currency_table(pricing_plan):
     if not os.path.isfile(path):
         sys.exit(f"error: {path} not found — cannot read conversion rates.")
     rates, decimals = {}, {}
-    with open(path, newline="") as fh:
+    with open(path, newline="", encoding="utf-8") as fh:
         for r in csv.DictReader(fh):
             rates[r["IsoCode"]] = Decimal(r["ConversionRate"])
             decimals[r["IsoCode"]] = int(r["DecimalPlaces"])
@@ -72,7 +72,7 @@ def load_currency_units(rating_plan):
     path = os.path.join(rating_plan, "UnitOfMeasure.csv")
     if not os.path.isfile(path):
         sys.exit(f"error: {path} not found — cannot identify currency units.")
-    with open(path, newline="") as fh:
+    with open(path, newline="", encoding="utf-8") as fh:
         return {r["UnitCode"] for r in csv.DictReader(fh)
                 if r["UnitOfMeasureClass.Code"] == "CURRENCY"}
 
@@ -111,7 +111,7 @@ def convert_money(raw, ccy, base, rates, decimals):
 
 
 def read_csv(path):
-    with open(path, newline="") as fh:
+    with open(path, newline="", encoding="utf-8") as fh:
         rd = csv.DictReader(fh)
         return rd.fieldnames, list(rd)
 
@@ -121,7 +121,7 @@ def write_csv(path, fieldnames, rows):
     w = csv.DictWriter(buf, fieldnames=fieldnames, lineterminator="\n")
     w.writeheader()
     w.writerows(rows)
-    with open(path, "w", newline="") as fh:
+    with open(path, "w", newline="", encoding="utf-8") as fh:
         fh.write(buf.getvalue())
 
 

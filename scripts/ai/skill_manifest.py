@@ -36,6 +36,7 @@ from __future__ import annotations
 import argparse
 import importlib
 import importlib.util
+import json
 import os
 import re
 import subprocess
@@ -240,6 +241,40 @@ def _load_manifest_minimal(text: str) -> dict[str, Any]:
 # ─── Repo discovery ─────────────────────────────────────────────────────────
 
 
+def _repo_surface_present(cand: Path, repo_name: str) -> bool:
+    """True if `cand` has the on-disk skill surface that identifies `repo_name`.
+
+    PMOS ships skills at `.claude/skills/<id>/SKILL.md`; Foundations ships them
+    at `.cursor/skills/<id>/SKILL.md`. Checking only that the parent directory
+    exists is not enough:
+
+      * `.claude/skills/` can be pre-populated with unrelated tooling (e.g. a
+        local GitNexus skill cache under `.claude/skills/gitnexus/<sub>/SKILL.md`,
+        two levels deep) without containing a single declared skill one level
+        deep — so require an actual one-level-deep `SKILL.md`, matching how
+        `_cli_check` counts PMOS skills.
+      * Once `scripts/ai/link_skills.py --fix` repairs a Foundations checkout's
+        own skill-discovery stubs, `.claude/skills/<id>/SKILL.md` resolves
+        there too (as junctions/symlinks mirroring `.cursor/skills/`) — a
+        Foundations checkout legitimately has BOTH surfaces. `.cursor/skills/`
+        is the surface only a real Foundations clone has, so for the PMOS
+        check, require `.claude/skills/*/SKILL.md` AND the absence of
+        `.cursor/skills/`; otherwise a fixed-up Foundations checkout
+        misidentifies itself as the PMOS clone.
+    """
+    cursor_has_skills = (cand / ".cursor" / "skills").is_dir() and any(
+        (cand / ".cursor" / "skills").glob("*/SKILL.md")
+    )
+    if repo_name == "rlm-base-dev":
+        return cursor_has_skills
+    if repo_name == "pmos-revenue-cloud":
+        if cursor_has_skills:
+            return False
+        skills_dir = cand / ".claude" / "skills"
+        return skills_dir.is_dir() and any(skills_dir.glob("*/SKILL.md"))
+    return False
+
+
 @dataclass
 class RepoLocation:
     """Resolved local clone of one repo declared in the manifest."""
@@ -278,6 +313,7 @@ def _git_remote_url(path: Path) -> str | None:
             ["git", "-C", str(path), "config", "--get", "remote.origin.url"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
             timeout=10,
         )
     except (OSError, subprocess.SubprocessError):
@@ -358,14 +394,23 @@ def _discover_repo(
             p = (manifest_root / p).resolve()
         candidates.append(p)
 
-    # Phase 6.3 transition: only Foundations ships the manifest today.
-    # For the OTHER repo (the one whose clone we're trying to find from
-    # this one's manifest), accept a directory that looks like the right repo
-    # even without the manifest file — we'll know it's the right repo because
-    # the manifest declared its repo name, and we can sanity-check via a
-    # well-known marker (.claude/ or .cursor/).
     repo_name = repo_section.get("name", "")
     declared_url = repo_section.get("repo_url", "") or ""
+
+    # Self-discovery fallback: the checkout that HOLDS this manifest is always
+    # a legitimate candidate for whichever section actually describes it,
+    # regardless of what the checkout's directory is named. Without this,
+    # `--check` failed in any clone not literally named "rlm-base-dev" (e.g. a
+    # fork checked out as "rlm-base-dev-fork") — none of the hardcoded hints
+    # above (env vars, "../rlm-base-dev", …) match such a directory, so the
+    # loop below never even tried the directory the manifest actually lives
+    # in. Gate it with `_repo_surface_present` (not just "is this manifest_root"),
+    # so this checkout is only offered to the section it truly is.
+    if manifest_root is not None and _repo_surface_present(manifest_root, repo_name):
+        resolved_root = manifest_root.resolve()
+        if resolved_root not in candidates:
+            candidates.append(resolved_root)
+
     rejected: list[tuple[Path, str]] = []
 
     def _identity_of(cand: Path) -> str | None:
@@ -387,14 +432,7 @@ def _discover_repo(
             # "verified" PMOS clone. Require the section's repo-specific agent
             # surface; on mismatch, fall through to remote comparison, which
             # rejects a provably different repo.
-            self_is_this_section = (
-                repo_name == "pmos-revenue-cloud"
-                and (cand / ".claude" / "skills").is_dir()
-            ) or (
-                repo_name == "rlm-base-dev"
-                and (cand / ".cursor" / "skills").is_dir()
-            )
-            if self_is_this_section:
+            if _repo_surface_present(cand, repo_name):
                 return "verified-self"
         remote = _git_remote_url(cand)
         if remote is None or not declared_url:
@@ -428,13 +466,10 @@ def _discover_repo(
                 rejected=rejected,
             )
         # Lenient match: directory exists with the expected agent surface.
-        # Foundations ships .cursor/skills/; PMOS ships .claude/skills/.
-        # If either is present at this candidate, treat it as the clone.
-        looks_like_pmos = (cand / ".claude" / "skills").is_dir()
-        looks_like_foundations = (cand / ".cursor" / "skills").is_dir()
-        if (repo_name == "pmos-revenue-cloud" and looks_like_pmos) or (
-            repo_name == "rlm-base-dev" and looks_like_foundations
-        ):
+        # Foundations ships .cursor/skills/*/SKILL.md; PMOS ships
+        # .claude/skills/*/SKILL.md. If the declared repo's surface is
+        # present at this candidate, treat it as the clone.
+        if _repo_surface_present(cand, repo_name):
             identity = _identity_of(cand)
             if identity is None:
                 continue
@@ -643,7 +678,7 @@ def _cli_check(manifest: dict[str, Any]) -> int:
             continue
         for rej_path, rej_remote in resolved.rejected:
             print(
-                f"  [WARN]  {key}: REJECTED candidate {rej_path} — its git remote "
+                f"  [WARN]  {key}: REJECTED candidate {rej_path} -- its git remote "
                 f"({rej_remote}) names a different repo than the declared repo_url. "
                 f"A stale/foreign clone at a hint path must not win discovery; "
                 f"remove or re-clone it."
@@ -652,7 +687,7 @@ def _cli_check(manifest: dict[str, Any]) -> int:
             if is_optional:
                 print(
                     f"  [INFO]  {key} ({resolved.name}): clone not found "
-                    f"(optional — degrading gracefully)"
+                    f"(optional -- degrading gracefully)"
                 )
                 print(f"          tried: {[str(p) for p in resolved.candidates_tried]}")
                 if resolved.env_var:
@@ -677,7 +712,7 @@ def _cli_check(manifest: dict[str, Any]) -> int:
                 )
             else:
                 print(
-                    "          identity: UNVERIFIED — no remote/URL comparison "
+                    "          identity: UNVERIFIED -- no remote/URL comparison "
                     "was possible (unreadable git remote, undeclared repo_url, "
                     "or a remote form that does not normalize, e.g. a "
                     "local-path/file:// mirror); structural match accepted. "
@@ -693,7 +728,7 @@ def _cli_check(manifest: dict[str, Any]) -> int:
                     )
                     print(f"          skills on disk: {n} (measured, not hand-kept)")
 
-    return 0 if _audit_foundations(manifest) and overall_ok else 1
+    return 0 if _audit_foundations(manifest) and _audit_release_identity(manifest) and overall_ok else 1
 
 
 #: Where a repo-relative path can start. Anything outside this is prose, not a path.
@@ -833,13 +868,184 @@ def _audit_foundations(manifest: dict[str, Any]) -> bool:
         # Printed, not swallowed: the reader is told exactly which claims went unverified
         # and why, so "all paths resolve" never covers a path nobody looked at.
         print(f"  [NOTE  ] {len(unauditable)} path(s) point into the private "
-              f"{LOCAL_ONLY_ROOT} tree, which is absent here — not audited:")
+              f"{LOCAL_ONLY_ROOT} tree, which is absent here -- not audited:")
         for item in unauditable:
             print(f"          - {item}")
     print(f"  [OK    ] foundations manifest matches the working tree "
           f"({len(declared)} skills declared, "
           f"{'all auditable paths resolve' if unauditable else 'all paths resolve'})")
     return True
+
+
+def _read_json_optional(path: Path) -> Any | None:
+    """Parse `path` as JSON; return None on any I/O or parse failure."""
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
+def _print_release_identity_problems(problems: list[str]) -> None:
+    print()
+    if problems:
+        print(f"  [ERROR] release identity drift ({len(problems)} problem(s)):")
+        for problem in problems:
+            print(f"          - {problem}")
+        return
+    print("  [OK    ] release identity matches across project-memory.json, "
+          "the manifest, README/CONTRIBUTING/docs/index.md, erd_data and "
+          "help_corpus_active")
+
+
+def _audit_release_identity(manifest: dict[str, Any]) -> bool:
+    """Cross-check release identity against its single source of truth.
+
+    ``.agents/context/project-memory.json`` (keys ``release_active``,
+    ``release_prior_ga``, ``api_version_active``, ``pr_base_branch``) is that
+    source of truth. This audit exists because release identity used to be
+    hand-written in about 8 places and had already drifted: CONTRIBUTING.md
+    targeted `main` while other docs gated against `origin/264`,
+    `.agents/model-routing.md` still said "Release 262", and this manifest's
+    own `erd_data`/`help_corpus_active` grounding entries pointed at a stale
+    262/v67.0 capture after a 264 capture already existed on disk. A drifted
+    value here is not cosmetic — it is exactly the kind of stale pointer that
+    silently hands an agent the wrong release's schema or Help content.
+    """
+    root = Path(manifest["_self_repo_root"])
+    problems: list[str] = []
+
+    pmem_path = root / ".agents" / "context" / "project-memory.json"
+    pmem = _read_json_optional(pmem_path)
+    if pmem is None:
+        problems.append(f"cannot read {pmem_path} (missing or invalid JSON)")
+        _print_release_identity_problems(problems)
+        return False
+
+    required_keys = ("release_active", "release_prior_ga", "api_version_active", "pr_base_branch")
+    missing = [k for k in required_keys if k not in pmem]
+    if missing:
+        problems.append(
+            f"{pmem_path} is missing key(s): {', '.join(missing)}"
+        )
+        _print_release_identity_problems(problems)
+        return False
+
+    release_active = str(pmem["release_active"])
+    release_prior_ga = str(pmem["release_prior_ga"])
+    api_version_active = str(pmem["api_version_active"])
+    pr_base_branch = str(pmem["pr_base_branch"])
+
+    # 1. The manifest's own top-level release fields must agree with the SSOT.
+    for manifest_key, expected in (
+        ("salesforce_release_active", release_active),
+        ("salesforce_release_prior_ga", release_prior_ga),
+        ("api_version_active", api_version_active),
+    ):
+        actual = manifest.get(manifest_key)
+        actual_str = None if actual is None else str(actual)
+        if actual_str != expected:
+            problems.append(
+                f".claude/skill-manifest.yml {manifest_key}={actual_str!r} "
+                f"disagrees with {pmem_path.name} ({expected!r})"
+            )
+
+    # 2. README / CONTRIBUTING / docs/index.md must name the active release
+    #    and API version; CONTRIBUTING must also name the PR base branch.
+    def _text_or_none(rel: str) -> str | None:
+        try:
+            return (root / rel).read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            return None
+
+    release_marker = f"Release {release_active}"
+    texts: dict[str, str | None] = {
+        rel: _text_or_none(rel) for rel in ("README.md", "CONTRIBUTING.md", "docs/index.md")
+    }
+    for rel, text in texts.items():
+        if text is None:
+            problems.append(f"cannot read {rel} to verify release identity")
+            continue
+        if release_marker not in text:
+            problems.append(f"{rel} does not mention {release_marker!r}")
+        if api_version_active not in text:
+            problems.append(f"{rel} does not mention API version {api_version_active!r}")
+
+    contributing_text = texts.get("CONTRIBUTING.md")
+    if contributing_text is not None and f"`{pr_base_branch}`" not in contributing_text:
+        problems.append(
+            f"CONTRIBUTING.md does not name pr_base_branch {pr_base_branch!r} "
+            f"(expected it backtick-quoted, e.g. `` `{pr_base_branch}` ``)"
+        )
+
+    # 3. erd_data / help_corpus_active grounding must match what is actually
+    #    captured on disk, not just resolve (a stale-but-present path passes
+    #    _audit_foundations's existence check while still being wrong data).
+    grounding = ((manifest.get("foundations") or {}).get("grounding") or {})
+
+    erd_entry = grounding.get("erd_data") or {}
+    erd_path = root / "docs" / "erds" / "erd-data.json"
+    erd_data = _read_json_optional(erd_path)
+    if erd_data is None:
+        problems.append(f"cannot read {erd_path} to verify erd_data grounding")
+    else:
+        erd_meta = erd_data.get("metadata") or {}
+        erd_stats = erd_data.get("stats") or {}
+        actual_release = str(erd_meta.get("release", ""))
+        actual_api = "v" + str(erd_meta.get("apiVersion", "")).lstrip("vV")
+        actual_fields = erd_stats.get("totalFields")
+        if str(erd_entry.get("release")) != actual_release:
+            problems.append(
+                f"manifest erd_data.release={erd_entry.get('release')!r} but "
+                f"{erd_path} metadata.release={actual_release!r}"
+            )
+        if str(erd_entry.get("api_version")) != actual_api:
+            problems.append(
+                f"manifest erd_data.api_version={erd_entry.get('api_version')!r} "
+                f"but {erd_path} metadata.apiVersion={erd_meta.get('apiVersion')!r}"
+            )
+        if actual_fields is not None and erd_entry.get("field_count") != actual_fields:
+            problems.append(
+                f"manifest erd_data.field_count={erd_entry.get('field_count')!r} "
+                f"but {erd_path} stats.totalFields={actual_fields!r}"
+            )
+
+    help_entry = grounding.get("help_corpus_active") or {}
+    help_manifest_path = root / "docs" / "salesforce" / release_active / "help" / "manifest.json"
+    help_data = _read_json_optional(help_manifest_path)
+    if help_data is None:
+        problems.append(
+            f"help_corpus_active should track the active release ({release_active}), "
+            f"but {help_manifest_path} does not exist or is not valid JSON"
+        )
+    else:
+        actual_help_release = str(help_data.get("release", ""))
+        if str(help_entry.get("release")) != release_active:
+            problems.append(
+                f"manifest help_corpus_active.release={help_entry.get('release')!r} "
+                f"does not match the active release {release_active!r}"
+            )
+        if actual_help_release != release_active:
+            problems.append(
+                f"{help_manifest_path} release={actual_help_release!r} does not "
+                f"match the active release {release_active!r}"
+            )
+        expected_path = f"docs/salesforce/{release_active}/help/articles/"
+        if help_entry.get("path") != expected_path:
+            problems.append(
+                f"manifest help_corpus_active.path={help_entry.get('path')!r}, "
+                f"expected {expected_path!r}"
+            )
+        help_stats = help_data.get("stats") or {}
+        actual_captured = help_stats.get("captured")
+        if actual_captured is not None and help_entry.get("article_count") != actual_captured:
+            problems.append(
+                f"manifest help_corpus_active.article_count="
+                f"{help_entry.get('article_count')!r} but {help_manifest_path} "
+                f"stats.captured={actual_captured!r}"
+            )
+
+    _print_release_identity_problems(problems)
+    return not problems
 
 
 def _cli_list_skills(manifest: dict[str, Any], repo: str) -> int:

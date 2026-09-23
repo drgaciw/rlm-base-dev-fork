@@ -1,4 +1,4 @@
-global class RLM_CalculateTaxService {
+global inherited sharing class RLM_CalculateTaxService {
     // ============================================================================
     // CONSTANT 
     // ============================================================================

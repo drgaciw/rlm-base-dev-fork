@@ -13,20 +13,33 @@
 # The toolchain mirrors docs/guides/dev-environment-setup.md, but pinned for a
 # reproducible container instead of pyenv/nvm/direnv version managers.
 
-FROM python:3.13-slim-bookworm
+# Tool versions are pinned from config/tool-versions.env, not hard-coded here.
+# docker-publish.yml loads that file and passes each value as a --build-arg;
+# a plain `docker build` (no --build-arg) falls back to the defaults below,
+# which are kept in sync with config/tool-versions.env by convention — bump
+# both in the same PR.
+ARG PYTHON_VERSION=3.13
+FROM python:${PYTHON_VERSION}-slim-bookworm
 
-ARG NODE_MAJOR=24
+ARG NODE_VERSION=24.16.0
+ARG CUMULUSCI_VERSION=4.8.1
+ARG SF_CLI_VERSION=2.147.7
+ARG SFDMU_VERSION=5.8.0
 ARG DEBIAN_FRONTEND=noninteractive
 
 # ---------------------------------------------------------------------------
-# Environment that must be in place for every `sf`/`cci` invocation, including
-# the build-time SFDMU plugin install below.
-#   - Generic UNIX keychain  → store auth as plain JSON under ~/.sfdx (no OS
+# Environment that must be in place for every `sf`/`cci` invocation.
+#   - Generic UNIX keychain → store auth as plain JSON under ~/.sfdx (no OS
 #     keyring exists in a headless container).
-#   - SF_TEMP_SHOW_SECRETS    → CCI 4.10.x still parses the access token out of
-#     `sf --json`; the May 2026 redaction change otherwise breaks scratch creation
-#     (see docs/guides/dev-environment-setup.md §6).
 #   - Disable telemetry/auto-update so the CLI never prompts or self-mutates.
+#
+# SF_TEMP_SHOW_SECRETS is intentionally NOT set here as an image-wide ENV:
+# that would suppress token redaction for every `sf`/`cci` invocation inside
+# the container, not just the specific calls that need to read a token. It is
+# instead scoped to `cci` only via a shim at /usr/local/bin/cci (see below),
+# which mirrors the per-invocation pattern documented in
+# docs/guides/dev-environment-setup.md §6 and used by
+# .github/workflows/prepare-rlm-org.yml — `sf` called directly still redacts.
 # ---------------------------------------------------------------------------
 ENV LANG=C.UTF-8 \
     LC_ALL=C.UTF-8 \
@@ -38,7 +51,6 @@ ENV LANG=C.UTF-8 \
     CHROME_BIN=/usr/bin/chromium \
     SF_USE_GENERIC_UNIX_KEYCHAIN=true \
     SFDX_USE_GENERIC_UNIX_KEYCHAIN=true \
-    SF_TEMP_SHOW_SECRETS=true \
     SF_DISABLE_TELEMETRY=true \
     SF_DISABLE_AUTOUPDATE=true \
     npm_config_update_notifier=false \
@@ -58,13 +70,16 @@ RUN set -eux; \
     rm -rf /var/lib/apt/lists/*
 
 # ---------------------------------------------------------------------------
-# Node.js LTS → Salesforce CLI (sf) + Claude Code, installed globally.
+# Node.js (pinned exact version, not just major) → Salesforce CLI (sf, pinned)
+# + Claude Code, installed globally.
 # ---------------------------------------------------------------------------
 RUN set -eux; \
+    NODE_MAJOR="${NODE_VERSION%%.*}"; \
     curl -fsSL "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" | bash -; \
-    apt-get install -y --no-install-recommends nodejs; \
+    apt-get install -y --no-install-recommends "nodejs=${NODE_VERSION}-1nodesource1"; \
+    apt-mark hold nodejs; \
     rm -rf /var/lib/apt/lists/*; \
-    npm install -g @salesforce/cli @anthropic-ai/claude-code; \
+    npm install -g "@salesforce/cli@${SF_CLI_VERSION}" @anthropic-ai/claude-code; \
     npm cache clean --force; \
     node --version; sf --version
 
@@ -75,29 +90,54 @@ RUN set -eux; \
 # harness (scripts/build_harness, which runs under the ambient `python3`).
 # robot/requirements.txt is copied first so this layer caches independently of
 # repo source churn.
+#
+# setuptools capped at <77: CumulusCI imports `fs`, which does
+# `pkg_resources.declare_namespace` — setuptools >=77 dropped the deprecated
+# pkg_resources shim, so an uncapped inject here breaks with
+# "ModuleNotFoundError: No module named 'pkg_resources'". Same cap as
+# scripts/ai/pr_gate.py's CO_REQUIRES for cumulusci. `--force` is required:
+# without it, pipx sees a (too-new) setuptools already present in the venv —
+# pulled in transitively by `pipx install cumulusci` itself — and silently
+# skips the inject ("already seems to be installed. Not modifying"), so the
+# version cap below never actually applies without it.
 # ---------------------------------------------------------------------------
 COPY robot/requirements.txt /tmp/robot-requirements.txt
 RUN set -eux; \
     pip install pipx PyYAML; \
-    pipx install cumulusci; \
-    pipx inject cumulusci "setuptools>=75.4"; \
+    pipx install "cumulusci==${CUMULUSCI_VERSION}"; \
+    pipx inject cumulusci --force "setuptools>=75.4,<77"; \
     pipx inject cumulusci --force -r /tmp/robot-requirements.txt; \
     rm -f /tmp/robot-requirements.txt; \
     cci version
 
+# Scope SF_TEMP_SHOW_SECRETS (see the ENV block above) to `cci` only: move
+# pipx's real `cci` entrypoint aside and put a shim in its former place
+# (PIPX_BIN_DIR=/usr/local/bin, so this is exactly where callers — `rlm-cli`,
+# an interactive shell, `cci org import` — already look). `sf` invoked
+# directly is untouched and keeps token redaction.
+RUN set -eux; \
+    mv /usr/local/bin/cci /usr/local/bin/cci-real; \
+    printf '%s\n' \
+        '#!/bin/sh' \
+        '# Shim: see docker/Dockerfile for why this scopes SF_TEMP_SHOW_SECRETS to cci only.' \
+        'export SF_TEMP_SHOW_SECRETS=true' \
+        'exec /usr/local/bin/cci-real "$@"' \
+        > /usr/local/bin/cci; \
+    chmod +x /usr/local/bin/cci
+
 # ---------------------------------------------------------------------------
-# Non-root runtime user. SFDMU is installed as this user so the plugin (which
-# lives under ~/.local/share/sf, *outside* the persisted state dirs) is baked
-# into the image and survives a fresh state volume. The final step asserts the
-# baked plugin meets the repo floor of 5.6.4 (upsert-matching fix for
-# relationship externalIds landed in the 5.6.4 release, commit 50be987; matches validate_setup's
-# required_sfdmu_version) — `sort -V -C` exits non-zero, failing the build,
-# if the installed version sorts below 5.6.4.
+# Non-root runtime user. SFDMU is installed as this user, pinned exact, so the
+# plugin (which lives under ~/.local/share/sf, *outside* the persisted state
+# dirs) is baked into the image and survives a fresh state volume. The final
+# step asserts the baked plugin still meets the repo floor of 5.6.4
+# (upsert-matching fix for relationship externalIds landed in the 5.6.4
+# release, commit 50be987; matches validate_setup's required_sfdmu_version) —
+# `sort -V -C` exits non-zero, failing the build, if it sorts below 5.6.4.
 # ---------------------------------------------------------------------------
 RUN set -eux; \
     useradd --create-home --uid 1000 --shell /bin/bash rlm; \
     su -s /bin/bash rlm -c 'mkdir -p ~/.config/sf && printf "%s" "[\"sfdmu\"]" > ~/.config/sf/unsignedPluginAllowList.json'; \
-    su -s /bin/bash rlm -c 'sf plugins install sfdmu'; \
+    su -s /bin/bash rlm -c "sf plugins install sfdmu@${SFDMU_VERSION}"; \
     su -s /bin/bash rlm -c 'v=$(sf plugins | grep -i sfdmu | grep -oE "[0-9]+\.[0-9]+\.[0-9]+" | head -1); echo "sfdmu $v"; printf "5.6.4\n%s\n" "$v" | sort -V -C'
 
 # ---------------------------------------------------------------------------

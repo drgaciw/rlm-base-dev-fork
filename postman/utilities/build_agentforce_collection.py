@@ -2688,7 +2688,7 @@ Generated: 2026-03-26
     collection = builder.build()
     output_path = "/sessions/clever-intelligent-ramanujan/mnt/rlm-base-dev/postman/Agentforce Revenue Management APIs.postman_collection.json"
 
-    with open(output_path, "w") as f:
+    with open(output_path, "w", encoding="utf-8") as f:
         json.dump(collection, f, indent=2)
 
     print(f"\n[+] Collection generated successfully!")

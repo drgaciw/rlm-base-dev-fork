@@ -33,6 +33,8 @@ from typing import Any, Dict, List, Optional
 
 import requests
 
+from tasks import rlm_rest_base
+
 try:
     from cumulusci.tasks.salesforce import BaseSalesforceTask
     from cumulusci.core.exceptions import CommandException, TaskOptionsError
@@ -119,7 +121,7 @@ class ExportBRE(BaseSalesforceTask):
     def _soql_query(self, soql: str) -> List[dict]:
         """Execute a SOQL query and return all records (handles pagination)."""
         records: List[dict] = []
-        resp = requests.get(self._query_url, headers=self._headers, params={"q": soql})
+        resp = requests.get(self._query_url, headers=self._headers, params={"q": soql}, timeout=rlm_rest_base.DEFAULT_TIMEOUT)
         if resp.status_code != 200:
             raise CommandException(
                 f"SOQL query failed ({resp.status_code}): {resp.text}"
@@ -128,7 +130,7 @@ class ExportBRE(BaseSalesforceTask):
         records.extend(body.get("records", []))
         while not body.get("done", True) and body.get("nextRecordsUrl"):
             url = f"{self._instance_url}{body['nextRecordsUrl']}"
-            resp = requests.get(url, headers=self._headers)
+            resp = requests.get(url, headers=self._headers, timeout=rlm_rest_base.DEFAULT_TIMEOUT)
             if resp.status_code != 200:
                 raise CommandException(
                     f"SOQL pagination failed ({resp.status_code}): {resp.text}"
@@ -140,7 +142,7 @@ class ExportBRE(BaseSalesforceTask):
     def _describe_object(self, obj_name: str) -> Optional[dict]:
         """Describe an sObject and return the full describe result, or None on failure."""
         url = f"{self._instance_url}/services/data/v{self._api_version}/sobjects/{obj_name}/describe"
-        resp = requests.get(url, headers=self._headers)
+        resp = requests.get(url, headers=self._headers, timeout=rlm_rest_base.DEFAULT_TIMEOUT)
         if resp.status_code == 200:
             return resp.json()
         self.logger.warning(f"Describe {obj_name} failed ({resp.status_code}): {resp.text}")
@@ -255,7 +257,7 @@ class ExportBRE(BaseSalesforceTask):
             "--target-metadata-dir", mdapi_dir,
         ]
         self.logger.info(f"Running: {' '.join(cmd)}")
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8")
 
         if result.returncode != 0:
             self.logger.error(f"Metadata retrieval failed (exit {result.returncode})")
@@ -300,7 +302,7 @@ class ExportBRE(BaseSalesforceTask):
             "--output-dir", source_dir,
         ]
         self.logger.info(f"Converting to source format: {' '.join(convert_cmd)}")
-        convert_result = subprocess.run(convert_cmd, capture_output=True, text=True)
+        convert_result = subprocess.run(convert_cmd, capture_output=True, text=True, encoding="utf-8")
 
         if convert_result.returncode != 0:
             self.logger.warning(f"Source conversion failed (exit {convert_result.returncode})")

@@ -54,7 +54,7 @@ RESOLVE_MUTATION = (
 
 def _run(args, check=True, input_text=None):
     res = subprocess.run(
-        ["gh", *args], capture_output=True, text=True, input=input_text
+        ["gh", *args], capture_output=True, text=True, encoding="utf-8", input=input_text
     )
     if check and res.returncode != 0:
         sys.stderr.write(res.stdout)

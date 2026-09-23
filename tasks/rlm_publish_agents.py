@@ -118,4 +118,4 @@ class PublishAgents(BaseSalesforceTask):
             "name": "rlm-base-publish-stage",
             "namespace": "",
             "sourceApiVersion": self._api_version(),
-        }))
+        }), encoding="utf-8")

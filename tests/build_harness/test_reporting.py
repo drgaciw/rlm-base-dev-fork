@@ -67,10 +67,10 @@ class TestBuildRunAnalysis:
             sdir = run_dir / "scenarios" / str(sid)
             sdir.mkdir(parents=True)
             manifest = (manifests_by_scenario or {}).get(sid, {})
-            (sdir / "scenario_manifest.json").write_text(json.dumps(manifest))
+            (sdir / "scenario_manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
             events = (step_events_by_scenario or {}).get(sid, [])
             lines = [json.dumps(e) for e in events]
-            (sdir / "step_results.jsonl").write_text("\n".join(lines))
+            (sdir / "step_results.jsonl").write_text("\n".join(lines), encoding="utf-8")
         return run_dir
 
     def test_empty_run_returns_zero_counts(self, tmp_path) -> None:

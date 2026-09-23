@@ -375,8 +375,3 @@ sections:
 This file is `.cursor/skills/release-enablement/authoring-patterns.md`. It's referenced from `.cursor/skills/release-enablement/SKILL.md` and from each exercise file's `sources:` frontmatter when relevant.
 
 Add new patterns here as they emerge from future drafts. Patterns become canon after they're applied to **at least two** exercise files — the "two implementations before abstraction" rule.
-
-## Change Log
-
-- **2026-05-06** — Initial patterns extracted from 260 Pricing + PCM drafts (upgrade guidance, known issues, sub-features, cross-area features, carry-forward markers, recordings placeholder, QB walkthrough handling, frontmatter conventions).
-- **2026-05-06** — Added **Pattern 9 (Scenario Threading)** for master exercises, **Pattern 10 (Version-Aware Section Metadata)** for the auto-gen filter contract, and **Pattern 11 (License-Scope Split)** for multi-license areas like Invoice Mgmt vs RCB. Pattern 9 + 10 are master-exercise-specific; Pattern 11 was already in implicit use across Invoice Mgmt + RCB drafts and is now formally codified.

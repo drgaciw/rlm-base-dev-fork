@@ -5,8 +5,12 @@ on:
     types: [created]
   pull_request_review_comment:
     types: [created]
+  # `opened` only. `edited` was dropped: it re-fires (and re-bills) this
+  # write-scoped job on every edit to an issue's body or title, including
+  # edits that have nothing to do with @claude — unlike the comment/review
+  # triggers below, which only fire on new content.
   issues:
-    types: [opened, edited]
+    types: [opened]
   pull_request_review:
     types: [submitted]
 
@@ -22,23 +26,39 @@ jobs:
       (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')) &&
         contains(fromJson('["OWNER","MEMBER","COLLABORATOR"]'), github.event.issue.author_association))
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Job-level (not workflow-level): a workflow-level `concurrency:` block
+    # claims its slot for every trigger of this workflow, even ones the `if:`
+    # above skips — e.g. an ordinary comment with no `@claude` mention. With
+    # `cancel-in-progress: false`, GitHub still only keeps one run *queued* per
+    # group, so that no-op trigger could replace an already-queued `@claude`
+    # run before it ever started. Scoping `concurrency:` to the job means a
+    # skipped job never touches the group.
+    concurrency:
+      group: claude-${{ github.event.issue.number || github.event.pull_request.number }}
+      cancel-in-progress: false
     permissions:
-      contents: write        # required if Claude makes code changes
-      pull-requests: write   # required to post review comments
-      issues: write          # required to post issue comments
-      id-token: write        # required by claude-code-action for GitHub OIDC token setup
-      actions: read          # required to read CI results on PRs
+      contents: write # required if Claude makes code changes
+      pull-requests: write # required to post review comments
+      issues: write # required to post issue comments
+      id-token: write # required by claude-code-action for GitHub OIDC token setup
+      actions: read # required to read CI results on PRs
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
           fetch-depth: 1
+          persist-credentials: false
 
       - name: Run Claude Code
         id: claude
-        uses: anthropics/claude-code-action@v1
+        # SHA-pinned (v1.0.231), not the floating `v1` tag — this workflow
+        # accepts contents: write.
+        uses: anthropics/claude-code-action@cfc3eb22bfed5c26ef66e3223c982af27e4524de # v1.0.231
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           additional_permissions: |
             actions: read
+          claude_args: |
+            --max-turns 30

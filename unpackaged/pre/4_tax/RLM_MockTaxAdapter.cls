@@ -1,4 +1,4 @@
-global virtual class RLM_MockTaxAdapter implements commercetax.TaxEngineAdapter {
+global inherited sharing virtual class RLM_MockTaxAdapter implements commercetax.TaxEngineAdapter {
 
     global commercetax.TaxEngineResponse processRequest(commercetax.TaxEngineContext taxEngineContext) {
         commercetax.RequestType requestType = taxEngineContext.getRequestType();

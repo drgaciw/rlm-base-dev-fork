@@ -702,11 +702,53 @@ def check_rule_table_readable(root: Path) -> CheckResult:
 
 
 # Launch checks deliberately share the existing stdlib-only baseline entry point.
-AGENTS_MAX_BYTES = 25_000
+AGENTS_MAX_BYTES = 12_288
+CLAUDE_IMPORT_LINE = "@AGENTS.md"
+CLAUDE_MAX_LINES = 16  # the import line plus at most 15 Claude-specific lines
 NAVIGATION_ROOTS = (
     "README.md", "AGENTS.md", ".agents/README.md",
     ".github/copilot-instructions.md", "docs/guides/agent-skill-discovery.md",
 )
+
+
+# I1 (wave 2, ARCHITECT_REVIEW.md B10): GitNexus's `analyze` command injects a
+# skill-discovery block into CLAUDE.md/AGENTS.md and copies its own skill catalog
+# into `.claude/skills/gitnexus/` unless told not to. The committed `.gitnexusrc`
+# (`skipAgentsMd`, `skipSkills`) is the durable opt-out; this check is the backstop
+# that fails loudly if that injection ever lands in the tracked tree anyway --
+# a `.gitnexusrc` regression, a GitNexus version that stops honoring the flags, or
+# someone running `npx gitnexus analyze` without it and committing the result.
+GITNEXUS_MARKER = "gitnexus:start"
+GITNEXUS_SKILL_DIR = ".claude/skills/gitnexus"
+
+
+def check_no_gitnexus_injection(root: Path) -> CheckResult:
+    failures: list[str] = []
+    for doc in ("CLAUDE.md", "AGENTS.md"):
+        path = root / doc
+        if path.is_file() and GITNEXUS_MARKER in read_text(path):
+            failures.append(f"{doc}: contains a `{GITNEXUS_MARKER}` block")
+    try:
+        tracked = subprocess.run(
+            ["git", "-C", str(root), "ls-files", "--", GITNEXUS_SKILL_DIR],
+            capture_output=True, text=True, encoding="utf-8", check=True).stdout
+    except (OSError, subprocess.CalledProcessError) as exc:
+        return CheckResult("no GitNexus injection", False, f"cannot inspect Git index: {exc}")
+    tracked_files = [ln for ln in tracked.splitlines() if ln]
+    if tracked_files:
+        failures.append(
+            f"{len(tracked_files)} file(s) under {GITNEXUS_SKILL_DIR}/ are tracked "
+            f"(e.g. {tracked_files[0]})")
+    if failures:
+        return CheckResult(
+            "no GitNexus injection", False,
+            "; ".join(failures) + " -- remove the injected content, confirm "
+            "`.gitnexusrc` at the repo root still sets skipAgentsMd/skipSkills, "
+            "and re-run `npx gitnexus analyze` (or `--skip-agents-md --skip-skills` "
+            "explicitly) before committing")
+    return CheckResult("no GitNexus injection", True,
+                       f"no `{GITNEXUS_MARKER}` block in CLAUDE.md/AGENTS.md; "
+                       f"no tracked files under {GITNEXUS_SKILL_DIR}/")
 
 
 def _skill_dirs(root: Path) -> list[Path]:
@@ -832,6 +874,41 @@ def check_instruction_budget(root: Path) -> CheckResult:
                        f"{AGENTS_PATH}: {size:,} bytes; repository ceiling {AGENTS_MAX_BYTES:,} (not a client context limit)")
 
 
+def _skill_link_resolves(link: Path, target_dir: Path) -> bool:
+    """True if ``link`` (a real symlink or a Windows directory junction)
+    resolves to ``target_dir``.
+
+    ``link_skills.py --fix`` creates a directory junction on Windows (a real
+    symlink there needs admin rights or Developer Mode) and a real symlink
+    everywhere else, so this accepts either kind rather than requiring
+    ``Path.is_symlink()``, which a junction does not satisfy on Python < 3.12.
+    A plain stub — checked out as a small text file, not a directory — still
+    fails here: ``is_dir()`` is false for it.
+    """
+    try:
+        return link.is_dir() and os.path.realpath(link) == os.path.realpath(target_dir)
+    except OSError:
+        return False
+
+
+def _is_link_like(path: Path) -> bool:
+    """True if ``path`` is a reparse point (symlink or Windows junction).
+
+    ``Path.is_symlink()`` misses a Windows junction on every Python version
+    this repo supports (3.10+; ``os.path.isjunction`` needs 3.12+), so this
+    compares ``realpath`` against ``abspath`` instead: a real symlink or
+    junction resolves elsewhere, while an ordinary directory resolves to
+    itself. That also means an ordinary untracked directory dropped into a
+    discovery folder — e.g. the per-developer GitNexus skill catalog at
+    ``.claude/skills/gitnexus/`` (A4) — is not miscounted as a spurious skill
+    link: it is neither a real skill nor a rogue link, just unrelated content.
+    """
+    try:
+        return os.path.realpath(path) != os.path.abspath(path)
+    except OSError:
+        return False
+
+
 def check_native_skill_links(root: Path) -> CheckResult:
     expected = {p.name for p in _skill_dirs(root)}
     failures = []
@@ -839,7 +916,7 @@ def check_native_skill_links(root: Path) -> CheckResult:
         result = subprocess.run(
             ["git", "-C", str(root), "ls-files", "--stage", "-z", "--",
              ".agents/skills", ".claude/skills", "CLAUDE.md"],
-            capture_output=True, text=True, check=True)
+            capture_output=True, text=True, check=True, encoding="utf-8")
         indexed = {}
         for record in result.stdout.split("\0"):
             if record:
@@ -848,25 +925,45 @@ def check_native_skill_links(root: Path) -> CheckResult:
                 indexed[path] = (mode, stage)
     except (OSError, subprocess.CalledProcessError, ValueError) as exc:
         return CheckResult("native skill links", False, f"cannot inspect Git index: {exc}")
+    fix_hint = "run `python scripts/ai/link_skills.py --fix`"
     for adapter in (".agents/skills", ".claude/skills"):
         directory = root / adapter
-        actual = {p.name for p in directory.iterdir()} if directory.is_dir() else set()
+        actual = (
+            {p.name for p in directory.iterdir() if _is_link_like(p)}
+            if directory.is_dir() else set()
+        )
         if actual != expected:
-            failures.append(f"{adapter}: missing {sorted(expected - actual)}, unexpected {sorted(actual - expected)}")
+            failures.append(
+                f"{adapter}: missing {sorted(expected - actual)}, unexpected "
+                f"{sorted(actual - expected)} — {fix_hint}"
+            )
         for name in sorted(expected & actual):
             link = directory / name
             target = f"../../{SKILLS_ROOT}/{name}"
-            try:
-                valid = link.is_symlink() and str(link.readlink()) == target and (link / "SKILL.md").is_file()
-            except (OSError, RuntimeError):
-                valid = False
+            target_dir = root / SKILLS_ROOT / name
+            valid = _skill_link_resolves(link, target_dir) and (link / "SKILL.md").is_file()
             if not valid:
-                failures.append(f"{adapter}/{name}: expected directory symlink to {target}")
+                failures.append(
+                    f"{adapter}/{name}: expected a link (symlink or junction) "
+                    f"resolving to {target} — {fix_hint}"
+                )
             if indexed.get(f"{adapter}/{name}") != ("120000", "0"):
-                failures.append(f"{adapter}/{name}: must be staged/tracked as mode 120000")
+                failures.append(f"{adapter}/{name}: must be staged/tracked as mode 120000 — {fix_hint}")
     claude = root / "CLAUDE.md"
-    if not claude.is_symlink() or str(claude.readlink()) != AGENTS_PATH or indexed.get("CLAUDE.md") != ("120000", "0"):
-        failures.append("CLAUDE.md: expected tracked symlink to AGENTS.md")
+    claude_lines = read_text(claude).splitlines()
+    if indexed.get("CLAUDE.md", (None, None))[0] != "100644":
+        failures.append(
+            "CLAUDE.md: expected a regular tracked file (mode 100644) starting with "
+            f"`{CLAUDE_IMPORT_LINE}`, not a symlink — on Windows a tracked symlink checks "
+            "out as a text stub with core.symlinks=false"
+        )
+    elif not claude_lines or claude_lines[0] != CLAUDE_IMPORT_LINE:
+        failures.append(f"CLAUDE.md: first line must be exactly `{CLAUDE_IMPORT_LINE}`")
+    elif len(claude_lines) > CLAUDE_MAX_LINES:
+        failures.append(
+            f"CLAUDE.md: {len(claude_lines)} lines exceeds the {CLAUDE_MAX_LINES}-line budget "
+            f"(`{CLAUDE_IMPORT_LINE}` plus at most {CLAUDE_MAX_LINES - 1} Claude-specific lines)"
+        )
     return CheckResult("native skill links", bool(expected) and not failures,
                        "; ".join(failures) if failures else f"{len(expected) * 2} native links and CLAUDE.md verified" if expected else "no skills found")
 
@@ -1072,6 +1169,7 @@ def run_baseline_checks(root: Path) -> list[CheckResult]:
         check_manifest_high_level_keys(root),
         check_generated_reference_presence(root),
         check_readme_explains_check_modes(root),
+        check_no_gitnexus_injection(root),
         check_skill_subfile_registration(root),
         check_rule_table_readable(root),
         check_skill_discovery_metadata(root),
@@ -1094,7 +1192,8 @@ def run_full_generated_reference_check(root: Path) -> CheckResult:
     cmd = [sys.executable, str(script), "--dry-run"]
     try:
         proc = subprocess.run(
-            cmd, cwd=str(root), text=True, capture_output=True, check=False, timeout=300
+            cmd, cwd=str(root), text=True, encoding="utf-8", capture_output=True,
+            check=False, timeout=300
         )
     except subprocess.TimeoutExpired:
         return CheckResult("full generated-reference dry run", False, "generator timed out after 300s")
@@ -1370,6 +1469,9 @@ def render_report_markdown(a: Analysis) -> str:
         "> **Auto-generated** by `scripts/ai/analyze_agent_tooling.py report`.",
         "> Do not edit manually — re-run the analyzer after changing agent docs,",
         "> skills, rules, or the skill manifest.",
+        "> Tracked in `docs/analysis/` as a deliberate, CI-regenerated exception to",
+        "> the `.agents/artifacts/` generated-analysis rule — see",
+        "> `docs/references/architect-review-2026-09.md` finding B10.",
         "",
         "## Summary",
         "",
@@ -1492,8 +1594,12 @@ def cmd_report(root: Path, do_check: bool, do_json: bool) -> int:
     scorecard = root / SCORECARD_PATH
     report.parent.mkdir(parents=True, exist_ok=True)
     scorecard.parent.mkdir(parents=True, exist_ok=True)
-    report.write_text(render_report_markdown(a), encoding="utf-8")
-    scorecard.write_text(json.dumps(to_scorecard(a), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    # newline="\n" on both: write_text() otherwise translates "\n" to os.linesep
+    # on Windows, so a byte-identical regeneration would diff against the
+    # LF-normalized committed blob for no reason other than which OS ran it (A-L2).
+    report.write_text(render_report_markdown(a), encoding="utf-8", newline="\n")
+    scorecard.write_text(json.dumps(to_scorecard(a), indent=2, sort_keys=True) + "\n",
+                         encoding="utf-8", newline="\n")
 
     if do_json:
         print(json.dumps(to_scorecard(a), indent=2, sort_keys=True))
@@ -1575,7 +1681,7 @@ HIGH_RISK_PATHS: tuple[HighRiskPath, ...] = (
         "post-ux-generated-output.mdc", "", "Generated UX output must not be edited directly."),
     HighRiskPath("force-app/**/profiles/*.profile-meta.xml", "UX Assembly / Profiles", "AGENTS.md DO NOT #2",
         "force-app-profile-safety.mdc", "", "Force-app profiles should stay classAccesses-only; layout/application visibility belongs in templates."),
-    HighRiskPath("force-app/**/*.object-meta.xml", "UX Assembly / Objects", "AGENTS.md DO NOT #3",
+    HighRiskPath("force-app/**/*.object-meta.xml", "UX Assembly / Objects", "AGENTS.md DO NOT #2",
         "force-app-object-safety.mdc", "", "Object actionOverrides/compact layout assignment belong in templates, not force-app objects."),
     HighRiskPath("datasets/sfdmu/**/export.json", "SFDMU Data Plans", "AGENTS.md SFDMU v5 critical rules",
         "sfdmu-export-json.mdc", "scripts/validate_sfdmu_v5_datasets.py", "SFDMU v5 operation/externalId/deleteOldData choices can be destructive."),
@@ -1583,9 +1689,9 @@ HIGH_RISK_PATHS: tuple[HighRiskPath, ...] = (
         "sfdmu-csv-data.mdc", "scripts/validate_sfdmu_v5_datasets.py", "CSV header/composite key drift can break idempotency or data loads."),
     HighRiskPath("tasks/**/*.py", "CCI Orchestration", "AGENTS.md Org Identity: CCI vs SF CLI",
         "cci-python-tasks.mdc", "", "Python CCI tasks must not pass access tokens to sf CLI commands."),
-    HighRiskPath("templates/flexipages/**", "UX Assembly", "AGENTS.md DO NOT #6",
+    HighRiskPath("templates/flexipages/**", "UX Assembly", "AGENTS.md DO NOT #2",
         "ux-templates.mdc", "", "EmailTemplatePage flexipages cannot deploy via Metadata API."),
-    HighRiskPath("**/rlm.network-meta.xml", "PRM Network", "AGENTS.md DO NOT #7",
+    HighRiskPath("**/rlm.network-meta.xml", "PRM Network", "AGENTS.md DO NOT #5",
         "network-email-safety.mdc", "", "Network metadata must keep placeholder emails; deploy tasks patch/revert real values."),
 )
 
@@ -1895,7 +2001,7 @@ def cmd_coverage(root: Path, dry_run: bool, output: Path | None) -> int:
         return 0
     out_path = Path(os.path.abspath(output)) if output is not None else (root / COVERAGE_PATH)
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(report, encoding="utf-8")
+    out_path.write_text(report, encoding="utf-8", newline="\n")  # A-L2: no CRLF on Windows
     print(f"Wrote {rel(out_path, root)}")
     return 0
 

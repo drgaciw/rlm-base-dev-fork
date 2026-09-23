@@ -1,4 +1,4 @@
-global class RLM_PlaceQuoteModel {
+global inherited sharing class RLM_PlaceQuoteModel {
     global string pricingPref;
     global string configurationInput;
     global Map<String, Boolean> configurationOptions;

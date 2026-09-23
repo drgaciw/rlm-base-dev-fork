@@ -161,7 +161,7 @@ def run_one(args, row):
         cmd += ["--selling-model", args.selling_model]
     if not args.verify_usage:
         cmd += ["--skip-usage-verify"]
-    p = subprocess.run(cmd, capture_output=True, text=True)
+    p = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8")
     sys.stdout.write(p.stdout)
     if p.returncode != 0:
         sys.stdout.write(p.stderr)
@@ -289,7 +289,7 @@ def main():
     fd, results = tempfile.mkstemp(prefix="renewal_bucket_results_", suffix=".csv")
     os.close(fd)
     failures = []
-    with open(results, "w", newline="") as fh:
+    with open(results, "w", newline="", encoding="utf-8") as fh:
         w = csv.writer(fh)
         w.writerow(["n", "bucket", "start", "end", "sku", "account", "status"])
         for i, r in enumerate(plan, 1):

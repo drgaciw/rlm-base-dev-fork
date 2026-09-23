@@ -17,9 +17,13 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Image tag to publish (e.g. latest, 262)"
+        # No default: a manual dispatch must name its tag explicitly. A
+        # "latest" default meant a dispatch against a feature branch — where
+        # nobody thinks to override it — could still publish `:latest`. The
+        # step below fails outright if `tag` resolves to `latest` off the
+        # default branch, so this input can't slip past that guard either.
+        description: "Image tag to publish (e.g. 262) — must not be 'latest' unless run from the default branch"
         required: true
-        default: "latest"
       platforms:
         description: "Target platforms"
         required: true
@@ -47,17 +51,38 @@ jobs:
       packages: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Load pinned tool versions
+        # $GITHUB_ENV requires every non-blank line to be NAME=VALUE — a
+        # straight `cat` of config/tool-versions.env fails on its first line
+        # (a `#` comment), so comments/blanks are filtered out first.
+        run: grep -E '^[A-Za-z_][A-Za-z0-9_]*=' config/tool-versions.env >> "$GITHUB_ENV"
 
       - name: Set image coordinates
         id: meta
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+          INPUT_PLATFORMS: ${{ github.event.inputs.platforms }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           owner="${GITHUB_REPOSITORY_OWNER,,}"   # lowercase for GHCR
           echo "image=ghcr.io/${owner}/rlm-base" >> "$GITHUB_OUTPUT"
-          case "${{ github.event_name }}" in
+          case "${EVENT_NAME}" in
             workflow_dispatch)
-              tag="${{ github.event.inputs.tag }}"
-              platforms="${{ github.event.inputs.platforms }}" ;;
+              tag="${INPUT_TAG}"
+              # A manual dispatch can target any branch, but ":latest" must
+              # only ever come from the default branch — otherwise a
+              # feature-branch dispatch could overwrite the tag users pull by
+              # default with unreleased/untested content.
+              if [ "${tag}" = "latest" ] && [ "${GITHUB_REF_NAME}" != "${DEFAULT_BRANCH}" ]; then
+                echo "::error::Manual dispatch tag 'latest' is only allowed from the default branch (${DEFAULT_BRANCH}); current ref is ${GITHUB_REF_NAME}." >&2
+                exit 1
+              fi
+              platforms="${INPUT_PLATFORMS}" ;;
             schedule)
               # Weekly run: date-stamped tag for history, plus :latest (added below).
               tag="$(date -u +%Y%m%d)"
@@ -68,38 +93,64 @@ jobs:
           esac
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
           echo "platforms=${platforms}" >> "$GITHUB_OUTPUT"
+          image="ghcr.io/${owner}/rlm-base"
+          # :latest only ever tracks the default branch: a workflow_dispatch run
+          # against a feature branch, or a tag cut from one, must not overwrite
+          # it. schedule always builds the default branch by definition.
+          if [ "${EVENT_NAME}" = "schedule" ] || [ "${GITHUB_REF_NAME}" = "${DEFAULT_BRANCH}" ]; then
+            tags="$(printf '%s\n%s' "${image}:${tag}" "${image}:latest")"
+          else
+            tags="${image}:${tag}"
+          fi
+          {
+            echo "tags<<TAGS_EOF"
+            echo "${tags}"
+            echo "TAGS_EOF"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Set up QEMU (multi-arch)
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0
 
       - name: Set up Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
 
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
           context: .
           file: docker/Dockerfile
           platforms: ${{ steps.meta.outputs.platforms }}
           push: true
-          tags: |
-            ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.tag }}
-            ${{ steps.meta.outputs.image }}:latest
+          build-args: |
+            PYTHON_VERSION=${{ env.PYTHON_VERSION }}
+            NODE_VERSION=${{ env.NODE_VERSION }}
+            CUMULUSCI_VERSION=${{ env.CUMULUSCI_VERSION }}
+            SF_CLI_VERSION=${{ env.SF_CLI_VERSION }}
+            SFDMU_VERSION=${{ env.SFDMU_VERSION }}
+          tags: ${{ steps.meta.outputs.tags }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
       - name: Summary
+        # Read via `env:` instead of interpolating `${{ steps.meta.outputs.* }}`
+        # straight into the `run:` script — that step's outputs are derived
+        # from the workflow_dispatch `tag` input, and templating untrusted (or
+        # merely unexpected) values directly into shell text is a script-
+        # injection vector even though this input is admin-only today.
+        env:
+          IMAGE: ${{ steps.meta.outputs.image }}
+          TAG: ${{ steps.meta.outputs.tag }}
         run: |
-          echo "### Published \`${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.tag }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Published \`${IMAGE}:${TAG}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "Pull with:" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
-          echo "RLM_IMAGE=${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.tag }} ./docker/rlm pull" >> "$GITHUB_STEP_SUMMARY"
+          echo "RLM_IMAGE=${IMAGE}:${TAG} ./docker/rlm pull" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"

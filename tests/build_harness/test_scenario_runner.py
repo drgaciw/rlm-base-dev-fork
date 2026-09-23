@@ -69,14 +69,14 @@ class TestWriteJson:
         path = tmp_path / "checkpoint.json"
         payload = {"scenario_id": "base", "last_successful_step": 5}
         write_json(path, payload)
-        loaded = json.loads(path.read_text())
+        loaded = json.loads(path.read_text(encoding="utf-8"))
         assert loaded == payload
 
     def test_overwrites_existing_checkpoint(self, tmp_path) -> None:
         path = tmp_path / "checkpoint.json"
         write_json(path, {"step": 1})
         write_json(path, {"step": 2})
-        loaded = json.loads(path.read_text())
+        loaded = json.loads(path.read_text(encoding="utf-8"))
         assert loaded["step"] == 2
 
 

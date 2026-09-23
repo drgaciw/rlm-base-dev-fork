@@ -1,7 +1,7 @@
 ---
 name: rlm-business-apis
 description: >-
-  Revenue Cloud Business API reference for RLM v68.0 (Winter '27 / Release 264). Use when working with
+  Revenue Cloud Business API reference for RLM. Use when working with
   Revenue Cloud REST APIs, building integrations, writing Apex callouts, or
   answering questions about RLM API endpoints. Covers PCM, Product Discovery,
   Configurator, Pricing, Rate Management, Transaction Management, Usage

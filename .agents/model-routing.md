@@ -10,7 +10,7 @@ Use this routing guide when planning or reviewing AI-assisted repository work. P
 | File-presence checks, path checks, generated-reference freshness | Script-only | Validate with deterministic commands rather than model judgment. Examples include checking whether expected files exist, whether paths are referenced, or whether generated docs are stale. |
 | Skill/rule coverage classification | Efficient reasoning model | Use when mapping changed files to relevant `.cursor/skills/` or `.cursor/rules/` guidance and when classifying whether coverage is complete. |
 | Cross-cutting architecture recommendations | Frontier model | Use when recommendations span tasks, flows, metadata layout, data plans, templates, scripts, or release strategy. |
-| Salesforce release-impact reasoning | Most capable available model | Use for Release 262 impact analysis, feature-flag behavior, edition differences, or compatibility with prior release branches. |
+| Salesforce release-impact reasoning | Most capable available model | Use for active-release impact analysis (see `.agents/context/project-memory.json` for the current release), feature-flag behavior, edition differences, or compatibility with prior release branches. |
 | SFDMU destructive-operation review | Most capable available model | Use for any review involving `operation: Insert`, `deleteOldData: true`, deletion ordering, external IDs, or idempotency risk. |
 | Security/safety review | Most capable available model | Use for credentials, org identity, CLI authentication, access tokens, packaging exposure, network metadata, or destructive automation. |
 | Final report synthesis for multi-domain runs | Frontier or high-context model | Use when a run includes multiple domains or needs to reconcile findings from scripts, skills, data plans, metadata, and docs. |
@@ -23,7 +23,7 @@ Escalate to a frontier or most capable available model when any of the following
 1. More than one major subsystem changed (see definition below).
 2. `cumulusci.yml` changed.
 3. `datasets/sfdmu/**` changed.
-4. `AGENTS.md`, `.cursor/skills/**`, `.cursor/rules/**`, or `.claude/skill-manifest.yml` changed.
+4. `AGENTS.md`, `.cursor/skills/**`, `.cursor/rules/**`, `.claude/rules/**`, or `.claude/skill-manifest.yml` changed.
 5. Any recommendation touches destructive Salesforce operations, credentials, org identity, or packaging.
 
 ### What counts as a "major subsystem"
@@ -47,3 +47,16 @@ A major subsystem is one of these top-level functional areas of the repository:
 2. Use an efficient reasoning model for classification or lightweight interpretation.
 3. Escalate to a frontier model for cross-cutting design or synthesis.
 4. Escalate to the most capable available model for Salesforce release impact, SFDMU destructive operations, security, credentials, org identity, or packaging risk.
+
+## Claude Code Mapping
+
+The tiers above are the authority; this maps them onto Claude Code model aliases (`/model`, subagent `model:`) as of 2026-09. Revisit when the lineup changes.
+
+| Tier above | Claude Code alias | Effort hint |
+| --- | --- | --- |
+| Efficient small model | `haiku` | low |
+| Efficient reasoning model | `sonnet` | medium |
+| Frontier / high-context model | `opus` | medium to high |
+| Most capable available model | `opus`, or `fable` for the hardest long-horizon reasoning | high |
+
+The project subagents in `.claude/agents/` deliberately omit `model:` and inherit the main session's model, because their review scope includes security and SFDMU-destructive checks, which route to the most capable tier. To override per user without editing them, set `CLAUDE_CODE_SUBAGENT_MODEL`.

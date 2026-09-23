@@ -201,7 +201,7 @@ def patch_version_strings(html: str, metadata: dict) -> tuple:
 
 def patch_html(html_path: str, nodes: list, links: list, metadata: dict = None) -> bool:
     """Replace the D= data block in the HTML file, and the version strings with it."""
-    with open(html_path, "r") as f:
+    with open(html_path, "r", encoding="utf-8") as f:
         html = f.read()
 
     if metadata:
@@ -259,7 +259,7 @@ def patch_html(html_path: str, nodes: list, links: list, metadata: dict = None) 
 
     new_html = html[:start] + new_json + html[end:]
 
-    with open(html_path, "w") as f:
+    with open(html_path, "w", encoding="utf-8") as f:
         f.write(new_html)
 
     return True
@@ -267,7 +267,7 @@ def patch_html(html_path: str, nodes: list, links: list, metadata: dict = None) 
 
 def verify(html_path: str):
     """Parse and verify the current HTML data."""
-    with open(html_path, "r") as f:
+    with open(html_path, "r", encoding="utf-8") as f:
         html = f.read()
 
     marker = "const D="
@@ -314,7 +314,7 @@ def main():
         return 1
 
     print(f"Loading {data_file}...")
-    with open(data_file) as f:
+    with open(data_file, encoding="utf-8") as f:
         erd_data = json.load(f)
 
     print("Converting to HTML format...")

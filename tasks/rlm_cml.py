@@ -14,11 +14,14 @@ Replaces the standalone scripts:
 
 import base64
 import csv
+import logging
 import os
 import re
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-import requests
+from tasks import rlm_rest_base
+
+logger = logging.getLogger(__name__)
 
 try:
     from cumulusci.core.tasks import BaseTask
@@ -216,30 +219,26 @@ class CMLBaseTask(BaseSalesforceTask):
 
     @property
     def _api_version(self) -> str:
-        if self.options.get("api_version"):
-            return str(self.options["api_version"])
-        return (
-            getattr(self.org_config, "api_version", None)
-            or getattr(self.project_config, "project__package__api_version", "68.0")
+        return rlm_rest_base.api_version(
+            org_config=self.org_config,
+            project_config=self.project_config,
+            override=self.options.get("api_version"),
         )
 
     @property
     def _headers(self) -> Dict[str, str]:
-        return {
-            "Authorization": f"Bearer {self._access_token}",
-            "Content-Type": "application/json",
-        }
+        return rlm_rest_base.headers(self._access_token)
 
     @property
     def _query_url(self) -> str:
-        return f"{self._instance_url}/services/data/v{self._api_version}/query"
+        return f"{rlm_rest_base.base_url(self._instance_url, self._api_version)}/query"
 
     # -- REST helpers --------------------------------------------------
 
     def soql_query(self, soql: str) -> List[dict]:
         """Execute a SOQL query and return all records (handles pagination)."""
         records = []
-        resp = requests.get(self._query_url, headers=self._headers, params={"q": soql})
+        resp = rlm_rest_base.request("get", self._query_url, headers=self._headers, params={"q": soql})
         if resp.status_code != 200:
             self.logger.error(f"SOQL query failed ({resp.status_code}): {resp.text}")
             return records
@@ -247,7 +246,7 @@ class CMLBaseTask(BaseSalesforceTask):
         records.extend(body.get("records", []))
         while not body.get("done", True) and body.get("nextRecordsUrl"):
             url = f"{self._instance_url}{body['nextRecordsUrl']}"
-            resp = requests.get(url, headers=self._headers)
+            resp = rlm_rest_base.request("get", url, headers=self._headers)
             if resp.status_code != 200:
                 self.logger.error(f"SOQL pagination failed ({resp.status_code}): {resp.text}")
                 break
@@ -257,9 +256,9 @@ class CMLBaseTask(BaseSalesforceTask):
 
     def create_record(self, obj_name: str, record: dict) -> Optional[str]:
         """POST a new sObject record. Returns the new record Id or None."""
-        url = f"{self._instance_url}/services/data/v{self._api_version}/sobjects/{obj_name}/"
+        url = f"{rlm_rest_base.base_url(self._instance_url, self._api_version)}/sobjects/{obj_name}/"
         payload = {k: v for k, v in record.items() if k != "Id"}
-        resp = requests.post(url, headers=self._headers, json=payload)
+        resp = rlm_rest_base.request("post", url, headers=self._headers, json=payload)
         if resp.status_code == 201:
             new_id = resp.json()["id"]
             self.logger.info(f"Created {obj_name} -> {record.get('Name', record.get('ApiName', new_id))}")
@@ -269,8 +268,8 @@ class CMLBaseTask(BaseSalesforceTask):
 
     def update_record(self, obj_name: str, record_id: str, data: dict) -> bool:
         """PATCH an existing sObject record. Returns True on success."""
-        url = f"{self._instance_url}/services/data/v{self._api_version}/sobjects/{obj_name}/{record_id}"
-        resp = requests.patch(url, headers=self._headers, json=data)
+        url = f"{rlm_rest_base.base_url(self._instance_url, self._api_version)}/sobjects/{obj_name}/{record_id}"
+        resp = rlm_rest_base.request("patch", url, headers=self._headers, json=data)
         if resp.status_code in (200, 204):
             return True
         self.logger.error(f"Failed to update {obj_name}/{record_id}: {resp.status_code} - {resp.text}")
@@ -278,8 +277,8 @@ class CMLBaseTask(BaseSalesforceTask):
 
     def delete_record(self, obj_name: str, record_id: str) -> bool:
         """DELETE an sObject record. Returns True on success."""
-        url = f"{self._instance_url}/services/data/v{self._api_version}/sobjects/{obj_name}/{record_id}"
-        resp = requests.delete(url, headers=self._headers)
+        url = f"{rlm_rest_base.base_url(self._instance_url, self._api_version)}/sobjects/{obj_name}/{record_id}"
+        resp = rlm_rest_base.request("delete", url, headers=self._headers)
         if resp.status_code in (200, 204):
             return True
         self.logger.error(f"Failed to delete {obj_name}/{record_id}: {resp.status_code} - {resp.text}")
@@ -287,10 +286,10 @@ class CMLBaseTask(BaseSalesforceTask):
 
     def upload_blob(self, obj_name: str, record_id: str, field_name: str, blob_path: str) -> bool:
         """PATCH a base64-encoded blob field on a record."""
-        url = f"{self._instance_url}/services/data/v{self._api_version}/sobjects/{obj_name}/{record_id}"
+        url = f"{rlm_rest_base.base_url(self._instance_url, self._api_version)}/sobjects/{obj_name}/{record_id}"
         with open(blob_path, "rb") as f:
             encoded = base64.b64encode(f.read()).decode("utf-8")
-        resp = requests.patch(url, headers=self._headers, json={field_name: encoded})
+        resp = rlm_rest_base.request("patch", url, headers=self._headers, json={field_name: encoded})
         if resp.status_code in (200, 204):
             self.logger.info(f"Uploaded blob to {obj_name}/{record_id}.{field_name}")
             return True
@@ -299,9 +298,9 @@ class CMLBaseTask(BaseSalesforceTask):
 
     def download_blob(self, blob_url: str, dest_path: str) -> bool:
         """Download a blob from a Salesforce URL to a local file."""
-        headers = {"Authorization": f"Bearer {self._access_token}"}
+        headers = rlm_rest_base.headers(self._access_token, content_type=None)
         full_url = blob_url if blob_url.startswith("http") else f"{self._instance_url}{blob_url}"
-        resp = requests.get(full_url, headers=headers)
+        resp = rlm_rest_base.request("get", full_url, headers=headers)
         if resp.status_code == 200:
             os.makedirs(os.path.dirname(dest_path), exist_ok=True)
             with open(dest_path, "wb") as f:
@@ -329,7 +328,7 @@ class CMLBaseTask(BaseSalesforceTask):
     @staticmethod
     def read_csv(path: str) -> List[dict]:
         """Read a CSV file and return a list of row dicts."""
-        with open(path, newline="") as f:
+        with open(path, newline="", encoding="utf-8") as f:
             return list(csv.DictReader(f))
 
     @staticmethod
@@ -337,14 +336,14 @@ class CMLBaseTask(BaseSalesforceTask):
         """Read a CSV file if it exists, else return empty list."""
         if not os.path.exists(path):
             return []
-        with open(path, newline="") as f:
+        with open(path, newline="", encoding="utf-8") as f:
             return list(csv.DictReader(f))
 
     @staticmethod
     def write_csv(path: str, fieldnames: List[str], rows: List[dict]) -> None:
         """Write rows to a CSV file, creating parent dirs as needed."""
         os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, mode="w", newline="") as f:
+        with open(path, mode="w", newline="", encoding="utf-8") as f:
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
             writer.writerows(rows)
@@ -353,7 +352,7 @@ class CMLBaseTask(BaseSalesforceTask):
     def write_csv_raw(path: str, fieldnames: List[str], rows: List[List]) -> None:
         """Write rows (as value lists) to a CSV file."""
         os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, mode="w", newline="") as f:
+        with open(path, mode="w", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
             writer.writerow(fieldnames)
             for row in rows:
@@ -573,13 +572,13 @@ class ExportCML(CMLBaseTask):
         """Filter ReferenceObjectId values from ESC CSV by ID prefix."""
         ids = set()
         try:
-            with open(csv_path, newline="") as f:
+            with open(csv_path, newline="", encoding="utf-8") as f:
                 for row in csv.DictReader(f):
                     ref_id = row.get("ReferenceObjectId", "")
                     if ref_id.startswith(prefix):
                         ids.add(ref_id)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("Could not read %s for prefix %r: %s", csv_path, prefix, exc)
         return list(ids)
 
     @staticmethod
@@ -1383,7 +1382,7 @@ class ValidateCML(BaseTask):
         if not os.path.exists(esc_path):
             return {}
         associations_by_model = {}
-        with open(esc_path, newline="") as handle:
+        with open(esc_path, newline="", encoding="utf-8") as handle:
             reader = csv.DictReader(handle)
             for row in reader:
                 model_name = row.get("ExpressionSet.Name", "").strip()
@@ -1410,7 +1409,7 @@ class ValidateCML(BaseTask):
             expr_path = os.path.join(dd, "ExpressionSet.csv")
             if not os.path.exists(expr_path):
                 continue
-            with open(expr_path, newline="") as handle:
+            with open(expr_path, newline="", encoding="utf-8") as handle:
                 reader = csv.DictReader(handle)
                 for row in reader:
                     name = (row.get("Name") or "").strip()

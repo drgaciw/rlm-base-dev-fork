@@ -1,4 +1,6 @@
 import requests
+
+from tasks import rlm_rest_base
 from cumulusci.tasks.sfdx import SFDXBaseTask
 from cumulusci.core.keychain import BaseProjectKeychain
 from abc import abstractmethod
@@ -59,6 +61,7 @@ class SyncPricingData(SFDXBaseTask):
 
     # Make an HTTP request using the requests library and handle the response
     def _make_request(self, method, url, **kwargs):
+        kwargs.setdefault("timeout", rlm_rest_base.DEFAULT_TIMEOUT)
         response = requests.request(method, url, **kwargs)
         if response.ok:
             return response.json()

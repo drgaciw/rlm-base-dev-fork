@@ -173,6 +173,71 @@ without it they degrade gracefully to a line-oriented fallback.
 **Used by:** `.github/workflows/agent-tooling-optimization.yml`, the `.agents/`
 tool-agnostic layer.
 
+### `link_skills.py`
+
+Repairs skill-discovery links that checked out as text stubs instead of real
+directories — the Windows shape produced by `core.symlinks=false` (the default
+without Developer Mode or an elevated `git clone`) for the `.claude/skills/*`
+and `.agents/skills/*` git symlinks that point at the canonical `.cursor/skills/`
+directories. A stub is a 30–45-byte text file naming its target, not a
+directory, so Claude Code and other agents see zero skill content for it.
+
+```bash
+python scripts/ai/link_skills.py --check   # report stubs; exit 1 if any remain
+python scripts/ai/link_skills.py --fix     # replace stubs with junctions/symlinks
+```
+
+`--fix` replaces each stub with a directory **junction** on Windows (`mklink
+/J` — no admin rights needed, unlike a real symlink) and a real symlink
+everywhere else, then marks the path `git update-index --skip-worktree` so the
+now-real directory doesn't read as a working-tree modification against the
+symlink git still records in its index.
+
+A junction is transparent to git's working-tree walk, though: the ~64 tracked
+symlink *entries* are hidden by skip-worktree, but the files a junction's
+*target* makes visible underneath it are not — git counted 168 of them as
+untracked (A-H2). `--fix` also appends two patterns
+(`EXCLUDE_ENTRIES`, `/.claude/skills/*/**` and `/.agents/skills/*/**`) to this
+checkout's local, never-committed `.git/info/exclude`, idempotently, so those
+contents stop showing up in `git status` without touching what git tracks as
+the real symlink entries. `--check` warns (without failing) when that exclude
+entry is missing.
+
+Verified by `tests/test_link_skills.py`, against throwaway git repos built with
+`git hash-object`/`git update-index --cacheinfo` to reproduce a real
+mode-120000 stub without depending on this machine's own `core.symlinks`.
+
+**Used by:** the SessionStart hook (`.claude/hooks/session_start_skill_check.py`),
+which nudges a stale checkout without ever blocking the session; `CLAUDE.md`
+"Claude Code specifics".
+
+### `sync_claude_rules.py`
+
+Generates `.claude/rules/*.md` from `.cursor/rules/*.mdc`, the source of
+truth: Cursor's `globs:`/`alwaysApply:` frontmatter becomes Claude Code's
+`paths:` frontmatter (a YAML list), and a rule with `alwaysApply: true` gets no
+`paths:` key at all, so it applies unconditionally. The rule body is copied
+verbatim — only the frontmatter shape changes. `analysis-artifacts.mdc` stays
+Cursor-only and is never generated.
+
+```bash
+python scripts/ai/sync_claude_rules.py --check   # exit 1 on drift, writes nothing
+python scripts/ai/sync_claude_rules.py --write   # regenerate .claude/rules/ in place
+```
+
+Frontmatter scalars are quoted only when a bare YAML scalar would be invalid or
+ambiguous — a glob starting with `*` (the YAML alias indicator) or a
+description containing `: ` (the mapping separator) — so ordinary rule text
+renders byte-identically to before this quoting was added (A-L4). Output is
+written with `newline="\n"` so a regeneration on Windows cannot reintroduce
+CRLF against the LF-normalized committed blob (A-L2).
+
+Verified by `tests/test_sync_claude_rules.py` (stdlib `unittest`; marker
+preservation, the `globs:` → `paths:` conversion, `--check`/`--write` exit
+codes, and the quoting boundary cases above).
+
+**Used by:** `pr_gate.py`'s `claude_rules_sync` check.
+
 ### `pr_review.py`
 
 Automates the *mechanical* half of the "Responding to Automated PR Reviews"
@@ -205,7 +270,7 @@ it merges.
 
 ```bash
 python scripts/ai/check_branch_scope.py --pr 370          # both signals below
-python scripts/ai/check_branch_scope.py --base origin/264 # HEAD vs an explicit base
+python scripts/ai/check_branch_scope.py --base origin/main # HEAD vs an explicit base
 ```
 
 Two signals, because the inherited work may or may not have merged yet and each
@@ -283,13 +348,13 @@ silently each fail the suite.
 
 Runs the mechanical checks a change actually needs, and reports the status of **every**
 check — including the ones it skipped, and why. One command instead of remembering which
-of twenty-two validators a given diff should have run.
+of thirty-one validators a given diff should have run.
 
 ```bash
-python scripts/ai/pr_gate.py --base origin/264   # select from the diff vs a base ref
+python scripts/ai/pr_gate.py --base origin/main   # select from the diff vs a base ref
 python scripts/ai/pr_gate.py --all               # run everything
 python scripts/ai/pr_gate.py --list              # the matrix: check, gating, deps, triggers
-python scripts/ai/pr_gate.py --requirements --base origin/264   # pip deps the selection needs
+python scripts/ai/pr_gate.py --requirements --base origin/main   # pip deps the selection needs
 ```
 
 Selection lives here rather than in a workflow's `paths:` filter because the two ways of not
@@ -516,15 +581,19 @@ it the violation, because on a correct file a working rule and a blind one retur
 answer. This file is densely commented precisely because each setting matters, which is what
 made the first version of three separate guards vacuous.
 
-A full `--all` run is 22 checks in about 17 seconds, of which the branch-scope *suite*
-(`tests/test_branch_scope.py`) is 8 —
-so the gate costs roughly one branch-scope run more than nothing, and a typical docs-only
-selection is a couple of seconds. That timing is measured on a machine where two of the twenty-two
-(`docgen_suite`, `harness_suites`) are blocked on optional dependencies and so contribute nothing, which
-is worth naming rather than leaving the reader to assume all twenty-two ran: with those installed the
-number is higher.
+A full `--all` run is 31 checks in about 100 seconds on a Windows machine with no
+CumulusCI/pytest installed, dominated by three suites: `stdlib_offline_suites` and
+`pr_gate_suite` at roughly 27s each and `branch_scope` (`tests/test_branch_scope.py`) at about
+21s — together well over half the wall-clock total — while most of the remaining checks finish
+in a second or two, and a typical docs-only selection is a couple of seconds. Re-measured for
+wave 2 (A-L3/I4): the prior "17 seconds" figure predated `branch_scope` needing real `git`/`gh`
+subprocess round-trips per case and was never re-timed against it. That timing is measured on a
+machine where five of the thirty-one (`doc_build_steps`, `extend_stdctx_recovery` — need
+`cumulusci`; `docgen_suite`, `harness_suites`, `billing_portal_suites` — need `pytest`) are
+blocked on optional dependencies and so contribute nothing, which is worth naming rather than
+leaving the reader to assume all thirty-one ran: with those installed the number is higher.
 
-Verified by `tests/test_pr_gate.py` (702 checks, throwaway repos, no network — hermetic for all but
+Verified by `tests/test_pr_gate.py` (729 checks, throwaway repos, no network — hermetic for all but
 one, the fixture that runs the real gate and so selects the real `skill_manifest` check, which
 resolves sibling repos by absolute path and therefore fails in a detached worktree), which
 drives the verdict rather than the helpers. Every mutation below is confirmed to fail the
@@ -544,7 +613,7 @@ empty stdout, indistinguishable from a clean tree, so it would drop uncommitted 
 the selection and, in the CCI-reference check, report "no drift" and pass — `--untracked-files=all`
 dropped, the setuptools co-requirement dropped or emitted after the package that needs it,
 a directory claim swallowing shell suites again, `pyproject.toml` removed from either
-pytest-driven check's triggers, each of the twenty-two trigger lists narrowed back off an input its
+pytest-driven check's triggers, each of the thirty-one trigger lists narrowed back off an input its
 check reads or a script it runs, and each of the four read-enumeration shapes stopped being recognised (directory
 arguments unexpanded, rooted single segments unseen, chain prefixes unfiltered, a root
 directory counted as a read). The rest of the corpus — the figure given below, counted

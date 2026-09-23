@@ -168,12 +168,17 @@ def _write_full_source(m, src: Path):
 
 
 def _run(src: Path, dest: Path):
+    # PYTHONUTF8=1: the child prints non-ASCII (arrows) to stdout, which it would
+    # otherwise encode with the platform default -- the Windows console codepage,
+    # not UTF-8 -- making this capture's encoding="utf-8" raise UnicodeDecodeError.
+    # Forcing the child into UTF-8 mode keeps both sides of the pipe agreeing.
     env = dict(os.environ,
                RLM_BILLING_LWC_SRC=str(src),
                RLM_BILLING_UI_DEST=str(dest),
-               RLM_BILLING_UI_FLEXIPAGE_DEST=str(dest / "flexipages"))
+               RLM_BILLING_UI_FLEXIPAGE_DEST=str(dest / "flexipages"),
+               PYTHONUTF8="1")
     return subprocess.run([sys.executable, str(MODULE_PATH)],
-                          env=env, capture_output=True, text=True)
+                          env=env, capture_output=True, text=True, encoding="utf-8")
 
 
 def test_end_to_end_build_is_safe_and_idempotent(m):

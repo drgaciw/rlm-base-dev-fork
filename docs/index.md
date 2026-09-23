@@ -9,11 +9,14 @@
 | Use a coding agent with this repository | [Skills quick start](../README.md#start-with-a-skill) |
 | Enable native skill discovery or use the catalog fallback | [Agent skill discovery](guides/agent-skill-discovery.md) |
 | Install tools and connect an org | [Local installation](guides/local-installation.md) |
+| Set up a native Windows checkout (symlinks, UTF-8, venv) | [Windows Developer Setup](guides/windows-dev-setup.md) |
 | Use the container or a devcontainer | [Docker environment](../docker/README.md) |
 | Build, configure or troubleshoot an org | [Org operations](guides/org-operations.md) |
 | Understand the environment build | [Build process](guides/prepare-rlm-org-build-guide.md) |
 | Browse or validate datasets | [Data plans](guides/data-plans.md) |
 | Find source files and generated outputs | [Repository layout](references/repository-layout.md) |
+| Look up the Revenue Cloud object/field schema | [Entity Relationship Diagrams](erds/README.md) |
+| Look up a Revenue Cloud Business API endpoint | [Business API reference](api/README.md) |
 
 ## CumulusCI references
 
@@ -30,6 +33,7 @@ flow ordering and feature-flag conditions.
 | Document | Description |
 |----------|-------------|
 | [Dev Environment Setup](guides/dev-environment-setup.md) | Canonical local toolchain architecture — shell config layout, direnv `.envrc` per-project pinning, major-line update strategy, replication on new workstations |
+| [Windows Developer Setup](guides/windows-dev-setup.md) | Native Windows checkout (no WSL): fix skill symlinks, force UTF-8 mode, create the venv, run `pr_gate.py` locally |
 | [Constraints Utility Guide](../datasets/constraints/README.md) | CML constraint model export, import, validate -- architecture, workflows, polymorphic resolution |
 | [Constraints Setup](guides/constraints-setup.md) | `prepare_constraints` flow order, feature flags, deployment phases |
 | [CumulusCI Tasks Reference](../.cursor/skills/cci-orchestration/tasks-reference.md) | Generated CCI task reference; flow and feature flag references live alongside it |

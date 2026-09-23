@@ -16,6 +16,8 @@ import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from tasks import rlm_rest_base
+
 try:
     from cumulusci.core.tasks import BaseTask
     from cumulusci.core.exceptions import TaskOptionsError
@@ -158,12 +160,10 @@ class ManageFulfillmentScopeCnfg(BaseTask):
         access_token = self.org_config.access_token
         instance_url = self.org_config.instance_url
 
-        api_version = (
-            self.options.get("api_version")
-            or getattr(self.org_config, "api_version", None)
-            or getattr(
-                self.project_config, "project__package__api_version", "68.0"
-            )
+        api_version = rlm_rest_base.api_version(
+            org_config=self.org_config,
+            project_config=self.project_config,
+            override=self.options.get("api_version"),
         )
         # Enforce minimum version
         try:
@@ -182,21 +182,13 @@ class ManageFulfillmentScopeCnfg(BaseTask):
         return access_token, instance_url, api_version
 
     def _headers(self, access_token: str) -> Dict[str, str]:
-        return {
-            "Authorization": f"Bearer {access_token}",
-            "Content-Type": "application/json",
-        }
+        return rlm_rest_base.headers(access_token)
 
     def _describe(
         self, access_token: str, instance_url: str, api_version: str
     ) -> Dict[str, Any]:
-        import requests
-
-        url = (
-            f"{instance_url}/services/data/v{api_version}"
-            f"/tooling/sobjects/{OBJECT_NAME}/describe"
-        )
-        resp = requests.get(url, headers=self._headers(access_token))
+        url = f"{rlm_rest_base.base_url(instance_url, api_version, tooling=True)}/sobjects/{OBJECT_NAME}/describe"
+        resp = rlm_rest_base.request("get", url, headers=self._headers(access_token))
         if not resp.ok:
             raise TaskOptionsError(
                 f"Tooling describe failed for {OBJECT_NAME}: "
@@ -207,11 +199,9 @@ class ManageFulfillmentScopeCnfg(BaseTask):
     def _query(
         self, access_token: str, instance_url: str, api_version: str, soql: str
     ) -> List[Dict[str, Any]]:
-        import requests
-
-        url = f"{instance_url}/services/data/v{api_version}/tooling/query"
-        resp = requests.get(
-            url, headers=self._headers(access_token), params={"q": soql}
+        url = f"{rlm_rest_base.base_url(instance_url, api_version, tooling=True)}/query"
+        resp = rlm_rest_base.request(
+            "get", url, headers=self._headers(access_token), params={"q": soql}
         )
         if not resp.ok:
             raise TaskOptionsError(
@@ -222,7 +212,7 @@ class ManageFulfillmentScopeCnfg(BaseTask):
         # Handle pagination — follow nextRecordsUrl until all pages are fetched
         while not body.get("done", True) and body.get("nextRecordsUrl"):
             next_url = f"{instance_url}{body['nextRecordsUrl']}"
-            resp = requests.get(next_url, headers=self._headers(access_token))
+            resp = rlm_rest_base.request("get", next_url, headers=self._headers(access_token))
             if not resp.ok:
                 self.logger.warning(
                     f"Pagination request failed: {resp.status_code} — {resp.text}; "
@@ -510,13 +500,16 @@ class ManageFulfillmentScopeCnfg(BaseTask):
         api_version: str,
         body: Dict[str, Any],
     ) -> Optional[str]:
+        # Local import (not rlm_rest_base.request): tests/test_fulfillment_scope_tolerance.py
+        # swaps sys.modules["requests"] with a stub exposing only .post to lock the
+        # raised-error type at this call site; that only works with a call resolved
+        # at call time, not one already bound in another module's namespace.
         import requests
 
-        url = (
-            f"{instance_url}/services/data/v{api_version}"
-            f"/tooling/sobjects/{OBJECT_NAME}"
+        url = f"{rlm_rest_base.base_url(instance_url, api_version, tooling=True)}/sobjects/{OBJECT_NAME}"
+        resp = requests.post(
+            url, headers=self._headers(access_token), json=body, timeout=rlm_rest_base.DEFAULT_TIMEOUT
         )
-        resp = requests.post(url, headers=self._headers(access_token), json=body)
         if not resp.ok:
             raise ToolingWriteError(
                 f"Tooling create failed: {resp.status_code} — {resp.text}",
@@ -538,11 +531,9 @@ class ManageFulfillmentScopeCnfg(BaseTask):
         object is Tooling-only. ContextTag and ContextAttribute are ordinary objects and
         are not addressable there.
         """
-        import requests
-
-        url = f"{instance_url}/services/data/v{api_version}/query"
-        resp = requests.get(
-            url, headers=self._headers(access_token), params={"q": soql}
+        url = f"{rlm_rest_base.base_url(instance_url, api_version)}/query"
+        resp = rlm_rest_base.request(
+            "get", url, headers=self._headers(access_token), params={"q": soql}
         )
         if not resp.ok:
             raise TaskOptionsError(
@@ -710,13 +701,8 @@ class ManageFulfillmentScopeCnfg(BaseTask):
         record_id: str,
         body: Dict[str, Any],
     ):
-        import requests
-
-        url = (
-            f"{instance_url}/services/data/v{api_version}"
-            f"/tooling/sobjects/{OBJECT_NAME}/{record_id}"
-        )
-        resp = requests.patch(url, headers=self._headers(access_token), json=body)
+        url = f"{rlm_rest_base.base_url(instance_url, api_version, tooling=True)}/sobjects/{OBJECT_NAME}/{record_id}"
+        resp = rlm_rest_base.request("patch", url, headers=self._headers(access_token), json=body)
         if resp.status_code not in (200, 204):
             raise TaskOptionsError(
                 f"Tooling update failed: {resp.status_code} — {resp.text}"

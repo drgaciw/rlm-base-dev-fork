@@ -304,7 +304,7 @@ def main():
 
     if args.command == "create":
         try:
-            with open(args.layout) as f:
+            with open(args.layout, encoding="utf-8") as f:
                 layout = json.load(f)
         except (FileNotFoundError, json.JSONDecodeError) as e:
             print(f"ERROR: {e}", file=sys.stderr)

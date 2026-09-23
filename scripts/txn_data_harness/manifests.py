@@ -94,7 +94,7 @@ def load_manifest(run_id_or_path: str, manifest_dir: Path = MANIFEST_DIR) -> Man
     without ``kind``.
     """
     path = resolve_manifest_path(run_id_or_path, manifest_dir)
-    with open(path) as f:
+    with open(path, encoding="utf-8") as f:
         data = json.load(f)
     if "kind" not in data:
         raise ValueError(

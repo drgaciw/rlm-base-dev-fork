@@ -48,7 +48,7 @@ def _sf_query(query, org):
     """Run SOQL query via sf CLI, return records list or None on error."""
     result = subprocess.run(
         ["sf", "data", "query", "-q", query, "--target-org", org, "--json"],
-        capture_output=True, text=True,
+        capture_output=True, text=True, encoding="utf-8",
     )
     try:
         data = json.loads(result.stdout)
@@ -69,7 +69,7 @@ def _sf_update(sobject, record_id, values_str, org):
         ["sf", "data", "update", "record", "--sobject", sobject,
          "--record-id", record_id, "--values", values_str,
          "--target-org", org, "--json"],
-        capture_output=True, text=True,
+        capture_output=True, text=True, encoding="utf-8",
     )
     try:
         data = json.loads(result.stdout)
@@ -89,7 +89,7 @@ def _get_rest_auth(org):
     """Get instance_url and access_token from sf org display --json."""
     result = subprocess.run(
         ["sf", "org", "display", "--target-org", org, "--json"],
-        capture_output=True, text=True,
+        capture_output=True, text=True, encoding="utf-8",
     )
     try:
         data = json.loads(result.stdout)
@@ -342,6 +342,7 @@ def cmd_upload(args):
             "PathOnClient": f"{template['Name']}.docx",
             "VersionData": version_data,
         },
+        timeout=(10, 120),
     )
 
     if resp.status_code == 201:
@@ -384,6 +385,7 @@ def cmd_create(args):
             "VersionData": version_data,
             "FirstPublishLocationId": library_id,
         },
+        timeout=(10, 120),
     )
     if cv_resp.status_code != 201:
         print(f"ERROR: File upload failed ({cv_resp.status_code}): {cv_resp.text}",
@@ -412,6 +414,7 @@ def cmd_create(args):
         f"{instance_url}/services/data/v68.0/sobjects/DocumentTemplate",
         headers=headers,
         json=dt_body,
+        timeout=(10, 120),
     )
     if dt_resp.status_code != 201:
         print(f"ERROR: DocumentTemplate creation failed ({dt_resp.status_code}): {dt_resp.text}",
@@ -426,6 +429,7 @@ def cmd_create(args):
             f"{instance_url}/services/data/v68.0/sobjects/DocumentTemplate/{dt_id}",
             headers=headers,
             json={"IsActive": True, "Status": "Active"},
+            timeout=(10, 120),
         )
         if activate_resp.status_code == 204:
             print(f"  Status: Active")
@@ -503,6 +507,7 @@ def cmd_replace(args):
             "PathOnClient": f"{template['Name']}.docx",
             "VersionData": version_data,
         },
+        timeout=(10, 120),
     )
     if resp.status_code != 201:
         print(f"ERROR: Upload failed ({resp.status_code}): {resp.text}", file=sys.stderr)
@@ -571,6 +576,7 @@ def cmd_download(args):
     resp = requests.get(
         f"{instance_url}/services/data/v68.0/sobjects/ContentVersion/{cv_id}/VersionData",
         headers=headers,
+        timeout=(10, 120),
     )
     if resp.status_code != 200:
         print(f"ERROR: Download failed ({resp.status_code}): {resp.text}", file=sys.stderr)

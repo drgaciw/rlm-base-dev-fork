@@ -4,6 +4,8 @@ from typing import List
 from pathlib import Path
 import xml.etree.ElementTree as ET
 
+from tasks import rlm_rest_base
+
 try:
     from cumulusci.core.tasks import BaseTask
     from cumulusci.core.exceptions import TaskOptionsError
@@ -161,7 +163,7 @@ class EnsurePricingSchedules(BaseTask):
             "Authorization": f"Bearer {access_token}",
             "Content-Type": "application/json",
         }
-        response = requests.get(url, headers=headers, params={"q": soql})
+        response = requests.get(url, headers=headers, params={"q": soql}, timeout=rlm_rest_base.DEFAULT_TIMEOUT)
         if not response.ok:
             raise TaskOptionsError(
                 f"Failed to query PriceAdjustmentSchedule: {response.text}"
@@ -187,7 +189,7 @@ class EnsurePricingSchedules(BaseTask):
             target_org,
             "--json",
         ]
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8")
         if result.returncode != 0:
             raise TaskOptionsError(
                 f"Deploy failed for {settings_path}: {result.stderr or result.stdout}"
@@ -261,7 +263,7 @@ class EnsurePricingSchedules(BaseTask):
             "Authorization": f"Bearer {access_token}",
             "Content-Type": "application/json",
         }
-        response = requests.get(url, headers=headers, params={"q": soql})
+        response = requests.get(url, headers=headers, params={"q": soql}, timeout=rlm_rest_base.DEFAULT_TIMEOUT)
         if not response.ok:
             raise TaskOptionsError(
                 f"Failed to query DecisionTable: {response.text}"

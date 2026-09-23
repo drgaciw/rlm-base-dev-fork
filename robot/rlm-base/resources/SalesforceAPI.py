@@ -57,7 +57,7 @@ class SalesforceAPI:
                 ["sf", "org", "display", "-o", org_alias, "--json"],
                 capture_output=True,
                 text=True,
-                timeout=self.REQUEST_TIMEOUT,
+                timeout=self.REQUEST_TIMEOUT, encoding="utf-8",
             )
         except subprocess.TimeoutExpired as exc:
             raise AssertionError(

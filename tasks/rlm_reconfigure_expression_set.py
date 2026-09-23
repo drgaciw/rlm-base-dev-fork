@@ -15,6 +15,8 @@ from typing import Any, Dict, List, Optional
 
 import requests
 
+from tasks import rlm_rest_base
+
 try:
     from cumulusci.tasks.salesforce import BaseSalesforceTask
     from cumulusci.core.exceptions import TaskOptionsError
@@ -102,7 +104,7 @@ class ReconfigureExpressionSet(BaseSalesforceTask):
     def _soql_query(self, soql: str) -> List[dict]:
         """Execute a SOQL query and return all records."""
         url = f"{self._base_url}/query"
-        resp = requests.get(url, headers=self._headers, params={"q": soql})
+        resp = requests.get(url, headers=self._headers, params={"q": soql}, timeout=rlm_rest_base.DEFAULT_TIMEOUT)
         if resp.status_code != 200:
             self.logger.error(
                 "SOQL query failed (%s): %s", resp.status_code, resp.text
@@ -112,7 +114,7 @@ class ReconfigureExpressionSet(BaseSalesforceTask):
         records: List[dict] = body.get("records", [])
         while not body.get("done", True) and body.get("nextRecordsUrl"):
             nurl = f"{self.org_config.instance_url}{body['nextRecordsUrl']}"
-            resp = requests.get(nurl, headers=self._headers)
+            resp = requests.get(nurl, headers=self._headers, timeout=rlm_rest_base.DEFAULT_TIMEOUT)
             if resp.status_code != 200:
                 break
             body = resp.json()
@@ -128,7 +130,7 @@ class ReconfigureExpressionSet(BaseSalesforceTask):
         url = f"{self._base_url}/sobjects/{sobject}/{record_id}"
         max_attempts = 4
         for attempt in range(1, max_attempts + 1):
-            resp = requests.patch(url, headers=self._headers, json=payload)
+            resp = requests.patch(url, headers=self._headers, json=payload, timeout=rlm_rest_base.DEFAULT_TIMEOUT)
             if resp.status_code in (200, 204):
                 return True
             resp_text = resp.text or ""
@@ -156,7 +158,7 @@ class ReconfigureExpressionSet(BaseSalesforceTask):
     def _create_record(self, sobject: str, payload: dict) -> Optional[str]:
         """POST a new sObject record. Returns the new Id or None."""
         url = f"{self._base_url}/sobjects/{sobject}/"
-        resp = requests.post(url, headers=self._headers, json=payload)
+        resp = requests.post(url, headers=self._headers, json=payload, timeout=rlm_rest_base.DEFAULT_TIMEOUT)
         if resp.status_code == 201:
             return resp.json()["id"]
         self.logger.error(

@@ -78,7 +78,7 @@ def sf_query(org, soql):
         ["sf", "data", "query", "-q", soql, "--target-org", org, "--json"],
         capture_output=True, text=True,
         # Scratch orgs need this with CCI 4.10 + newer sf CLI, else INVALID_AUTH_HEADER.
-        env={**os.environ, "SF_TEMP_SHOW_SECRETS": "true"})
+        env={**os.environ, "SF_TEMP_SHOW_SECRETS": "true"}, encoding="utf-8")
     try:
         data = json.loads(proc.stdout)
     except json.JSONDecodeError:
@@ -99,7 +99,7 @@ def sf_apex(org, path):
     proc = subprocess.run(
         ["sf", "apex", "run", "--file", path, "--target-org", org],
         capture_output=True, text=True,
-        env={**os.environ, "SF_TEMP_SHOW_SECRETS": "true"})
+        env={**os.environ, "SF_TEMP_SHOW_SECRETS": "true"}, encoding="utf-8")
     blob = proc.stdout + proc.stderr
     # Check BOTH signals. `sf apex run` can exit non-zero on a compile failure, and
     # can also exit zero while the anonymous block threw -- in which case the log

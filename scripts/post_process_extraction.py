@@ -712,7 +712,7 @@ def clean_incidental_copy(src: str, dst: str) -> None:
     with open(src, "r", newline="", encoding="utf-8-sig") as f:
         rows = list(csv.reader(f))
     if not rows:
-        open(dst, "w").close()
+        open(dst, "w", encoding="utf-8").close()
         return
     header = [normalize_header(h) for h in rows[0]]
     body = [["" if v == "#N/A" else v for v in r] for r in rows[1:]]

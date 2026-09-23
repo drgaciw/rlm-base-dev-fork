@@ -117,7 +117,7 @@ def _is_unknown_object(name, msg):
 # ----------------------------------------------------------------------
 def _run(args, timeout=300):
     env = {**os.environ, "SF_TEMP_SHOW_SECRETS": "true"}
-    p = subprocess.run(args, capture_output=True, text=True, env=env, timeout=timeout)
+    p = subprocess.run(args, capture_output=True, text=True, env=env, timeout=timeout, encoding="utf-8")
     return p.returncode, p.stdout, p.stderr
 
 
@@ -444,7 +444,7 @@ def main():
     out_dir = os.path.dirname(args.out)
     if out_dir:  # empty when --out is a bare filename; os.makedirs("") would raise
         os.makedirs(out_dir, exist_ok=True)
-    with open(args.out, "w") as fh:
+    with open(args.out, "w", encoding="utf-8") as fh:
         json.dump(spec, fh, indent=2)
         fh.write("\n")
 

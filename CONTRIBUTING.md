@@ -43,7 +43,9 @@ Two supported paths — pick one:
 - **Local (Homebrew + pyenv + nvm):** follow the *macOS Environment Setup*
   section of the [README](README.md), then
   [`docs/guides/dev-environment-setup.md`](docs/guides/dev-environment-setup.md)
-  for the canonical layered view.
+  for the canonical layered view. On a native Windows checkout (no WSL), see
+  [`docs/guides/windows-dev-setup.md`](docs/guides/windows-dev-setup.md)
+  instead.
 
 Verify the toolchain before you start (no org required):
 

@@ -46,7 +46,7 @@ def test_tui_launcher_reports_nonzero_exit(tmp_path) -> None:
         cwd=tmp_path,
         env=env,
         text=True,
-        capture_output=True,
+        capture_output=True, encoding="utf-8",
     )
 
     assert result.returncode == 7

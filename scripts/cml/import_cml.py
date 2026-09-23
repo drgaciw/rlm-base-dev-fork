@@ -33,7 +33,7 @@ api_version = None
 headers = {}
 
 def get_latest_api_version(instance_url):
-    resp = requests.get(f"{instance_url}/services/data/")
+    resp = requests.get(f"{instance_url}/services/data/", timeout=(10, 120))
     if resp.status_code == 200:
         versions = resp.json()
         return versions[-1]["version"]  # The last one is the latest
@@ -46,21 +46,21 @@ def get_auth(target_alias):
         ["sf", "org", "display", "--target-org", target_alias, "--json"],
         check=True,
         capture_output=True,
-        text=True
+        text=True, encoding="utf-8"
     )
     info = json.loads(result.stdout)["result"]
     return info["accessToken"], info["instanceUrl"]
 
 # === CSV Loader ===
 def read_csv(filename, data_dir):
-    with open(os.path.join(data_dir, filename), newline="") as f:
+    with open(os.path.join(data_dir, filename), newline="", encoding="utf-8") as f:
         return list(csv.DictReader(f))
 
 
 def read_csv_optional(path):
     if not os.path.exists(path):
         return []
-    with open(path, newline="") as f:
+    with open(path, newline="", encoding="utf-8") as f:
         return list(csv.DictReader(f))
 
 
@@ -75,7 +75,7 @@ def resolve_name_map(instance_url, api_version, access_token, obj_name, names):
     headers = {"Authorization": f"Bearer {access_token}"}
     name_filter = ",".join(f"'{n}'" for n in names)
     soql = f"SELECT Id, Name FROM {obj_name} WHERE Name IN ({name_filter})"
-    resp = requests.get(query_url, headers=headers, params={"q": soql})
+    resp = requests.get(query_url, headers=headers, params={"q": soql}, timeout=(10, 120))
     if resp.status_code != 200:
         print(f"❌ Failed to query {obj_name} by Name: {resp.status_code} - {resp.text}")
         return {}
@@ -86,7 +86,7 @@ def create_record(obj_name, record, access_token, instance_url, api_version):
     url = f"{instance_url}/services/data/v{api_version}/sobjects/{obj_name}/"
 
     record.pop("Id", None)
-    resp = requests.post(url, headers=headers, json=record)
+    resp = requests.post(url, headers=headers, json=record, timeout=(10, 120))
     if resp.status_code == 201:
         print(f"✅ Created {obj_name} → {record.get('Name', record.get('ApiName', '') )}")
         return resp.json()["id"]
@@ -104,7 +104,7 @@ def upsert_expression_set(record, access_token, instance_url, api_version):
     # Query to see if the ExpressionSet exists
     query_url = f"{instance_url}/services/data/v{api_version}/query"
     soql = f"SELECT Id FROM {obj_name} WHERE ApiName = '{api_name}'"
-    resp = requests.get(query_url, headers=headers, params={"q": soql})
+    resp = requests.get(query_url, headers=headers, params={"q": soql}, timeout=(10, 120))
 
     if resp.status_code != 200:
         print(f"❌ Failed to query for ExpressionSet {api_name}: {resp.status_code} - {resp.text}")
@@ -118,7 +118,7 @@ def upsert_expression_set(record, access_token, instance_url, api_version):
         record_id = records[0]["Id"]
         patch_url = f"{instance_url}/services/data/v{api_version}/sobjects/{obj_name}/{record_id}"
         record.pop("ApiName", None)  # Don't include ApiName in the body
-        patch_resp = requests.patch(patch_url, headers=headers, json=record)
+        patch_resp = requests.patch(patch_url, headers=headers, json=record, timeout=(10, 120))
         record["ApiName"] = api_name  # 👈 Put it back
         if patch_resp.status_code in [204, 200]:
             print(f"🔁 Updated ExpressionSet → {api_name}")
@@ -147,7 +147,7 @@ def upsert_esdcd(record, access_token, instance_url, api_version):
         WHERE ExpressionSetDefinitionId = '{esd_id}'
     """
     query_url = f"{instance_url}/services/data/v{api_version}/query"
-    resp = requests.get(query_url, headers=headers, params={"q": soql.strip()})
+    resp = requests.get(query_url, headers=headers, params={"q": soql.strip()}, timeout=(10, 120))
 
     if resp.status_code != 200:
         print(f"❌ Query failed for ESDCD: {resp.status_code} - {resp.text}")
@@ -163,7 +163,7 @@ def upsert_esdcd(record, access_token, instance_url, api_version):
         patch_url = f"{instance_url}/services/data/v{api_version}/sobjects/{obj_name}/{record_id}"
         patch_body = { "ContextDefinitionId": context_id }
 
-        patch_resp = requests.patch(patch_url, headers=headers, json=patch_body)
+        patch_resp = requests.patch(patch_url, headers=headers, json=patch_body, timeout=(10, 120))
         if patch_resp.status_code in [200, 204]:
             print(f"🔁 Updated ContextDefinitionId on existing ESDCD → {record_id}")
             return record_id
@@ -191,7 +191,7 @@ def upload_blob_via_patch(record_id, blob_path, access_token, instance_url, api_
         "ConstraintModel": encoded_blob
     }
     # Use PATCH to update the record
-    resp = requests.patch(url, headers=headers, json=payload)
+    resp = requests.patch(url, headers=headers, json=payload, timeout=(10, 120))
     if resp.status_code == 204:
         print(f"📦 Uploaded blob via PATCH → {record_id}")
     else:
@@ -241,7 +241,7 @@ def main():
     query_url = f"{instance_url}/services/data/v{api_version}/query"
     headers = { "Authorization": f"Bearer {access_token}" }
     q = f"SELECT Id FROM ExpressionSetDefinitionVersion WHERE DeveloperName = '{devname}'"
-    resp = requests.get(query_url, headers=headers, params={"q": q})
+    resp = requests.get(query_url, headers=headers, params={"q": q}, timeout=(10, 120))
 
     if resp.status_code != 200 or not resp.json().get("records"):
         print(f"❌ Could not find ExpressionSetDefinitionVersion for {devname}")
@@ -260,7 +260,7 @@ def main():
     esdcd.pop("ExpressionSetApiName", None)
     # Resolve ContextDefinition ID by DeveloperName
     q = f"SELECT Id FROM ContextDefinition WHERE DeveloperName = '{cd_apiname}'"
-    resp = requests.get(query_url, headers=headers, params={"q": q})
+    resp = requests.get(query_url, headers=headers, params={"q": q}, timeout=(10, 120))
 
     if resp.status_code != 200 or not resp.json().get("records"):
         print(f"❌ Could not find ContextDefinition for {cd_apiname}")
@@ -270,7 +270,7 @@ def main():
     
     # Resolve ExpressionSetDefinition ID by DeveloperName
     q = f"SELECT Id FROM ExpressionSetDefinition WHERE DeveloperName = '{apiname}'"
-    resp = requests.get(query_url, headers=headers, params={"q": q})
+    resp = requests.get(query_url, headers=headers, params={"q": q}, timeout=(10, 120))
 
     if resp.status_code != 200 or not resp.json().get("records"):
         print(f"❌ Could not find ExpressionSetDefinition for {apiname}")
@@ -376,7 +376,7 @@ def main():
         FROM ProductRelatedComponent
         WHERE ParentProduct.Name IN ({prc_filter}) OR Name IN ({prc_filter})
         """
-        resp3 = requests.get(query_url, headers=headers, params={"q": q3})
+        resp3 = requests.get(query_url, headers=headers, params={"q": q3}, timeout=(10, 120))
         if resp3.status_code == 200:
             uk_to_targetId_prc = {
                 (
@@ -402,7 +402,7 @@ def main():
 
     # Step 1: Query all current ESC objects for the ExpressionSet
     esc_query = f"SELECT Id FROM ExpressionSetConstraintObj WHERE ExpressionSetId = '{ess_id}'"
-    resp = requests.get(query_url, headers=headers, params={"q": esc_query})
+    resp = requests.get(query_url, headers=headers, params={"q": esc_query}, timeout=(10, 120))
     existing_esc_ids = [r["Id"] for r in resp.json().get("records", [])]
 
     import_failed = False
@@ -463,7 +463,7 @@ def main():
         print(f"🗑️ Deleting {len(existing_esc_ids)} old ExpressionSetConstraintObj records...")
         for eid in existing_esc_ids:
             del_url = f"{instance_url}/services/data/v{api_version}/sobjects/ExpressionSetConstraintObj/{eid}"
-            del_resp = requests.delete(del_url, headers=headers)
+            del_resp = requests.delete(del_url, headers=headers, timeout=(10, 120))
             if del_resp.status_code not in [200, 204]:
                 print(f"⚠️ Failed to delete {eid}: {del_resp.status_code} - {del_resp.text}")
         print("✅ Old records deleted.")

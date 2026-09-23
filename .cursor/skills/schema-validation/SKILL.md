@@ -3,9 +3,9 @@ name: schema-validation
 description: >-
   Validate, refresh, and certify the Revenue Cloud ERD against live Salesforce orgs
   and the Core UDD source. Use when refreshing erd-data.json after a release,
-  certifying a new release upgrade (e.g. 260 → 262), diffing schemas across releases,
-  removing orphan/artifact fields, or investigating whether a field is a real RC
-  platform field vs a custom or other-cloud field.
+  certifying a new release upgrade, diffing schemas across releases, removing
+  orphan/artifact fields, or investigating whether a field is a real RC platform
+  field vs a custom or other-cloud field.
 ---
 
 # Schema Validation & ERD Refresh
@@ -216,7 +216,8 @@ Use `scripts/erd/orphan_batch_helper.py` to iterate through orphan classificatio
 python scripts/erd/orphan_batch_helper.py prepare --batch 4 --size 20
 
 # Dispatch researcher with the input JSON, merge findings into
-# .agents/artifacts/orphan-fields/orphan-field-ownership.json, then:
+# .agents/artifacts/orphan-fields/orphan-field-ownership.json (private tracker;
+# may be absent), then:
 python scripts/erd/orphan_batch_helper.py apply --batch 4
 
 # Re-validate and produce the next orphan report. --orgs is REQUIRED, has no default,
@@ -290,6 +291,9 @@ traversal (`PricebookEntry` vs the ERD's `PriceBookEntry`).
 source at `gitcore.soma.salesforce.com/core-2206/core-262-public@p4/262-patch`.
 Outcome: 498 PDF artifacts removed, 38 orphans remain (all explicitly-documented
 feature-gated or cross-cloud fields). Findings persisted at:
+
+Findings below are in the private tracker; may be absent on a clone that hasn't
+cloned `rlm-base-artifacts` (see `todo-tracker/SKILL.md`):
 
 - `.agents/artifacts/orphan-fields/orphan-field-ownership.json` — structured per-entity classification database
 - `.agents/artifacts/orphan-fields/orphan-field-ownership.md` — narrative research findings

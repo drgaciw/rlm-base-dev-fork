@@ -1,4 +1,4 @@
-public class RLM_ReturnPDFDocument {
+public with sharing class RLM_ReturnPDFDocument {
     @InvocableMethod(label='Return PDF Document ID' description='Doc Gen creates a Word and a PDF Document' category='Document Generation')
     public static List<OutputVariable> ReturnPDFDocumentId(List<InputVariable> requests) {
         if (requests == null || requests.isEmpty()) {

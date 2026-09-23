@@ -74,7 +74,7 @@ def test_list_manifests_excludes_batch_report_files(tmp_path) -> None:
     """
     manifest = write_manifest(Manifest(run_id="DEMO-NEW"), manifest_dir=tmp_path)
     report = tmp_path / "DEMO-NEW-report.json"
-    report.write_text('{"not": "a manifest"}\n')
+    report.write_text('{"not": "a manifest"}\n', encoding="utf-8")
     os.utime(manifest, (1, 1))
     os.utime(report, (2, 2))
 

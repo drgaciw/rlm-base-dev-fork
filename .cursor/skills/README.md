@@ -144,3 +144,5 @@ This table is the canonical list — `AGENTS.md` points here rather than repeati
 | `robot-tests.mdc` | `robot/**/*.robot` | `robot-testing/SKILL.md` |
 | `doc-review.mdc` | `cumulusci.yml`, `tasks/**/*.py`, `datasets/sfdmu/**/export.json`, `datasets/sfdmu/**/*.csv`, `robot/**/*.robot`, `.cursor/skills/**/*.md` | `doc-consistency/SKILL.md` |
 | `context-plans.mdc` | `datasets/context_plans/**/*.json` | `context-service/SKILL.md` |
+| `protected-metadata.mdc` | `force-app/**/profiles/**`, `force-app/**/*.object-meta.xml`, `templates/profiles/**`, `templates/objects/**`, `templates/flexipages/**`, `unpackaged/**/networks/rlm.network-meta.xml` | *(stand-alone — protected-metadata DO NOT rules)* |
+| `docs-conventions.mdc` | `docs/**/*.md` | *(stand-alone — filename and placement conventions for `docs/`)* |

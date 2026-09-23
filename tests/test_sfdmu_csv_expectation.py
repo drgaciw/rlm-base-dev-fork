@@ -62,14 +62,17 @@ def _write_plan(td, plan_body, root_files=None, per_pass_files=None):
     """
     plan = pathlib.Path(td) / "plan"
     plan.mkdir()
-    (plan / "export.json").write_text(json.dumps(plan_body))
+    # newline="": these bodies are compared byte-exact elsewhere (fix_mode_writes reads
+    # back raw bytes), so the platform newline translation write_text() does by default
+    # (LF -> CRLF on Windows) must not run -- the fixture's `\n`s are meant literally.
+    (plan / "export.json").write_text(json.dumps(plan_body), encoding="utf-8", newline="")
     for name, body in (root_files or {}).items():
-        (plan / name).write_text(body)
+        (plan / name).write_text(body, encoding="utf-8", newline="")
     for pass_number, files in (per_pass_files or {}).items():
         d = plan / "objectset_source" / f"object-set-{pass_number}"
         d.mkdir(parents=True, exist_ok=True)
         for name, body in files.items():
-            (d / name).write_text(body)
+            (d / name).write_text(body, encoding="utf-8", newline="")
     return plan
 
 
@@ -112,9 +115,9 @@ def deferral_issues(rel_plan_dir, passes, root_files, severity=None):
         plan = pathlib.Path(td) / "datasets" / "sfdmu" / rel_plan_dir
         plan.mkdir(parents=True)
         (plan / "export.json").write_text(
-            json.dumps({"objectSets": [{"objects": p} for p in passes]}))
+            json.dumps({"objectSets": [{"objects": p} for p in passes]}), encoding="utf-8", newline="")
         for name, body in (root_files or {}).items():
-            (plan / name).write_text(body)
+            (plan / name).write_text(body, encoding="utf-8", newline="")
         result = V.SFDMUValidator(base_dir=td, verbose=False).validate_dataset(plan)
         return [f"{i.severity.value}/{i.object_name}: {i.message}" for i in result.issues
                 if severity is None or i.severity == severity]
@@ -234,8 +237,8 @@ def merged_config_fix_converges(pass1=None):
     with tempfile.TemporaryDirectory() as td:
         plan = pathlib.Path(td) / "plan"
         plan.mkdir()
-        (plan / "export.json").write_text(json.dumps(body))
-        (plan / "Widget__c.csv").write_text("Name,Code\nwidget-a,c1\n")
+        (plan / "export.json").write_text(json.dumps(body), encoding="utf-8", newline="")
+        (plan / "Widget__c.csv").write_text("Name,Code\nwidget-a,c1\n", encoding="utf-8", newline="")
         before = V.SFDMUValidator(base_dir=str(plan.parent), verbose=False).validate_dataset(plan)
         if not any("composite key column" in i.message for i in before.issues):
             return ["precondition failed: the fixture no longer reports the finding it is fixing"]
@@ -2040,7 +2043,7 @@ _BASELINE_ROOT = "datasets/sfdmu"
 # That is the same shape as the defect, one level up: a guard whose own coverage nobody measured.
 _EXPECTED_BASELINE_SITES = {
     ".cursor/skills/doc-consistency/SKILL.md": 2,
-    "AGENTS.md": 1,
+    ".cursor/skills/troubleshooting/SKILL.md": 1,
     "docs/features/composable-quote-approvals.md": 1,
     "scripts/ai/README.md": 1,
     "scripts/ai/pr_gate.py": 1,

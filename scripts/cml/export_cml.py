@@ -35,7 +35,7 @@ api_name_versioned = f"{dev_name}_V{version_num}"
 
 # === API Version resolver helper ===
 def get_latest_api_version(instance_url):
-    resp = requests.get(f"{instance_url}/services/data/")
+    resp = requests.get(f"{instance_url}/services/data/", timeout=(10, 120))
     if resp.status_code == 200:
         versions = resp.json()
         return versions[-1]["version"]  # Use latest version
@@ -63,7 +63,7 @@ def export_to_csv(query, filename, fields, alias):
             ["sf", "org", "display", "--target-org", alias, "--json"],
             check=True,
             capture_output=True,
-            text=True
+            text=True, encoding="utf-8"
         )
         org_info = json.loads(result.stdout)["result"]
         access_token = org_info["accessToken"]
@@ -80,7 +80,7 @@ def export_to_csv(query, filename, fields, alias):
         "Content-Type": "application/json"
     }
 
-    response = requests.get(endpoint, headers=headers, params={"q": query})
+    response = requests.get(endpoint, headers=headers, params={"q": query}, timeout=(10, 120))
     if response.status_code != 200:
         print(f"❌ API Error ({filename}): {response.status_code}")
         print(response.text)
@@ -90,7 +90,7 @@ def export_to_csv(query, filename, fields, alias):
     print(f"✅ {len(records)} records fetched for {filename}")
 
     os.makedirs(os.path.dirname(filename), exist_ok=True)
-    with open(filename, mode="w", newline="") as file:
+    with open(filename, mode="w", newline="", encoding="utf-8") as file:
         writer = csv.writer(file)
         writer.writerow(fields)
         for rec in records:
@@ -114,7 +114,7 @@ def download_constraint_model_blobs(alias, input_csv=None):
             ["sf", "org", "display", "--target-org", alias, "--json"],
             check=True,
             capture_output=True,
-            text=True
+            text=True, encoding="utf-8"
         )
         org_info = json.loads(result.stdout)["result"]
         access_token = org_info["accessToken"]
@@ -128,7 +128,7 @@ def download_constraint_model_blobs(alias, input_csv=None):
     headers = { "Authorization": f"Bearer {access_token}" }
     os.makedirs(os.path.join(output_dir, "blobs"), exist_ok=True)
 
-    with open(input_csv, newline='') as f:
+    with open(input_csv, newline='', encoding="utf-8") as f:
         reader = csv.DictReader(f)
         if "ConstraintModel" not in (reader.fieldnames or []):
             print("⚠️ ConstraintModel field not available; skipping blob download.")
@@ -148,7 +148,7 @@ def download_constraint_model_blobs(alias, input_csv=None):
             full_url = instance_url + blob_url
             print(f"🌐 Fetching blob from: {full_url}")
 
-            resp = requests.get(full_url, headers=headers)
+            resp = requests.get(full_url, headers=headers, timeout=(10, 120))
             if resp.status_code == 200:
                 file_path = os.path.join(output_dir, "blobs", f"ESDV_{dev_name}_V{version_num}.ffxblob")
                 with open(file_path, "wb") as out_file:
@@ -161,7 +161,7 @@ def download_constraint_model_blobs(alias, input_csv=None):
 def get_reference_ids_by_prefix(filename, prefix):
     ids = set()
     try:
-        with open(filename, newline='') as csvfile:
+        with open(filename, newline='', encoding="utf-8") as csvfile:
             reader = csv.DictReader(csvfile)
             for row in reader:
                 ref_id = row.get("ReferenceObjectId", "")
@@ -326,7 +326,7 @@ def write_sfdmu_files():
 
     # ExpressionSet.csv (Name only)
     expr_out = os.path.join(sfdmu_dir, "ExpressionSet.csv")
-    with open(expr_out, mode="w", newline="") as file:
+    with open(expr_out, mode="w", newline="", encoding="utf-8") as file:
         writer = csv.writer(file)
         writer.writerow(["Name"])
         writer.writerow([dev_name])
@@ -335,7 +335,7 @@ def write_sfdmu_files():
     esc_in = os.path.join(output_dir, "ExpressionSetConstraintObj.csv")
     esc_out = os.path.join(sfdmu_dir, "ExpressionSetConstraintObj.csv")
     if os.path.exists(esc_in):
-        with open(esc_in, newline="") as infile, open(esc_out, mode="w", newline="") as outfile:
+        with open(esc_in, newline="", encoding="utf-8") as infile, open(esc_out, mode="w", newline="", encoding="utf-8") as outfile:
             reader = csv.DictReader(infile)
             fieldnames = [
                 "$$ConstraintModelTag$ExpressionSet.ApiName",
@@ -365,7 +365,7 @@ def write_sfdmu_files():
         dest = os.path.join(sfdmu_dir, f"{name}.csv")
         if not os.path.exists(src):
             continue
-        with open(src, newline="") as infile, open(dest, mode="w", newline="") as outfile:
+        with open(src, newline="", encoding="utf-8") as infile, open(dest, mode="w", newline="", encoding="utf-8") as outfile:
             reader = csv.DictReader(infile)
             writer = csv.DictWriter(outfile, fieldnames=["Name"])
             writer.writeheader()

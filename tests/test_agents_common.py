@@ -188,7 +188,7 @@ def check_the_stub_is_actually_restored(_):
     check("module_level_run_is_the_real_one", subprocess.run is _REAL_RUN,
           "the shared subprocess module is still stubbed")
     # And it genuinely runs a process again.
-    done = subprocess.run([sys.executable, "-c", "print('ok')"], capture_output=True, text=True)
+    done = subprocess.run([sys.executable, "-c", "print('ok')"], capture_output=True, text=True, encoding="utf-8")
     check("real_subprocess_works_after_restore", done.stdout.strip() == "ok", done.stdout)
 
 
@@ -231,7 +231,7 @@ def check_bundle_discovery(_):
         check("missing_dir_is_empty_not_an_error", common.discover_agent_bundles(root) == [])
         (root / "RLM_Quoting_Assistant").mkdir(parents=True)
         (root / "RLM_Billing_Employee_Assistance").mkdir()
-        (root / "notes.txt").write_text("ignored")
+        (root / "notes.txt").write_text("ignored", encoding="utf-8")
         found = common.discover_agent_bundles(root)
         check("only_directories_are_agents", found ==
               ["RLM_Billing_Employee_Assistance", "RLM_Quoting_Assistant"], str(found))
