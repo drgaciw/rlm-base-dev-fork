@@ -93,7 +93,7 @@ jobs:
             robot/requirements.txt
 
       - name: Set up Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v7
         with:
           # Pinned to an exact 24.x minor (config/tool-versions.env). node-version
           # "24" floats to "latest 24.x", which moved 24.16.0 → 24.17.0; on 24.17.0
