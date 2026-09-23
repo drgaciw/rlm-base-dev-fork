@@ -38,7 +38,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 1
           persist-credentials: false
@@ -51,7 +51,7 @@ jobs:
       # marketplace by checking it out at a pinned SHA and pointing
       # `plugin_marketplaces` at that local path instead of the remote URL.
       - name: Checkout claude-code plugin marketplace (pinned)
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: anthropics/claude-code
           ref: 56f36532530f88b572854538d685fcf781141e8c # bump deliberately; revisit when anthropics/claude-code-action#1497 lands
