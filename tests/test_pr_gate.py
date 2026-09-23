@@ -200,7 +200,7 @@ def main_with(args):
 
 
 def changed_list(*paths):
-    fh = tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False)
+    fh = tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False, encoding="utf-8")
     fh.write("".join(p + "\n" for p in paths))
     fh.close()
     return fh.name
@@ -4253,7 +4253,7 @@ check("a single root-level segment is recognised as a read",
 # The two rooted single-segment shapes, told apart: a root *file* is a read, a root directory
 # is the start of a longer path. Asserted on a synthetic source because no suite currently
 # writes the directory form, so the distinction is otherwise unobservable.
-shapes = tempfile.NamedTemporaryFile("w", suffix=".py", delete=False)
+shapes = tempfile.NamedTemporaryFile("w", suffix=".py", delete=False, encoding="utf-8")
 shapes.write('a = os.path.join(REPO, "tui-cci")\nb = os.path.join(REPO, "scripts")\n')
 shapes.close()
 try:
@@ -4473,7 +4473,7 @@ check("the generated install payload is non-empty, so the rules below are not va
 # `if not args.all: emitted.insert(0, "--index-url=…")` re-points pip on every PR while satisfying every
 # assertion in this section. The payload is a function of *which checks are selected*, so the comparison
 # has to select all of them the other way round — a path-driven selection, which is what CI does.
-with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as fh:
+with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False, encoding="utf-8") as fh:
     # `triggers[0]` twice on a list the shape rule allows to be empty; floored for the same reason as
     # the per-check loop below.
     fh.write("\n".join(sorted({t.rstrip("/") + "/probe.md" if t.endswith("/") else t
@@ -4939,7 +4939,7 @@ check("the probe path needs no installed dependency",
       all(not c["deps"] for c in probe_selection),
       {c["name"]: c["deps"] for c in probe_selection})
 
-with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as fh:
+with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False, encoding="utf-8") as fh:
     fh.write(PROBE_PATH + "\n")
     changed = fh.name
 try:

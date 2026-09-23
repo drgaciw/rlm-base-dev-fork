@@ -247,12 +247,23 @@ class TestExtractSFDMUDataNoTokenLeak(unittest.TestCase):
         self.plan_dir = tempfile.mkdtemp(prefix="test_extract_plan_")
         self.addCleanup(shutil.rmtree, self.plan_dir, ignore_errors=True)
         _write_plan(self.plan_dir, {"objectSets": [{"objects": []}]})
+        # An explicit output_dir, because the default is <plan_dir>/../../extractions — and
+        # plan_dir is a mkdtemp() directly under the temp root, so that resolves to
+        # /extractions. On a CI runner (non-root) that is a PermissionError; run as root it
+        # silently litters the filesystem root.
+        self.output_dir = tempfile.mkdtemp(prefix="test_extract_out_")
+        self.addCleanup(shutil.rmtree, self.output_dir, ignore_errors=True)
 
     def _make_task(self, sourceusername=None):
         task = rlm_sfdmu.ExtractSFDMUData.__new__(rlm_sfdmu.ExtractSFDMUData)
         task.org_config = _FakeOrgConfig(access_token=FAKE_TOKEN, instance_url="https://fake.my.salesforce.com")
         task.logger = _RecordingLogger()
-        task.options = {"pathtoexportjson": self.plan_dir, "org": True, "run_post_process": False}
+        task.options = {
+            "pathtoexportjson": self.plan_dir,
+            "output_dir": self.output_dir,
+            "org": True,
+            "run_post_process": False,
+        }
         if sourceusername:
             task.options["sourceusername"] = sourceusername
         task.project_config = None

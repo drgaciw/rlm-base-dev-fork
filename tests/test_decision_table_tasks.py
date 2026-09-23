@@ -25,6 +25,14 @@ sys.path.insert(0, str(REPO))
 
 import yaml
 
+# ⚠ Bound HERE, before load_task_module below pulls CumulusCI in. Task modules now do
+# `from tasks import rlm_rest_base` (the shared REST helper), and once CumulusCI is loaded the
+# `tasks` namespace package's `__path__` collapses (see load_task_module) — so that import, run
+# from inside the second task module, died with ImportError before a single check registered.
+# Importing it first pins it in sys.modules and as an attribute of the package object, which
+# is all `from tasks import rlm_rest_base` needs.
+from tasks import rlm_rest_base  # noqa: E402,F401
+
 
 def load_task_module(stem):
     """
