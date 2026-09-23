@@ -2,7 +2,7 @@
 # Install in the same environment as CumulusCI so CCI tasks can run robot:
 #   pip install -r robot/requirements.txt
 #   or: pipx inject cumulusci --force -r robot/requirements.txt
-robotframework>=6,<8
+robotframework>=7.5,<8
 robotframework-seleniumlibrary>=6,<7
 selenium>=4.49.0,<5
 webdriver-manager>=4,<5
