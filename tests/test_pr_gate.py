@@ -1305,8 +1305,12 @@ if os.path.exists(workflow):
     # "Mechanical checks (Windows stdlib)" (TP-05): the gate's stdlib tier on windows-latest with
     # PYTHONUTF8 unset. A distinct name on purpose — it must never be able to satisfy the
     # "Mechanical checks" context; making it *required* is a repo-settings change for the maintainer.
+    # "LWC Jest tests" (TP-07: `npm ci` + jest --coverage over the LWC bundles, steps gated on a
+    # diff of LWC/jest/npm paths so the check name is always published) — added by editing this
+    # list, same review; its own published name, satisfies no branch-ruleset context this repo
+    # relies on, and it holds no steps of the gate job.
     PUBLISHED = ["Mechanical checks", "Mechanical checks (Windows stdlib)", "Lint (changed files)",
-                "Docker ARG defaults match tool-versions.env"]
+                "Docker ARG defaults match tool-versions.env", "LWC Jest tests"]
     published = [(j.get("name") or key) for key, j in (doc.get("jobs") or {}).items()]
     check("the workflow publishes exactly the check-run names it was reviewed with (PUBLISHED) — the "
           "job *key* is free to be renamed, since a branch ruleset matches the `name:`; add a job by "
