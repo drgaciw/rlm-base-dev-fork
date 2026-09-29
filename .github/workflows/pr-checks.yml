@@ -581,3 +581,86 @@ jobs:
           path: coverage/
           retention-days: 14
           if-no-files-found: ignore
+
+  # TP-10 (docs/references/test-plan-2026-09.md 4.1): branch coverage of the T1+T2 Python suites,
+  # ratcheted per package through coverage-floor.json. Its own job and its own published name, not
+  # a step in `gate`: `measure` re-runs the whole gate under coverage, and the gate job's steps are
+  # pinned one by one in tests/test_pr_gate.py. That is also why no run line here names the gate
+  # script -- `scripts/lint/coverage_ratchet.py measure` does, so "exactly one job runs the gate"
+  # still holds.
+  #
+  # Pull requests only: the no-lowering rule compares coverage-floor.json against the base branch,
+  # and a merge_group has no base_ref. Not required by default; it is a signal that a PR cannot
+  # quietly delete tests. `measure` exits with the gate's own status, so a red gate is a red job
+  # here too (a lower bound is not a measurement), and the ratchet step still runs to say by how much.
+  # Owner: the maintainer who owns scripts/lint/.
+  coverage:
+    name: Python coverage ratchet
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          # The base branch's coverage-floor.json is read with `git show`.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: "pip"
+          cache-dependency-path: |
+            pyproject.toml
+            requirements-dev.txt
+
+      - name: Install test dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          # requirements-dev.txt is what the gate's dependency checks run against (cumulusci,
+          # pytest, textual, PyYAML). coverage is pinned here because `patch = ["subprocess"]` in
+          # pyproject.toml needs 7.10+ and the ratchet's figures must not move with a coverage release.
+          python -m pip install -r requirements-dev.txt "coverage==7.16.2"
+
+      - name: Resolve the base ref
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          # Same pattern as the gate job: checkout with fetch-depth: 0 normally has origin/<base>
+          # already, and the fetch is only the fallback because persist-credentials is false (an
+          # unconditional fetch works anonymously on a public repo and would fail on a private one).
+          # The ratchet reads the base branch's coverage-floor.json with `git show`, so the ref has
+          # to resolve before it runs; an unresolvable ref is a tool error there, not a free pass.
+          if ! git rev-parse --verify --quiet "origin/${BASE_REF}" >/dev/null; then
+            git fetch --no-tags origin "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}"
+          fi
+          git rev-parse --verify --quiet "origin/${BASE_REF}" >/dev/null
+
+      - name: Measure coverage
+        run: |
+          set -euo pipefail
+          python scripts/lint/coverage_ratchet.py measure
+
+      - name: Ratchet
+        # Also after a red measure, so a failing gate still reports the figures. Not after a cancel.
+        if: ${{ !cancelled() }}
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          python scripts/lint/coverage_ratchet.py check --base-ref "origin/${BASE_REF}"
+
+      - name: Upload coverage report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: python-coverage
+          path: coverage/python-coverage.json
+          if-no-files-found: warn
+          retention-days: 14

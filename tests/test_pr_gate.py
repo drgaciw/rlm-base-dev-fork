@@ -1309,8 +1309,13 @@ if os.path.exists(workflow):
     # diff of LWC/jest/npm paths so the check name is always published) — added by editing this
     # list, same review; its own published name, satisfies no branch-ruleset context this repo
     # relies on, and it holds no steps of the gate job.
+    # "Python coverage ratchet" (TP-10: branch coverage of the T1+T2 suites against the per-package
+    # floors in coverage-floor.json) — an added job, so an added name here. Its own published name,
+    # satisfies no branch-ruleset context; it deliberately does not run the gate itself from a `run:`
+    # line (`scripts/lint/coverage_ratchet.py measure` does), so "exactly one job runs the gate" holds.
     PUBLISHED = ["Mechanical checks", "Mechanical checks (Windows stdlib)", "Lint (changed files)",
-                "Docker ARG defaults match tool-versions.env", "LWC Jest tests"]
+                "Docker ARG defaults match tool-versions.env", "LWC Jest tests",
+                "Python coverage ratchet"]
     published = [(j.get("name") or key) for key, j in (doc.get("jobs") or {}).items()]
     check("the workflow publishes exactly the check-run names it was reviewed with (PUBLISHED) — the "
           "job *key* is free to be renamed, since a branch ruleset matches the `name:`; add a job by "
