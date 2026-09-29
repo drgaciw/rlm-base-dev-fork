@@ -23,6 +23,15 @@ setuptools>=75.4,<77
 
 # config/tool-versions.env: CUMULUSCI_VERSION (read-only reference here --
 # bump both together if this ever drifts).
+#
+# cumulusci==4.8.1 declares `selenium<4` and `robotframework-seleniumlibrary<6`;
+# robot/requirements.txt needs selenium>=4.49 and SeleniumLibrary>=6.9, so the two
+# files cannot be resolved in ONE pip call (`pip install -r requirements-dev.txt
+# -r robot/requirements.txt` is ResolutionImpossible). This file installs no Robot
+# stack. To run Robot suites in the same venv, install robot/requirements.txt in a
+# second pip call AFTER this one, as prepare-rlm-org.yml does; `pip check` then
+# reports only those two CumulusCI conflicts, which is expected. See the header of
+# robot/requirements.txt.
 cumulusci==4.8.1
 
 # scripts/build_harness/tui/requirements.txt's floors: the build-harness TUI
