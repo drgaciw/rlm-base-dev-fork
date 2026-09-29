@@ -322,6 +322,30 @@ the pyenv `python3` specifically, use `pyenv exec python3`.
 - Is your shell interactive? Non-interactive shells activate via the
   `direnv export zsh` line in `~/.zshenv` at startup, not on cd.
 
+### `pip check` says `cumulusci 4.8.1 has requirement selenium<4`
+Expected, not a broken environment. CumulusCI 4.8.1 declares `selenium<4` and
+`robotframework-seleniumlibrary<6`, while the Robot suites need selenium 4.49+ and
+SeleniumLibrary 6.9+ (`robot/requirements.txt`). pip cannot resolve both in one
+call (`ResolutionImpossible`), so the robot stack is installed **second** and
+overrides CCI's pins on purpose:
+
+```bash
+pip install "cumulusci==4.8.1"          # or: pipx install cumulusci
+pip install -r robot/requirements.txt   # or: pipx inject cumulusci --force -r robot/requirements.txt
+pip check                               # exactly two lines, both "cumulusci 4.8.1 has requirement ..."
+python -c "import selenium, SeleniumLibrary; print(selenium.__version__, SeleniumLibrary.__version__)"
+```
+
+Do not resolve them together and do not loosen the pins in
+`robot/requirements.txt` to silence the warning: CCI's pin would win, selenium
+would drop to 3.x, and every Robot suite would break. CI enforces this in the
+"Assert robot stack overrides CumulusCI selenium pin" step of
+`.github/workflows/prepare-rlm-org.yml`: selenium major must be 4, SeleniumLibrary
+at least 6.9, and `pip check` may report only those two CumulusCI conflicts. Once a
+newer CumulusCI lifts its pin, that step prints a notice; remove the allow-list and the
+requirements-file comments then. Re-check monthly (see the
+[test plan](../references/test-plan-2026-09.md), section 7).
+
 ### `INVALID_AUTH_HEADER` / "Expired session" on `cci org info` or scratch creation
 Symptom — a freshly created scratch org immediately fails, with a URL that
 ends in a redacted placeholder, e.g.:
