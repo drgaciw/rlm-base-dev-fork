@@ -10,6 +10,8 @@
  * permission set grants what the service needs is checked by the nightly post-build verification
  * (TP-04), not here.
  *
+ * The user is on the Minimum Access profile so that this PermissionSet is its only grant.
+ *
  * What this proves: with exactly those grants the service updates the granted fields, and it does
  * NOT write a field the user has no FLS for, nor any object outside its allowlist.
  */
@@ -20,7 +22,11 @@ private class RLM_AI_UpdateRecordFieldsServiceUserModeTest {
 
     @TestSetup
     static void setup() {
-        Profile standardUser = [SELECT Id FROM Profile WHERE Name = 'Standard User' LIMIT 1];
+        // Minimum Access has no object or field permissions of its own, so the PermissionSet built
+        // below is the ONLY grant this user holds. (Standard User already carries Quote/QuoteLineItem
+        // CRUD and FLS, which would make every positive assertion pass without the grant and the
+        // no-FLS assertion fail.)
+        Profile minimumAccess = [SELECT Id FROM Profile WHERE Name = 'Minimum Access - Salesforce' LIMIT 1];
         String uniq = String.valueOf(Crypto.getRandomInteger()).replace('-', 'n');
         User u = new User(
             Alias = 'umtest',
@@ -29,7 +35,7 @@ private class RLM_AI_UpdateRecordFieldsServiceUserModeTest {
             LastName = USER_LAST_NAME,
             LanguageLocaleKey = 'en_US',
             LocaleSidKey = 'en_US',
-            ProfileId = standardUser.Id,
+            ProfileId = minimumAccess.Id,
             TimeZoneSidKey = 'America/Los_Angeles',
             UserName = 'usermode.' + uniq + '@example.invalid'
         );
@@ -43,6 +49,13 @@ private class RLM_AI_UpdateRecordFieldsServiceUserModeTest {
             insert ps;
             insert new ObjectPermissions(
                 ParentId = ps.Id, SobjectType = 'Quote', PermissionsRead = true, PermissionsEdit = true);
+            // Read-only companions, as in RLM_QuotingAssistant (Opportunity read) plus Product2 read,
+            // which the line resolver's Product2.Name lookup needs; the real agent user gets that from
+            // its standard quoting grants. They give no write access to anything.
+            insert new List<ObjectPermissions>{
+                new ObjectPermissions(ParentId = ps.Id, SobjectType = 'Opportunity', PermissionsRead = true),
+                new ObjectPermissions(ParentId = ps.Id, SobjectType = 'Product2', PermissionsRead = true)
+            };
             List<FieldPermissions> fieldGrants = new List<FieldPermissions>();
             for (String field : new List<String>{
                 'Quote.Description', 'Quote.ExpirationDate', 'Quote.Status',
