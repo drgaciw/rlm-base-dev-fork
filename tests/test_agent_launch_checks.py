@@ -264,6 +264,32 @@ class LaunchChecks(unittest.TestCase):
         self.assertTrue(analyzer._skill_link_resolves(p, target))
         self.assertFalse(analyzer._skill_link_resolves(p, self.root / ".cursor/skills/missing"))
 
+    def test_is_link_like_judges_only_the_final_component(self):
+        # A plain directory is not a link however its *parent* path resolves: under a symlinked or
+        # junctioned root (macOS `/tmp`, an 8.3 short-name profile such as GitHub's
+        # `C:\Users\RUNNER~1`) realpath(parent) != abspath(parent), and comparing the entry against
+        # its abspath called every directory in such a tree a link (found by the Windows leg, TP-05).
+        real = self.root / "real_parent"
+        (real / "plain").mkdir(parents=True)
+        via_link = self.root / "via_link"
+        _link_dir(via_link, "real_parent")
+        self.assertFalse(analyzer._is_link_like(via_link / "plain"),
+                         "a plain directory under a linked parent is not a link")
+        self.assertTrue(analyzer._is_link_like(via_link),
+                        "a link (symlink or junction) as the final component still is")
+        inner = real / "inner_link"
+        _link_dir(inner, "plain")
+        self.assertTrue(analyzer._is_link_like(via_link / "inner_link"),
+                        "a link reached through a linked parent is still a link")
+
+    def test_is_link_like_ignores_name_casing(self):
+        # On a case-insensitive filesystem the resolved name carries the on-disk casing, which can
+        # differ from the spelling asked for without being a link. On a case-sensitive one the
+        # differently-cased path does not exist and resolves to itself. Either way: not a link.
+        (self.root / "PlainDir").mkdir()
+        self.assertFalse(analyzer._is_link_like(self.root / "plaindir"))
+        self.assertFalse(analyzer._is_link_like(self.root / "PlainDir"))
+
     def test_claude_md_regular_file_contract(self):
         p = self.root / "CLAUDE.md"
         # Not tracked as a regular file (e.g. still a symlink entry) fails the mode check.

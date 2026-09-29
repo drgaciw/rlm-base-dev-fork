@@ -520,6 +520,41 @@ OBJECT_NAME_CASE_INSENSITIVE = [
 ]
 
 
+
+def _display_fallback():
+    """`display_rel` (messages only) survives a cross-drive `os.path.relpath` ValueError — Windows
+    CI checks out on D: while the temp directory is on C: — and `check_plan` still reports."""
+    real = C.os.path.relpath
+
+    def cross_drive(path, start=None):
+        # Only the REPO_ROOT-relative calls (message labels) are on another drive; the relpath
+        # against the plan directory stays on one drive and must keep working.
+        if start is not None and C.os.path.abspath(start) == C.os.path.abspath(C.REPO_ROOT):
+            raise ValueError("path is on mount 'C:', start on mount 'D:'")
+        return real(path, start) if start is not None else real(path)
+
+    C.os.path.relpath = cross_drive
+    try:
+        direct = C.display_rel("C:/tmp/x/README.md")
+        try:
+            errors, warns, parsed = _check([[UPSERT_P1]], [_row(1, "Widget__c", 1, "Upsert", "Name")])
+            completed = True
+        except ValueError:
+            completed = False
+    finally:
+        C.os.path.relpath = real
+    return [
+        ("display_rel returns the path itself when relpath raises ValueError",
+         "C:/tmp/x/README.md", direct),
+        ("check_plan completes under a cross-drive relpath instead of raising", True, completed),
+        ("display_rel is still the plain relative path when relpath works", "a",
+         C.display_rel(str(pathlib.Path(C.REPO_ROOT) / "a"))),
+    ]
+
+
+DISPLAY_FALLBACK = _display_fallback()
+
+
 def main() -> int:
     import sys
 
@@ -547,6 +582,7 @@ def main() -> int:
         ("KEYLIKE_RE gates the externalId comparison to literal-looking cells", KEYLIKE_GATING),
         ("a comma-joined Pass cell is reported, not parsed as a single larger number", COMMA_PASS),
         ("missing-object coverage is tracked per-pass, not just per-name", PER_PASS_COVERAGE),
+        ("a cross-drive relpath is a display fallback, never a crash", DISPLAY_FALLBACK),
     ]
     print("=" * 100)
     for group, cases in all_cases:
