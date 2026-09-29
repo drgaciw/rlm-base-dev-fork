@@ -1,0 +1,138 @@
+{
+  "description": "Allowed zizmor-finding counts per (rule, file, message).",
+  "entries": [
+    {
+      "rule": "adhoc-packages",
+      "file": ".github/workflows/flow-matrix.yml",
+      "message": "ad-hoc installation of packages",
+      "count": 1,
+      "reason": "SECURITY-ADJACENT: `npm install -g @salesforce/cli@${SF_CLI_VERSION}` in flow-matrix.yml. Pin source: SF_CLI_VERSION in config/tool-versions.env. Residual risk: transitive dependencies of @salesforce/cli are not locked. zizmor only accepts a committed package.json + lockfile installed with `npm ci`; prepare-rlm-org.yml has the same pattern, so all three workflows are fixed together by TP-14 shared locked sf CLI install."
+    },
+    {
+      "rule": "adhoc-packages",
+      "file": ".github/workflows/pr-checks.yml",
+      "message": "ad-hoc installation of packages",
+      "count": 1,
+      "reason": "SECURITY-ADJACENT: the `Install Salesforce Code Analyzer` step's `npm install --global @salesforce/cli@${sf_version}`. Pin source: SF_CLI_VERSION in config/tool-versions.env; the code-analyzer plugin is pinned separately by CODE_ANALYZER_VERSION in that step. Residual risk: transitive dependencies of @salesforce/cli are not locked. zizmor only accepts a committed package.json + lockfile installed with `npm ci`; prepare-rlm-org.yml has the same pattern, so all three workflows are fixed together by TP-14 shared locked sf CLI install."
+    },
+    {
+      "rule": "adhoc-packages",
+      "file": ".github/workflows/prepare-rlm-org.yml",
+      "message": "ad-hoc installation of packages",
+      "count": 1,
+      "reason": "SECURITY-ADJACENT: `npm install -g @salesforce/cli@${SF_CLI_VERSION}` is version-pinned from config/tool-versions.env but has no lockfile; TP-02/TP-04 own the file."
+    },
+    {
+      "rule": "anonymous-definition",
+      "file": ".github/workflows/check-cci-token-fix.yml",
+      "message": "workflow or action definition without a name",
+      "count": 1,
+      "reason": "Pedantic style: workflow/job has no `name:`. Baselined."
+    },
+    {
+      "rule": "anonymous-definition",
+      "file": ".github/workflows/claude-code-review.yml",
+      "message": "workflow or action definition without a name",
+      "count": 1,
+      "reason": "Pedantic style: workflow/job has no `name:`. Baselined."
+    },
+    {
+      "rule": "anonymous-definition",
+      "file": ".github/workflows/claude.yml",
+      "message": "workflow or action definition without a name",
+      "count": 1,
+      "reason": "Pedantic style: workflow/job has no `name:`. Baselined."
+    },
+    {
+      "rule": "anonymous-definition",
+      "file": ".github/workflows/docker-publish.yml",
+      "message": "workflow or action definition without a name",
+      "count": 1,
+      "reason": "Pedantic style: workflow/job has no `name:`. Baselined."
+    },
+    {
+      "rule": "anonymous-definition",
+      "file": ".github/workflows/prepare-rlm-org.yml",
+      "message": "workflow or action definition without a name",
+      "count": 1,
+      "reason": "Pedantic style: workflow/job has no `name:`. Baselined."
+    },
+    {
+      "rule": "excessive-permissions",
+      "file": ".github/workflows/claude-code-review.yml",
+      "message": "overly broad permissions",
+      "count": 1,
+      "reason": "SECURITY: job grants pull-requests/id-token write for claude-code-action (each scope commented in the file). Accepted as existing; not changed here."
+    },
+    {
+      "rule": "excessive-permissions",
+      "file": ".github/workflows/claude.yml",
+      "message": "overly broad permissions",
+      "count": 1,
+      "reason": "SECURITY: job grants contents/pull-requests/issues/id-token write for claude-code-action (each scope commented in the file). Accepted as existing; not changed here."
+    },
+    {
+      "rule": "excessive-permissions",
+      "file": ".github/workflows/docker-publish.yml",
+      "message": "overly broad permissions",
+      "count": 1,
+      "reason": "SECURITY: job grants `packages: write` to push the image to GHCR. Accepted as existing; not changed here."
+    },
+    {
+      "rule": "excessive-permissions",
+      "file": ".github/workflows/prepare-rlm-org.yml",
+      "message": "overly broad permissions",
+      "count": 1,
+      "reason": "SECURITY: workflow-level `pull-requests: write` (job-level scoping is TP-02/TP-04's file); not fixed here."
+    },
+    {
+      "rule": "superfluous-actions",
+      "file": ".github/workflows/agent-tooling-optimization.yml",
+      "message": "action functionality is already included by the runner",
+      "count": 1,
+      "reason": "Informational: peter-evans/create-pull-request could be `gh pr create`. Baselined."
+    },
+    {
+      "rule": "undocumented-permissions",
+      "file": ".github/workflows/agent-tooling-optimization.yml",
+      "message": "permissions without explanatory comments",
+      "count": 1,
+      "reason": "Pedantic style: permission scope has no explanatory comment. Baselined; add a comment when touching the file."
+    },
+    {
+      "rule": "undocumented-permissions",
+      "file": ".github/workflows/check-cci-token-fix.yml",
+      "message": "permissions without explanatory comments",
+      "count": 1,
+      "reason": "Pedantic style: permission scope has no explanatory comment. Baselined; add a comment when touching the file."
+    },
+    {
+      "rule": "undocumented-permissions",
+      "file": ".github/workflows/claude-code-review.yml",
+      "message": "permissions without explanatory comments",
+      "count": 1,
+      "reason": "Pedantic style: permission scope has no explanatory comment. Baselined; add a comment when touching the file."
+    },
+    {
+      "rule": "undocumented-permissions",
+      "file": ".github/workflows/docker-publish.yml",
+      "message": "permissions without explanatory comments",
+      "count": 1,
+      "reason": "Pedantic style: permission scope has no explanatory comment. Baselined; add a comment when touching the file."
+    },
+    {
+      "rule": "undocumented-permissions",
+      "file": ".github/workflows/pr-checks.yml",
+      "message": "permissions without explanatory comments",
+      "count": 1,
+      "reason": "Pedantic style: permission scope has no explanatory comment. Baselined; add a comment when touching the file."
+    },
+    {
+      "rule": "undocumented-permissions",
+      "file": ".github/workflows/prepare-rlm-org.yml",
+      "message": "permissions without explanatory comments",
+      "count": 1,
+      "reason": "Pedantic style: permission scope has no explanatory comment. Baselined; add a comment when touching the file."
+    }
+  ]
+}
