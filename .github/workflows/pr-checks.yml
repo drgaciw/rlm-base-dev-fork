@@ -307,6 +307,74 @@ jobs:
             echo "prettier_files<<PRETTIER_EOF"; echo "${prettier_files}"; echo "PRETTIER_EOF"
           } >> "$GITHUB_OUTPUT"
 
+      # Workflow self-tests (TP-11, docs/references/test-plan-2026-09.md §4.6). These are steps of
+      # this job rather than a new job on purpose: tests/test_pr_gate.py pins the set of check-run
+      # names this workflow publishes, and a new job would rename what a branch ruleset can match.
+      # Runs whenever a workflow, the zizmor config or baseline, or the baseline comparer changes;
+      # a PR that touches none of them skips all four steps. Procedure, version bumps and
+      # baseline upkeep: docs/guides/ci-runbook.md.
+      - name: Detect workflow changes
+        id: workflows
+        run: |
+          set -euo pipefail
+          if grep -qE '^(\.github/workflows/.+\.ya?ml|\.zizmor\.yml|\.github/zizmor-baseline\.json|scripts/lint/finding_baseline\.py)$' changed_files.txt; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Pinned, no `latest`, no `@main`: actionlint is a release tarball checked against the
+      # sha256 from that release's checksums.txt; zizmor and the shellcheck that actionlint shells
+      # out to are PyPI wheels at exact versions. shellcheck is pinned because ubuntu-latest ships
+      # its own, which would let the findings change with the runner image and not with a commit.
+      - name: Install actionlint, shellcheck and zizmor (pinned)
+        if: steps.workflows.outputs.changed == 'true'
+        env:
+          ACTIONLINT_VERSION: "1.7.12"
+          ACTIONLINT_LINUX_AMD64_SHA256: "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8"
+          SHELLCHECK_PY_VERSION: "0.11.0.1"
+          ZIZMOR_VERSION: "1.30.1"
+        run: |
+          set -euo pipefail
+          tarball="${RUNNER_TEMP}/actionlint.tar.gz"
+          curl -fsSL --retry 3 -o "${tarball}" \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          echo "${ACTIONLINT_LINUX_AMD64_SHA256}  ${tarball}" | sha256sum --check --strict -
+          mkdir -p "${RUNNER_TEMP}/bin"
+          tar -xzf "${tarball}" -C "${RUNNER_TEMP}/bin" actionlint
+          echo "${RUNNER_TEMP}/bin" >> "$GITHUB_PATH"
+          python -m pip install "zizmor==${ZIZMOR_VERSION}" "shellcheck-py==${SHELLCHECK_PY_VERSION}"
+
+      # shellcheck at warning severity: a warning or error in any workflow's `run:` fails the PR.
+      # The info/style findings it would also print (SC2086 unquoted expansion, SC2016 single
+      # quotes, SC2129 chained redirects) are deliberate in several scripts here and are not
+      # baselined file by file, so they are cut by severity rather than by regex or path.
+      - name: actionlint
+        if: steps.workflows.outputs.changed == 'true'
+        env:
+          SHELLCHECK_OPTS: --severity=warning
+        run: |
+          set -euo pipefail
+          actionlint -version
+          shellcheck --version
+          actionlint -color
+
+      # --offline: the audits that need the GitHub API (known-vulnerable actions, impostor
+      # commits) depend on live advisory data and the network, so they would make an unrelated PR
+      # red for a reason no commit caused. Findings that predate this step are counted per
+      # (rule, file, message) in .github/zizmor-baseline.json: a new finding of an already-listed rule
+      # raises a count and fails, a fixed one only warns that the baseline can shrink. No line
+      # numbers, so a parallel PR that shifts lines cannot make the baseline stale.
+      - name: zizmor
+        if: steps.workflows.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+          zizmor --version
+          zizmor --pedantic --offline --config .zizmor.yml --no-exit-codes --format json \
+            .github/workflows/ > "${RUNNER_TEMP}/zizmor.json"
+          python scripts/lint/finding_baseline.py --name zizmor-finding \
+            --baseline .github/zizmor-baseline.json --format zizmor "${RUNNER_TEMP}/zizmor.json"
+
       - name: ruff
         if: steps.diff.outputs.py_files != ''
         env:
