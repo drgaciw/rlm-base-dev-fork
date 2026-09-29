@@ -162,16 +162,99 @@ def test_write_keeps_reasons():
         check("what --write recorded then passes the comparison", proc.returncode == 0)
 
 
+def code_analyzer_violation(rule, path, line=3, message="msg", engine="pmd"):
+    """The subset of a Code Analyzer v5 `--output-file *.json` violation the adapter reads."""
+    return {"rule": rule, "engine": engine, "severity": 3, "tags": ["Security"], "message": message,
+            "primaryLocationIndex": 0, "locations": [{"file": path, "startLine": line, "startColumn": 5}]}
+
+
+def code_analyzer_doc(violations, run_dir="/home/runner/work/repo/repo/"):
+    return {"runDir": run_dir, "violationCounts": {}, "versions": {}, "violations": violations}
+
+
+def test_code_analyzer_adapter():
+    linux = code_analyzer_doc([
+        code_analyzer_violation("AvoidHardcodingId", "/home/runner/work/repo/repo/force-app/a.cls", line=7,
+                                message="Hardcoding Ids is bound to break (4:46-4:66) at 43:17 on line 12, column 3"),
+    ])
+    found = B.code_analyzer_findings(linux)
+    check("code-analyzer: rule is engine-qualified and the file is repo-relative with forward slashes",
+          [(r, f) for r, f, _, _ in found] == [("pmd:AvoidHardcodingId", "force-app/a.cls")])
+    check("code-analyzer: the message loses line/column text and where keeps file:line for humans",
+          found[0][2] == "Hardcoding Ids is bound to break on" and found[0][3] == "force-app/a.cls:7")
+
+    windows = code_analyzer_doc(
+        [code_analyzer_violation("AvoidHardcodingId", "C:\\Users\\dev\\repo\\force-app\\a.cls",
+                                 message="Hardcoding Ids is bound to break on "
+                                         "C:\\Users\\dev\\repo\\force-app\\b.cls and /tmp/x/y.cls")],
+        run_dir="C:\\Users\\dev\\repo\\")
+    wfound = B.code_analyzer_findings(windows)
+    check("code-analyzer: a Windows run yields the same file as a Linux run",
+          wfound[0][1] == found[0][1] == "force-app/a.cls")
+    check("code-analyzer: absolute paths in a message are removed, so the key is platform-independent",
+          "Users" not in wfound[0][2] and "/tmp" not in wfound[0][2] and "\\" not in wfound[0][2])
+
+    outside = code_analyzer_doc([code_analyzer_violation("R", "/elsewhere/z.cls")])
+    check("code-analyzer: a path outside runDir is kept, not mangled",
+          B.code_analyzer_findings(outside)[0][1] == "/elsewhere/z.cls")
+
+    for label, doc in (
+        ("an engine crash (UnexpectedEngineError) reports nothing, so it must not read as clean",
+         code_analyzer_doc([{"rule": "UnexpectedEngineError", "engine": "sfge", "message": "boom",
+                             "locations": [{"comment": "Undefined Code Location"}]}])),
+        ("a violation with no file", code_analyzer_doc([{"rule": "R", "engine": "pmd", "message": "m",
+                                                          "primaryLocationIndex": 0, "locations": []}])),
+        ("a document that is not a results document", {"not": "results"}),
+    ):
+        try:
+            B.code_analyzer_findings(doc)
+            raised = False
+        except ValueError:
+            raised = True
+        check(f"code-analyzer: {label} is a tool error", raised)
+
+
+def test_code_analyzer_cli():
+    root = "/home/runner/work/repo/repo/"
+    baseline = {"entries": [{"rule": "pmd:R", "file": "force-app/a.cls", "message": "m", "count": 1,
+                             "reason": "legacy"}]}
+    one = code_analyzer_doc([code_analyzer_violation("R", root + "force-app/a.cls", message="m")])
+    with tempfile.TemporaryDirectory() as tmp:
+        proc, _ = run_cli(tmp, one, baseline, fmt="code-analyzer")
+        check("CLI code-analyzer: a baselined finding exits 0", proc.returncode == 0)
+        two = code_analyzer_doc([code_analyzer_violation("R", root + "force-app/a.cls", line=n, message="m")
+                                 for n in (3, 9)])
+        proc, _ = run_cli(tmp, two, baseline, fmt="code-analyzer")
+        check("CLI code-analyzer: a second identical finding in the same file is a regression, located",
+              proc.returncode == 1 and "force-app/a.cls:3" in proc.stdout and "force-app/a.cls:9" in proc.stdout)
+        moved = code_analyzer_doc([code_analyzer_violation("R", root + "force-app/a.cls", line=400, message="m")])
+        proc, _ = run_cli(tmp, moved, baseline, fmt="code-analyzer")
+        check("CLI code-analyzer: a finding that only moved to another line is not new", proc.returncode == 0)
+        newfile = code_analyzer_doc([code_analyzer_violation("R", root + "force-app/b.cls", message="m")])
+        proc, _ = run_cli(tmp, newfile, baseline, fmt="code-analyzer")
+        check("CLI code-analyzer: the same rule and message in a new file is a regression",
+              proc.returncode == 1)
+        other = code_analyzer_doc([code_analyzer_violation("R", root + "force-app/a.cls", message="other")])
+        proc, _ = run_cli(tmp, other, baseline, fmt="code-analyzer")
+        check("CLI code-analyzer: a different message for the same rule and file is a regression",
+              proc.returncode == 1)
+        crash = code_analyzer_doc([{"rule": "UnexpectedEngineError", "engine": "sfge", "message": "boom"}])
+        proc, _ = run_cli(tmp, crash, baseline, fmt="code-analyzer")
+        check("CLI code-analyzer: an engine crash exits 2, never 0", proc.returncode == 2)
+
+
 def test_registry():
-    check("FORMATS registers the pairs and zizmor parsers; a new linter adds one entry",
-          set(B.FORMATS) == {"pairs", "zizmor"} and all(callable(p) for p in B.FORMATS.values()))
+    check("FORMATS registers the pairs, zizmor and code-analyzer parsers; a new linter adds one entry",
+          set(B.FORMATS) == {"pairs", "zizmor", "code-analyzer"} and all(callable(p) for p in B.FORMATS.values()))
 
 
 def main():
     test_compare()
     test_pairs_adapter()
     test_zizmor_adapter()
+    test_code_analyzer_adapter()
     test_cli()
+    test_code_analyzer_cli()
     test_write_keeps_reasons()
     test_registry()
 

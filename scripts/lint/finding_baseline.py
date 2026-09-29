@@ -22,11 +22,14 @@ A finding is `(rule, file, message, where)`:
 
 A parser is `parser(json_document) -> [(rule, file, message, where)]`, takes only the parsed
 document (it reads anything else it needs, such as a run directory to relativize absolute paths,
-from the document itself) and is registered in `FORMATS`. Two are built in (`--format`):
+from the document itself) and is registered in `FORMATS`. Three are built in (`--format`):
 
   pairs    JSON `[["rule", "path"(, "message"(, "where"))], ...]`.
   zizmor   the output of `zizmor --format json`; findings suppressed by an inline comment are
            skipped, message is zizmor's rule description, where is `path:line`.
+  code-analyzer  the output of `sf code-analyzer run --output-file x.json` (TP-06): rule is
+           `engine:rule`, file is made repo-relative against the document's `runDir`; an engine
+           crash is a tool error.
 
 Baseline file (`--baseline`), sorted, one entry per triple; `message` is omitted when empty and
 `reason` is free text for humans:
@@ -45,6 +48,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -98,7 +102,56 @@ def zizmor_findings(data) -> list[tuple[str, str, str, str]]:
     return out
 
 
-FORMATS = {"pairs": pairs_findings, "zizmor": zizmor_findings}
+# Absolute paths and source positions a Code Analyzer message may embed. None of them belongs in a
+# finding's key: they differ between a Windows laptop and the Linux runner, and positions move
+# whenever an unrelated line is added above the finding.
+_ABS_PATH = re.compile(r"(?:[A-Za-z]:[\\/]|/)(?:[^\s'\"()<>,;:]+[\\/])+[^\s'\"()<>,;:]*")
+_POSITION = re.compile(
+    r"\(\s*\d+:\d+\s*-\s*\d+:\d+\s*\)|\bat \d+:\d+\b|\bline \d+(?:, col(?:umn)? \d+)?\b", re.IGNORECASE)
+
+
+def _relative_to_run_dir(path: str, run_dir: str) -> str:
+    """`path` repo-relative with forward slashes; Code Analyzer reports absolute paths under `runDir`."""
+    path, root = normalise_path(path), normalise_path(run_dir).rstrip("/")
+    if root and path.lower().startswith(root.lower() + "/"):
+        path = path[len(root) + 1:]
+    return path
+
+
+def code_analyzer_findings(data) -> list[tuple[str, str, str, str]]:
+    """`sf code-analyzer run --output-file *.json` -> [(engine:rule, file, message, where)] (TP-06).
+
+    The rule is engine-qualified (`pmd:AvoidHardcodingId`) and the file made repo-relative against the
+    document's own `runDir`. The message has absolute paths and line/column text removed; where is
+    `file:line`, display only.
+
+    A run in which an engine crashed reports `UnexpectedEngineError` and *no findings for whatever
+    that engine was meant to check*, which would read as a clean run. That, and a violation with no
+    file, are tool errors (exit 2), never a pass.
+    """
+    if not isinstance(data, dict) or not isinstance(data.get("violations"), list):
+        raise ValueError("code-analyzer input must be a results document with a 'violations' list")
+    run_dir = str(data.get("runDir") or "")
+    out = []
+    for violation in data["violations"]:
+        rule, engine = str(violation.get("rule", "")), str(violation.get("engine", ""))
+        message = _POSITION.sub("", _ABS_PATH.sub("<path>", str(violation.get("message", ""))))
+        message = " ".join(message.split())
+        if rule == "UnexpectedEngineError":
+            raise ValueError(f"engine '{engine}' crashed: {message[:200]}")
+        locations = violation.get("locations") or []
+        index = violation.get("primaryLocationIndex", 0)
+        location = locations[index] if isinstance(index, int) and 0 <= index < len(locations) else {}
+        if not location.get("file"):
+            raise ValueError(f"violation {engine}:{rule} has no file location")
+        file = _relative_to_run_dir(str(location["file"]), run_dir)
+        line = location.get("startLine")
+        out.append((f"{engine}:{rule}" if engine else rule, file, message,
+                    f"{file}:{line}" if line else file))
+    return out
+
+
+FORMATS = {"pairs": pairs_findings, "zizmor": zizmor_findings, "code-analyzer": code_analyzer_findings}
 
 
 def load_baseline(path: Path) -> tuple[Counter, dict]:
