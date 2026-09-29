@@ -11,6 +11,16 @@ on:
         description: "Scratch org config name from orgs/ (e.g. dev, ent-sb0)"
         required: false
         default: "dev"
+      run_verify:
+        description: "Run the nightly verification stages (agent permission sets, Apex tests, QB idempotency, Robot setup suites) after the build"
+        type: boolean
+        required: false
+        default: true
+  # Nightly build + verify on the default branch (TP-04, docs/references/test-plan-2026-09.md
+  # section 4.8). Schedules only fire from the default branch, and the devhub environment
+  # must allow that as a deployment source (Settings -> Environments -> devhub).
+  schedule:
+    - cron: "0 3 * * 1-5"
   # Label-triggered CI for same-repo PR branches: apply the "ci:prepare-org"
   # label to a PR to kick off a full prepare_rlm_org build against the PR's
   # merge ref. The label is auto-removed at the start of the run, so
@@ -24,12 +34,13 @@ permissions:
   pull-requests: write
 
 # Serialize runs that target the same scratch-org alias: per-PR for
-# label-triggered runs, per-ref for workflow_dispatch. Prevents two jobs from
+# label-triggered runs, per-ref for workflow_dispatch, one shared group for the
+# nightly schedule. Prevents two jobs from
 # concurrently creating/deleting the same org alias (flaky failures / leaked
 # scratch orgs). cancel-in-progress is false so an in-flight build finishes
 # (and tears down its org) before the next queued run starts.
 concurrency:
-  group: prepare-rlm-org-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.event_name == 'schedule' && 'prepare-rlm-org-nightly' || format('prepare-rlm-org-{0}', github.event.pull_request.number || github.ref) }}
   cancel-in-progress: false
 
 env:
@@ -37,10 +48,11 @@ env:
 
 jobs:
   prepare-rlm-org:
-    # Run on manual dispatch, or when the trigger label is applied to a
-    # same-repo PR.
+    # Run on manual dispatch, on the weekday nightly schedule, or when the
+    # trigger label is applied to a same-repo PR.
     if: >-
       github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'schedule' ||
       (github.event_name == 'pull_request' &&
        github.event.label.name == 'ci:prepare-org' &&
        github.event.pull_request.head.repo.full_name == github.repository)
@@ -52,9 +64,10 @@ jobs:
     # configured once in the repo's Settings → Environments → devhub.
     environment: devhub
     env:
-      # Dispatch uses the provided inputs; label-triggered PR runs derive a
-      # per-PR alias and default to the `dev` scratch config.
-      ORG_ALIAS: ${{ inputs.org_alias || format('pr{0}-ci', github.event.pull_request.number) }}
+      # Dispatch uses the provided inputs; the nightly uses a fixed alias;
+      # label-triggered PR runs derive a per-PR alias and default to the `dev`
+      # scratch config.
+      ORG_ALIAS: ${{ inputs.org_alias || (github.event_name == 'schedule' && 'ci-nightly') || format('pr{0}-ci', github.event.pull_request.number) }}
       SCRATCH_CONFIG: ${{ inputs.scratch_config || 'dev' }}
       # The npm-installed CLI writes "Warning: @salesforce/cli update available" to
       # *stderr* on every invocation. That is not merely noise: a task that reports a
@@ -234,6 +247,139 @@ jobs:
           SF_TEMP_SHOW_SECRETS: "true" # CCI reads the scratch token for REST throughout the flow
         run: |
           cci flow run prepare_rlm_org --org "$ORG_ALIAS"
+
+      # ---- Verify stage (TP-04): nightly + label-triggered + dispatch (run_verify) ----
+      # Each stage is its own step with continue-on-error so one failing stage does
+      # not hide the others; the "Verification summary" step fails the job if any
+      # stage failed. The stages are the CCI flows defined in cumulusci.yml and are
+      # chained by `ci_nightly_verify` for a single local command. The org is
+      # deleted by the always() step below regardless of the outcome.
+      - name: Verify agent permission-set grants
+        id: verify_agent_permsets
+        if: github.event_name != 'workflow_dispatch' || inputs.run_verify
+        continue-on-error: true
+        env:
+          SF_TEMP_SHOW_SECRETS: "true" # CCI reads the scratch token for the Apex REST call
+        run: |
+          cci flow run ci_verify_agent_permsets --org "$ORG_ALIAS"
+
+      - name: Verify Apex tests
+        id: verify_apex
+        if: github.event_name != 'workflow_dispatch' || inputs.run_verify
+        continue-on-error: true
+        env:
+          SF_TEMP_SHOW_SECRETS: "true"
+        run: |
+          mkdir -p test-results/apex
+          cci flow run ci_verify_apex --org "$ORG_ALIAS"
+
+      - name: Verify QB data idempotency
+        id: verify_idempotency
+        if: github.event_name != 'workflow_dispatch' || inputs.run_verify
+        continue-on-error: true
+        env:
+          SF_TEMP_SHOW_SECRETS: "true"
+        run: |
+          cci flow run run_qb_idempotency_tests --org "$ORG_ALIAS"
+          # Wave-1 SFDMU redaction, integration level: no access token may have been
+          # written into any dataset file by the loads above.
+          if grep -rIl "accessToken" datasets/ 2>/dev/null; then
+            echo "::error::accessToken found in datasets/ after the idempotency run"
+            exit 1
+          fi
+
+      - name: Verify Robot setup suites
+        id: verify_robot
+        if: github.event_name != 'workflow_dispatch' || inputs.run_verify
+        continue-on-error: true
+        env:
+          SF_TEMP_SHOW_SECRETS: "true" # the suites open an authenticated browser session via sf org open
+        run: |
+          # prepare_rlm_org ran the same wrappers into robot/rlm-base/results; the verify
+          # flow writes one directory per suite under results/verify/, cleared here so
+          # nothing stale can be mistaken for this stage's output.
+          rm -rf robot/rlm-base/results/verify
+          cci flow run ci_verify_robot_setup --org "$ORG_ALIAS"
+
+      - name: Upload verification artifacts
+        if: always() && (github.event_name != 'workflow_dispatch' || inputs.run_verify)
+        uses: actions/upload-artifact@v7
+        with:
+          name: verify-${{ env.ORG_ALIAS }}-${{ github.run_id }}
+          path: |
+            test-results/
+            robot/rlm-base/results/verify/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Verification summary
+        if: always() && (github.event_name != 'workflow_dispatch' || inputs.run_verify)
+        env:
+          OUTCOME_AGENT_PERMSETS: ${{ steps.verify_agent_permsets.outcome }}
+          OUTCOME_APEX: ${{ steps.verify_apex.outcome }}
+          OUTCOME_IDEMPOTENCY: ${{ steps.verify_idempotency.outcome }}
+          OUTCOME_ROBOT: ${{ steps.verify_robot.outcome }}
+        run: |
+          python - <<'PY'
+          import glob
+          import os
+          import xml.etree.ElementTree as ET
+
+
+          def junit_counts(path):
+              total = failed = skipped = 0
+              for case in ET.parse(path).getroot().iter("testcase"):
+                  total += 1
+                  if case.find("failure") is not None or case.find("error") is not None:
+                      failed += 1
+                  elif case.find("skipped") is not None:
+                      skipped += 1
+              return total, failed, skipped
+
+
+          def robot_counts(path):
+              stat = ET.parse(path).getroot().find("./statistics/total/stat")
+              if stat is None:
+                  return 0, 0, 0
+              p, f, s = (int(stat.get(k, 0)) for k in ("pass", "fail", "skip"))
+              return p + f + s, f, s
+
+
+          lines = [
+              "## Nightly verification",
+              "",
+              "| Stage | Outcome | Tests | Failed | Skipped |",
+              "|---|---|---|---|---|",
+          ]
+          stages = [
+              ("Agent permission-set grants", "OUTCOME_AGENT_PERMSETS", None),
+              ("Apex tests", "OUTCOME_APEX", ("test-results/apex/*.xml", junit_counts)),
+              ("QB data idempotency", "OUTCOME_IDEMPOTENCY", None),
+              ("Robot setup suites", "OUTCOME_ROBOT", ("robot/rlm-base/results/verify/**/output.xml", robot_counts)),
+          ]
+          failed_stages = []
+          for label, env, counter in stages:
+              outcome = os.environ.get(env, "") or "skipped"
+              if outcome != "success":
+                  failed_stages.append(label)
+              counts = ("-", "-", "-")
+              if counter:
+                  pattern, fn = counter
+                  files = glob.glob(pattern, recursive=True)
+                  if files:
+                      total = failed = skipped = 0
+                      for f in files:
+                          t, fl, sk = fn(f)
+                          total, failed, skipped = total + t, failed + fl, skipped + sk
+                      counts = (total, failed, skipped)
+              lines.append(f"| {label} | {outcome} | {counts[0]} | {counts[1]} | {counts[2]} |")
+          lines += ["", "Flaky (pass-after-rerun) reporting arrives with TP-08; these stages do not retry."]
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as fh:
+              fh.write("\n".join(lines) + "\n")
+          if failed_stages:
+              print("::error::Verification stage(s) not successful: " + ", ".join(failed_stages))
+              raise SystemExit(1)
+          PY
 
       - name: Delete scratch org
         if: always()
