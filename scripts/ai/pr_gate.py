@@ -403,7 +403,7 @@ CHECKS = [
                   "AGENTS.md", "CLAUDE.md", "README.md", ".gitnexusrc",
                   # tests/test_workflow_lint.py (TP-11) reads the Lint job's pins, the zizmor
                   # config and baseline, and the runbook that documents them.
-                  ".github/workflows/pr-checks.yml", ".github/zizmor-baseline.json",
+                  ".github/workflows/", ".github/zizmor-baseline.json",
                   ".zizmor.yml", "docs/guides/ci-runbook.md"],
         deps=[], gating=True,
     ),
