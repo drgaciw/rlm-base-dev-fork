@@ -460,6 +460,7 @@ jobs:
           import glob
           import json
           import os
+          import re
 
           KEYS = ("pass", "flaky", "fail", "skip")
 
@@ -511,6 +512,24 @@ jobs:
               lines += ["", f"Quarantine (non-blocking, step {q}): pass {qt['pass']}, flaky {qt['flaky']}, fail {qt['fail']}, skip {qt['skip']}."]
           else:
               lines += ["", f"Quarantine (non-blocking): no quarantined tests ran (step {q})."]
+
+          # Best-effort waits (E2ECommon.robot `Wait Until Page Is Settled` and friends) log a WARN
+          # `SETTLE_TIMEOUT caller=<keyword> waited=<t>` instead of failing. Count them from the
+          # per-attempt outputs (first.xml / rerun.xml; the merged output.xml would double count).
+          settle_re = re.compile(r'<msg[^>]*level="WARN"[^>]*>SETTLE_TIMEOUT caller=([^<]+?) waited=')
+          settle = {"first attempt": {}, "rerun": {}}
+          for label, name in (("first attempt", "first.xml"), ("rerun", "rerun.xml")):
+              for path in glob.glob("robot/rlm-base/results/e2e/**/" + name, recursive=True):
+                  with open(path, encoding="utf-8") as fh:
+                      # each WARN is written twice: in the test body and in <errors>; count the latter
+                      for caller in settle_re.findall(fh.read().partition("<errors>")[2]):
+                          settle[label][caller] = settle[label].get(caller, 0) + 1
+          lines += ["", "SETTLE_TIMEOUT (best-effort waits that timed out; a strict wait or assertion follows each):"]
+          for label, callers in settle.items():
+              lines.append(f"- {label}: {sum(callers.values())}")
+              lines += [f"  - `{c}` x{n}" for c, n in sorted(callers.items())]
+          if settle["first attempt"]:
+              print(f"::warning::{sum(settle['first attempt'].values())} e2e best-effort wait(s) timed out on the first attempt (SETTLE_TIMEOUT)")
 
           outcome = os.environ.get("OUTCOME_E2E", "") or "skipped"
           lines += ["", f"e2e step outcome: {outcome}."]
