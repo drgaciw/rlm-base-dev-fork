@@ -9,6 +9,7 @@ convention). Run from the repo root with base Python:
 Exits 0 when all checks pass, 1 otherwise.
 """
 import json
+import os
 import re
 import subprocess
 import sys
@@ -138,6 +139,36 @@ def test_cli():
         proc, _ = run_cli(tmp, [["r", "a.yml", "changed"]], keyed)
         check("CLI: a changed message is a regression and names the message",
               proc.returncode == 1 and "(changed)" in proc.stdout)
+
+
+def test_bool_count_rejected():
+    with tempfile.TemporaryDirectory() as tmp:
+        proc, _ = run_cli(tmp, [], {"entries": [{"rule": "r", "file": "a.yml", "count": True}]})
+        check("CLI: a boolean count is rejected, though bool is an int subclass", proc.returncode == 2)
+
+
+def test_stdin_is_utf8_whatever_the_locale():
+    """`-` reads stdin as bytes decoded explicitly; a locale codec would garble or crash here."""
+    message = "verboten → 日本語"  # outside cp1252, so a console decode would fail
+    findings = json.dumps([["r", "a.yml", message]], ensure_ascii=False).encode("utf-8")
+    # PYTHONIOENCODING=cp1252 makes the child's sys.stdin a cp1252 codec on every OS, so a read
+    # through it mis-decodes UTF-8 deterministically (a UTF-8 CI locale would otherwise hide it).
+    env = {k: v for k, v in os.environ.items() if k not in ("PYTHONUTF8", "PYTHONIOENCODING")}
+    env["PYTHONIOENCODING"] = "cp1252"
+    with tempfile.TemporaryDirectory() as tmp:
+        baseline = Path(tmp) / "baseline.json"
+        baseline.write_text(json.dumps(
+            {"entries": [{"rule": "r", "file": "a.yml", "message": message, "count": 1}]},
+            ensure_ascii=False), encoding="utf-8")
+        cmd = [sys.executable, str(SCRIPT), "--baseline", str(baseline), "-"]
+        proc = subprocess.run(cmd, input=findings, capture_output=True, env=env, check=False)
+        check("CLI: non-ASCII findings piped on stdin match a non-ASCII baseline (exit 0)",
+              proc.returncode == 0)
+        baseline.write_text(json.dumps({"entries": []}), encoding="utf-8")
+        proc = subprocess.run(cmd, input=findings, capture_output=True, env=env, check=False)
+        check("CLI: a non-ASCII regression exits 1 and prints the message as UTF-8, never a crash",
+              proc.returncode == 1 and message in proc.stdout.decode("utf-8")
+              and b"Traceback" not in proc.stderr)
 
 
 def test_write_keeps_reasons():
@@ -286,6 +317,8 @@ def main():
     test_zizmor_adapter()
     test_code_analyzer_adapter()
     test_cli()
+    test_bool_count_rejected()
+    test_stdin_is_utf8_whatever_the_locale()
     test_code_analyzer_cli()
     test_write_keeps_reasons()
     test_apex_gate_wiring()

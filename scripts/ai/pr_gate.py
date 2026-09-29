@@ -548,6 +548,29 @@ CHECKS = [
         deps=["requests"], gating=True,
     ),
     dict(
+        name="rest_contracts",
+        cmd=["python", "tests/test_rest_contracts.py"],
+        # TP-03 (test plan 4.1 rule 1): runs the REAL `_make_request`/`rlm_rest_base.request`
+        # wrappers with `requests.Session.request` patched underneath and asserts method, URL,
+        # headers and exactly one timeout, plus an AST sweep that every requests call in tasks/
+        # carries `timeout=`. The suite loads task modules by file path and scans every module in
+        # `tasks/`, so the directory is the trigger, not a list of the modules it happens to
+        # name. Passes with and without CumulusCI; needs only `requests`.
+        triggers=["tasks/", "tests/test_rest_contracts.py"],
+        deps=["requests"], gating=True,
+    ),
+    dict(
+        name="subprocess_contracts",
+        cmd=["python", "tests/test_subprocess_contracts.py"],
+        # TP-03 (test plan 4.1 rule 2): every `sf` subprocess site in tasks/rlm_sfdmu.py resolves
+        # the CLI through shutil.which (sf.cmd on Windows), and the modules that still pass a bare
+        # "sf" are an AST-derived KNOWN_GAPS allowlist that fails on a stale or a new entry (TP-13
+        # empties it). It parses all of tasks/, hence the directory trigger; `scripts/
+        # sfdmu_export.py` is imported by tasks/rlm_sfdmu.py, which the suite executes.
+        triggers=["tasks/", "scripts/sfdmu_export.py", "tests/test_subprocess_contracts.py"],
+        deps=["requests"], gating=True,
+    ),
+    dict(
         name="expression_set_schema_parity",
         cmd=["python", "tests/test_expression_set_schema_parity.py"],
         # The canonical (tasks/expression_set_schema.py) and vendored

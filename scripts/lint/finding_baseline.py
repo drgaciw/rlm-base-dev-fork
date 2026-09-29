@@ -53,8 +53,6 @@ import sys
 from collections import Counter, defaultdict
 from pathlib import Path
 
-Key = tuple  # (rule, file, message)
-
 
 def normalise_path(path: str) -> str:
     """Repo-relative, forward slashes, so a Windows and a Linux run agree."""
@@ -163,9 +161,10 @@ def load_baseline(path: Path) -> tuple[Counter, dict]:
         key = (entry["rule"], normalise_path(entry["file"]), entry.get("message", ""))
         if key in allowed:
             raise ValueError(f"baseline lists {key} twice")
-        if not isinstance(entry["count"], int) or entry["count"] < 1:
+        count = entry["count"]
+        if isinstance(count, bool) or not isinstance(count, int) or count < 1:
             raise ValueError(f"baseline count for {key} must be an integer >= 1")
-        allowed[key] = entry["count"]
+        allowed[key] = count
         reasons[key] = entry.get("reason", "")
     return allowed, reasons
 
@@ -215,9 +214,16 @@ def main(argv=None) -> int:
                         help="rewrite the baseline from the findings (keeps existing reasons)")
     parser.add_argument("--name", default="finding", help="what the findings are, for messages")
     args = parser.parse_args(argv)
+    # Messages are arbitrary text: keep a non-ASCII one from crashing a cp1252 console.
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)  # absent on a replaced/captured stream
+        if reconfigure is not None:
+            reconfigure(encoding="utf-8", errors="replace")
 
     try:
-        raw = sys.stdin.read() if args.input == "-" else Path(args.input).read_text(encoding="utf-8")
+        # Bytes decoded explicitly: sys.stdin's own encoding is the console/locale one on Windows.
+        raw = (sys.stdin.buffer.read().decode("utf-8") if args.input == "-"
+               else Path(args.input).read_text(encoding="utf-8"))
         findings = FORMATS[args.format](json.loads(raw))
         found: Counter = Counter((rule, file, message) for rule, file, message, _ in findings)
         if args.write:

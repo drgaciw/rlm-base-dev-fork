@@ -13,13 +13,13 @@ Boolean flags that gate task/flow execution via `when:` clauses.
 
 | Flag | Default | Used in `when:` clauses |
 |------|---------|------------------------|
-| `agents` | `True` | 10 flow step(s) |
-| `analytics` | `True` | 2 flow step(s) |
+| `agents` | `True` | 11 flow step(s) |
+| `analytics` | `True` | 3 flow step(s) |
 | `approvals` | `True` | 5 flow step(s) |
 | `billing` | `True` | 20 flow step(s) |
 | `billing_portal` | `False` | 5 flow step(s) |
 | `billing_portal_deploy` | `True` | 3 flow step(s) |
-| `billing_ui` | `True` | 4 flow step(s) |
+| `billing_ui` | `True` | 5 flow step(s) |
 | `breconfig` | `False` | 2 flow step(s) |
 | `calmdelete` | `True` | 1 flow step(s) |
 | `clm` | `True` | 4 flow step(s) |
@@ -27,8 +27,8 @@ Boolean flags that gate task/flow execution via `when:` clauses.
 | `collections` | `True` | 4 flow step(s) |
 | `commerce` | `False` | 2 flow step(s) |
 | `constraints` | `True` | 4 flow step(s) |
-| `constraints_data` | `True` | 8 flow step(s) |
-| `docgen` | `True` | 10 flow step(s) |
+| `constraints_data` | `True` | 9 flow step(s) |
+| `docgen` | `True` | 11 flow step(s) |
 | `dro` | `True` | 7 flow step(s) |
 | `einstein` | `True` | 3 flow step(s) |
 | `guidedselling` | `True` | 5 flow step(s) |
@@ -43,17 +43,17 @@ Boolean flags that gate task/flow execution via `when:` clauses.
 | `procedure_plan_definition_version_active` | `False` | — |
 | `procedureplans` | `True` | 6 flow step(s) |
 | `q3` | `False` | 13 flow step(s) |
-| `qb` | `True` | 40 flow step(s) |
+| `qb` | `True` | 41 flow step(s) |
 | `qbrix` | `False` | — |
-| `quantumbit` | `True` | 18 flow step(s) |
+| `quantumbit` | `True` | 20 flow step(s) |
 | `rates` | `True` | 6 flow step(s) |
 | `rating` | `True` | 15 flow step(s) |
 | `refresh` | `False` | 13 flow step(s) |
 | `sample_data` | `True` | 1 flow step(s) |
 | `tax` | `True` | 8 flow step(s) |
 | `trial` | `False` | — |
-| `tso` | `False` | 17 flow step(s) |
-| `ux` | `True` | 2 flow step(s) |
+| `tso` | `False` | 20 flow step(s) |
+| `ux` | `True` | 3 flow step(s) |
 
 ---
 
@@ -71,11 +71,13 @@ Boolean flags that gate task/flow execution via `when:` clauses.
 - `prepare_agents` step 8 → `activate_agents`
 - `prepare_agents` step 9 → `deploy_agent_permission_sets`
 - `prepare_agents` step 10 → `assign_permission_sets`
+- `ci_verify_agent_permsets` step 1 → `verify_agent_permset_grants`
 
 ### `analytics` (default: `True`)
 
 - `assign_feature_psls` step 3 → `assign_permission_set_licenses`
 - `prepare_analytics` step 1 → `enable_analytics_replication`
+- `ci_verify_robot_setup` step 8 → `enable_analytics_replication`
 
 ### `approvals` (default: `True`)
 
@@ -128,6 +130,7 @@ Boolean flags that gate task/flow execution via `when:` clauses.
 - `prepare_billing` step 11 → `deploy_post_billing_ui`
 - `prepare_billing` step 12 → `assign_permission_sets`
 - `prepare_billing` step 13 → `apply_context_billing_order`
+- `ci_verify_robot_setup` step 2 → `enable_timeline`
 
 ### `breconfig` (default: `False`)
 
@@ -178,6 +181,7 @@ Boolean flags that gate task/flow execution via `when:` clauses.
 - `prepare_constraints` step 10 → `import_cml`
 - `prepare_constraints` step 11 → `manage_expression_sets`
 - `prepare_constraints` step 12 → `manage_expression_sets`
+- `ci_verify_robot_setup` step 3 → `enable_constraints_settings`
 
 ### `docgen` (default: `True`)
 
@@ -191,6 +195,7 @@ Boolean flags that gate task/flow execution via `when:` clauses.
 - `prepare_docgen` step 8 → `fix_document_template_binaries`
 - `prepare_docgen` step 9 → `apply_context_docgen`
 - `prepare_docgen` step 10 → `assign_permission_sets`
+- `ci_verify_robot_setup` step 1 → `enable_document_builder_toggle`
 
 ### `dro` (default: `True`)
 
@@ -371,6 +376,7 @@ Boolean flags that gate task/flow execution via `when:` clauses.
 - `run_qb_idempotency_tests` step 12 → `test_qb_prm_idempotency`
 - `run_qb_idempotency_tests` step 13 → `test_qb_approvals_idempotency`
 - `run_qb_idempotency_tests` step 14 → `test_qb_prm_pricing_idempotency`
+- `ci_verify_robot_setup` step 7 → `configure_product_discovery_settings`
 
 ### `quantumbit` (default: `True`)
 
@@ -392,6 +398,8 @@ Boolean flags that gate task/flow execution via `when:` clauses.
 - `prepare_personas` step 8 → `assign_permission_sets`
 - `prepare_personas` step 9 → `assign_permission_sets`
 - `prepare_personas` step 10 → `assign_permission_sets`
+- `ci_verify_robot_setup` step 4 → `configure_revenue_settings`
+- `ci_verify_robot_setup` step 5 → `configure_revenue_settings`
 
 ### `rates` (default: `True`)
 
@@ -470,11 +478,15 @@ Boolean flags that gate task/flow execution via `when:` clauses.
 - `prepare_revenue_settings` step 2 → `configure_revenue_settings`
 - `prepare_personas` step 8 → `assign_permission_sets`
 - `prepare_personas` step 9 → `assign_permission_sets`
+- `ci_verify_robot_setup` step 2 → `enable_timeline`
+- `ci_verify_robot_setup` step 4 → `configure_revenue_settings`
+- `ci_verify_robot_setup` step 5 → `configure_revenue_settings`
 
 ### `ux` (default: `True`)
 
 - `prepare_ux` step 1 → `assemble_and_deploy_ux`
 - `prepare_ux` step 2 → `reorder_app_launcher`
+- `ci_verify_robot_setup` step 9 → `reorder_app_launcher`
 
 ### `org_config.scratch` (runtime)
 
