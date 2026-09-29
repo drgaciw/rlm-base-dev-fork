@@ -232,6 +232,10 @@ jobs:
         env:
           SF_TEMP_SHOW_SECRETS: "true" # the suites open an authenticated browser session via sf org open
         run: |
+          # prepare_rlm_org ran the same wrappers into robot/rlm-base/results; the verify
+          # flow writes one directory per suite under results/verify/, cleared here so
+          # nothing stale can be mistaken for this stage's output.
+          rm -rf robot/rlm-base/results/verify
           cci flow run ci_verify_robot_setup --org "$ORG_ALIAS"
 
       - name: Upload verification artifacts
@@ -241,7 +245,7 @@ jobs:
           name: verify-${{ env.ORG_ALIAS }}-${{ github.run_id }}
           path: |
             test-results/
-            robot/rlm-base/results/
+            robot/rlm-base/results/verify/
           if-no-files-found: warn
           retention-days: 14
 
@@ -288,7 +292,7 @@ jobs:
               ("Agent permission-set grants", "OUTCOME_AGENT_PERMSETS", None),
               ("Apex tests", "OUTCOME_APEX", ("test-results/apex/*.xml", junit_counts)),
               ("QB data idempotency", "OUTCOME_IDEMPOTENCY", None),
-              ("Robot setup suites", "OUTCOME_ROBOT", ("robot/rlm-base/results/**/output.xml", robot_counts)),
+              ("Robot setup suites", "OUTCOME_ROBOT", ("robot/rlm-base/results/verify/**/output.xml", robot_counts)),
           ]
           failed_stages = []
           for label, env, counter in stages:

@@ -71,21 +71,30 @@ Run all QB data idempotency tests (load twice, assert no new records). Use --org
 
 ### `ci_verify_robot_setup`
 
-Nightly stage - re-run the Robot setup-automation suites (tests/setup/*) headless through their existing per-suite wrapper tasks, which pass the org username so the browser session is authenticated. Steps and when: guards mirror where prepare_rlm_org runs each wrapper. The suites are idempotent by contract, so a re-run on a built org is a valid check. Behavioral evidence requires a live org (robot --dryrun is not).
+Nightly stage - re-run the Robot setup-automation suites (tests/setup/*) headless through their existing per-suite wrapper tasks, which pass the org username so the browser session is authenticated. Steps and when: guards mirror where prepare_rlm_org runs each wrapper. The suites are idempotent by contract, so a re-run on a built org is a valid check. Each step writes to its own robot/rlm-base/results/verify/<task> directory so the nightly summary and artifacts reflect only this stage, never the build-time results prepare_rlm_org left in robot/rlm-base/results. Behavioral evidence requires a live org (robot --dryrun is not).
 
 **Steps:**
 
 1. **task** `enable_document_builder_toggle`  `when: project_config.project__custom__docgen`
+   - `outputdir`: `robot/rlm-base/results/verify/enable_document_builder_toggle`
 2. **task** `enable_timeline`  `when: project_config.project__custom__billing_ui and not project_config.project__custom__tso`
+   - `outputdir`: `robot/rlm-base/results/verify/enable_timeline`
 3. **task** `enable_constraints_settings`  `when: project_config.project__custom__constraints_data`
+   - `outputdir`: `robot/rlm-base/results/verify/enable_constraints_settings`
 4. **task** `configure_revenue_settings`  `when: not (project_config.project__custom__quantumbit or project_config.project__custom__tso)`
+   - `outputdir`: `robot/rlm-base/results/verify/configure_revenue_settings`
 5. **task** `configure_revenue_settings`  `when: project_config.project__custom__quantumbit or project_config.project__custom__tso`
+   - `outputdir`: `robot/rlm-base/results/verify/configure_revenue_settings`
    - `create_contracts_flow`: `RLM_CreateContractFromQuote`
    - `manage_assets_flow`: `RLM_ARC_Assets`
 6. **task** `configure_core_pricing_setup`
+   - `outputdir`: `robot/rlm-base/results/verify/configure_core_pricing_setup`
 7. **task** `configure_product_discovery_settings`  `when: project_config.project__custom__qb`
+   - `outputdir`: `robot/rlm-base/results/verify/configure_product_discovery_settings`
 8. **task** `enable_analytics_replication`  `when: project_config.project__custom__analytics`
+   - `outputdir`: `robot/rlm-base/results/verify/enable_analytics_replication`
 9. **task** `reorder_app_launcher`  `when: project_config.project__custom__ux`
+   - `outputdir`: `robot/rlm-base/results/verify/reorder_app_launcher`
 
 ---
 
