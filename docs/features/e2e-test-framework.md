@@ -148,6 +148,39 @@ Results are written to `robot/rlm-base/results/e2e_<YYYYMMDD_HHMMSS>/`:
 - `output.xml` — machine-readable results
 - `e2e_*.png` — screenshots captured at each step
 
+### Nightly run, rerun and quarantine
+
+The nightly org job (`.github/workflows/prepare-rlm-org.yml`, "Run Robot e2e suites") runs
+`reset_account`, `quote_to_order`, `setup_quote` and `order_from_quote` headless after the
+setup-suite verification, with `reset_account` before each behavioral suite. Each task runs
+with `-o rerun_failed true`, and its results land in a stage-scoped directory
+(`robot/rlm-base/results/e2e/<n>-<task>/`, uploaded as the `e2e-*` artifact), never in
+`results/verify/`.
+
+`rerun_failed` (task option, default `false`) re-runs the **failed tests once**
+(`robot --rerunfailed`) and merges both attempts with `rebot --merge`:
+
+| Outcome | Meaning | Job result |
+|---|---|---|
+| pass | passed on the first attempt | green |
+| flaky | failed, then passed on the single rerun | green, but listed under **Flaky** in the job summary with a `::warning::` |
+| fail | failed on the rerun too | job fails |
+
+`e2e-summary.json` (per task, next to the merged `output.xml`/`log.html`/`report.html`)
+records each test's first and final status. Attempt 2 writes to a `rerun/` subdirectory so
+its screenshots do not overwrite attempt 1's. Exit codes 250 and above (invalid arguments,
+no tests selected, interrupted) are never retried.
+
+A test that keeps flaking is quarantined: tag it `flaky` and add a row to
+[`robot/QUARANTINE.md`](../../robot/QUARANTINE.md) (owner, issue, root cause, added and
+expiry within 14 days). Blocking runs use `--exclude flaky`; the tagged tests still run in
+a separate non-blocking step. `tests/test_rlm_robot_e2e.py` checks that tags and rows agree.
+
+`tests/test_robot_sleep_ratchet.py` pins the number of fixed `Sleep` waits per file under
+`robot/`; it fails when a count goes up and asks you to lower the pin when one goes down.
+The target is zero, replaced with condition waits once a live scratch org can prove each
+replacement.
+
 ## Architecture Decisions
 
 ### Shadow DOM Traversal (the core challenge)
