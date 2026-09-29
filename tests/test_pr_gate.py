@@ -154,8 +154,12 @@ def body_of(src, marker, label):
 
 
 def run_gate(*args):
+    # errors="replace": on a native Windows console the child writes cp1252 (its `--list` output has an
+    # em dash), which strict UTF-8 decoding rejects inside subprocess's reader thread — proc.stdout
+    # then comes back None and the concatenation below raised TypeError. Found by the Windows leg (TP-05).
     proc = subprocess.run([sys.executable, os.path.join(REPO, "scripts", "ai", "pr_gate.py"),
-                           *args], cwd=REPO, capture_output=True, text=True, encoding="utf-8")
+                           *args], cwd=REPO, capture_output=True, text=True, encoding="utf-8",
+                          errors="replace")
     return proc.returncode, proc.stdout + proc.stderr
 
 
@@ -1237,14 +1241,30 @@ if os.path.exists(workflow):
         return any(executes(ln, script) and not any(x in ln for x in exclude)
                    for ln in run_lines(step))
 
-    def job_with(script, exclude=()):
-        found = [(name, job) for name, job in (doc.get("jobs") or {}).items()
-                 if any(step_runs(s, script, exclude) for s in (job.get("steps") or []))]
-        return found[0] if len(found) == 1 else (None, {})
+    def gate_jobs_of(script, exclude=()):
+        """Every (key, job) with a step that executes `script` — the jobs that run the gate."""
+        return [(name, job) for name, job in (doc.get("jobs") or {}).items()
+                if any(step_runs(s, script, exclude) for s in (job.get("steps") or []))]
 
-    gate_job_name, gate_job = job_with("scripts/ai/pr_gate.py",
-                                       exclude=("--requirements", "--list", "--help"))
-    check("exactly one job runs the gate", gate_job_name, list(doc.get("jobs") or {}))
+    # TP-05: the gate runs in exactly the reviewed set of jobs. This was "exactly one job", and the
+    # Windows leg is the second: the rule is *replaced* by a pinned set, not relaxed, so a third job
+    # that runs the gate — a decoy, or a copy with `continue-on-error` — still fails here until its
+    # published name is added below, which is the review.
+    PRIMARY_GATE = "Mechanical checks"
+    WINDOWS_GATE = "Mechanical checks (Windows stdlib)"
+    GATE_JOBS = sorted([PRIMARY_GATE, WINDOWS_GATE])
+    all_gate_jobs = gate_jobs_of("scripts/ai/pr_gate.py",
+                                 exclude=("--requirements", "--list", "--help"))
+    gate_job_names = sorted((j.get("name") or k) for k, j in all_gate_jobs)
+    check("exactly the reviewed set of jobs runs the gate (GATE_JOBS)",
+          gate_job_names == GATE_JOBS, gate_job_names)
+    # The rules keyed on `gate_job` below are about the primary gate, the required check whose name a
+    # branch ruleset matches. They keep that meaning; the Windows job is hardened separately after
+    # them, by the same whitelist technique, rather than by widening these rules to admit its shape.
+    _primary = [(k, j) for k, j in all_gate_jobs if (j.get("name") or k) == PRIMARY_GATE]
+    gate_job_name, gate_job = _primary[0] if len(_primary) == 1 else (None, {})
+    _windows = [(k, j) for k, j in all_gate_jobs if (j.get("name") or k) == WINDOWS_GATE]
+    windows_job_name, windows_job = _windows[0] if len(_windows) == 1 else (None, {})
     # Every executed line of the gate job alone, read back out through the same run_lines()
     # every per-step rule already uses — not run_contents(wf), the whole file. The rules below
     # (inter-step data flow, backslash/heredoc evasion, restated pip installs, the base-ref
@@ -1279,7 +1299,10 @@ if os.path.exists(workflow):
     # defaults can drift from config/tool-versions.env, the single source WP-09/WP-10 already
     # made everything else read from) — same review, same reasoning: its own published name,
     # satisfies no branch-ruleset context this repo relies on.
-    PUBLISHED = ["Mechanical checks", "Lint (changed files)",
+    # "Mechanical checks (Windows stdlib)" (TP-05): the gate's stdlib tier on windows-latest with
+    # PYTHONUTF8 unset. A distinct name on purpose — it must never be able to satisfy the
+    # "Mechanical checks" context; making it *required* is a repo-settings change for the maintainer.
+    PUBLISHED = ["Mechanical checks", "Mechanical checks (Windows stdlib)", "Lint (changed files)",
                 "Docker ARG defaults match tool-versions.env"]
     published = [(j.get("name") or key) for key, j in (doc.get("jobs") or {}).items()]
     check("the workflow publishes exactly the check-run names it was reviewed with (PUBLISHED) — the "
@@ -1339,6 +1362,100 @@ if os.path.exists(workflow):
           "timeout-minutes" not in gate_job
           or (str(gate_job["timeout-minutes"]).isdigit()
               and int(gate_job["timeout-minutes"]) >= 10), gate_job.get("timeout-minutes"))
+    # TP-05: the Windows leg, hardened by the same technique as the primary gate — a whitelist over the
+    # parsed mapping — but with its own reviewed shape rather than by widening JOB_KEYS/STEP_KEYS above.
+    # `windows_hazards()` is one predicate over a job mapping so the controls below can run the *real*
+    # rule over mutants instead of restating it.
+    WIN_JOB_KEYS = {"name", "runs-on", "timeout-minutes", "steps"}
+    WIN_STEP_KEYS = {"Checkout repository": {"name", "uses", "with"},
+                     "Set up Python": {"name", "uses", "with"},
+                     "Repair skill links": {"name", "run"},
+                     "Assert the locale encoding is in effect": {"name", "run"},
+                     "Run the stdlib gate": {"name", "run"}}
+    WIN_GATE_COMMAND = "python scripts/ai/pr_gate.py --all --tier stdlib"
+    WIN_LINK_COMMAND = "python scripts/ai/link_skills.py --fix"
+    # Assignments, not mentions: the assert step names both variables to test that they are absent.
+    WIN_ENCODING_SET = re.compile(
+        r"PYTHONUTF8\s*[:=]|PYTHONIOENCODING\s*[:=]|GITHUB_ENV|-X\s*utf8|setx?\s|PYTHONLEGACYWINDOWS",
+        re.I)
+
+    def windows_hazards(job):
+        """Reasons the Windows job could stop testing what it exists to test, or stop failing."""
+        bad = []
+        if not job:
+            return ["the job could not be identified"]
+        bad += [f"job key {k!r} is not reviewed" for k in sorted(set(job) - WIN_JOB_KEYS)]
+        if job.get("runs-on") != "windows-latest":
+            bad.append(f"runs-on is {job.get('runs-on')!r}, not windows-latest")
+        t = str(job.get("timeout-minutes", ""))
+        if not (t.isdigit() and 10 <= int(t) <= 30):
+            bad.append(f"timeout-minutes {t!r} is outside 10..30 (below 10 cancels a healthy run, "
+                       f"above 30 hides a hang)")
+        steps = job.get("steps") or []
+        for st in steps:
+            name = st.get("name")
+            if name not in WIN_STEP_KEYS:
+                bad.append(f"step {name!r} is not one this suite was written against")
+                continue
+            bad += [f"step {name!r} carries unreviewed key {k!r}"
+                    for k in sorted(set(st) - WIN_STEP_KEYS[name])]
+            for ln in run_lines(st):
+                if WIN_ENCODING_SET.search(ln):
+                    bad.append(f"step {name!r} sets an encoding/environment override: {ln.strip()[:60]}")
+        repair = [st for st in steps if st.get("name") == "Repair skill links"]
+        if [[ln.strip() for ln in run_lines(st)] for st in repair] != [[WIN_LINK_COMMAND]]:
+            bad.append("the skill-link repair step is missing or is not exactly the one pinned command")
+        gate_steps = [st for st in steps if step_runs(st, "scripts/ai/pr_gate.py")]
+        if len(gate_steps) != 1:
+            bad.append(f"{len(gate_steps)} steps run the gate, not exactly one")
+        elif [ln.strip() for ln in run_lines(gate_steps[0])] != [WIN_GATE_COMMAND]:
+            bad.append("the gate step is not exactly the one pinned command line")
+        elif steps[-1] is not gate_steps[0]:
+            bad.append("a step follows the gate step, where it could reword its verdict")
+        return bad
+
+    check("the Windows job is identified", bool(windows_job), windows_job_name)
+    _wh = windows_hazards(windows_job)
+    check("the Windows job carries only reviewed keys, on windows-latest, with a timeout that fits, "
+          "sets no encoding or env override, and runs exactly `pr_gate.py --all --tier stdlib` as its "
+          "last step (no `shell`, `env`, `defaults`, `if`, `continue-on-error` or `strategy`)",
+          not _wh, _wh)
+    _mut = lambda **kw: {**windows_job, **kw}  # noqa: E731
+    _step_with = lambda extra: _mut(steps=[  # noqa: E731
+        {**st, **extra} if st.get("name") == "Run the stdlib gate" else st
+        for st in windows_job.get("steps") or []])
+    _plain = lambda command: _mut(steps=[  # noqa: E731
+        {**st, "run": command} if st.get("name") == "Run the stdlib gate" else st
+        for st in windows_job.get("steps") or []])
+    for label, mutant in (
+            ("a job env", _mut(env={"PYTHONUTF8": "1"})),
+            ("a job matrix", _mut(strategy={"matrix": {"os": ["windows-latest"]}})),
+            ("a tolerated job failure", _mut(**{"continue-on-error": True})),
+            ("a conditional job", _mut(**{"if": "false"})),
+            ("defaults that swap the shell", _mut(defaults={"run": {"shell": "cmd"}})),
+            ("a Linux runner", _mut(**{"runs-on": "ubuntu-latest"})),
+            ("a one-minute timeout", _mut(**{"timeout-minutes": 1})),
+            ("a step shell", _step_with({"shell": "bash"})),
+            ("a tolerated gate failure", _step_with({"continue-on-error": True})),
+            ("a step env forcing UTF-8", _step_with({"env": {"PYTHONUTF8": "1"}})),
+            ("a skill-link repair that tolerates failure",
+             _mut(steps=[{**st, "run": WIN_LINK_COMMAND + " || true"}
+                         if st.get("name") == "Repair skill links" else st
+                         for st in windows_job.get("steps") or []])),
+            ("a gate without the tier", _plain("python scripts/ai/pr_gate.py --all")),
+            ("a gate with its verdict dropped",
+             _plain("python scripts/ai/pr_gate.py --all --tier stdlib || true")),
+            ("a UTF-8 override on the command line",
+             _plain("python -X utf8 scripts/ai/pr_gate.py --all --tier stdlib")),
+            ("an env write ahead of the gate",
+             _plain("echo PYTHONUTF8=1 >> $env:GITHUB_ENV" + chr(10) + WIN_GATE_COMMAND)),
+            ("a shell setting UTF-8 mode inline",
+             _plain("$env:PYTHONUTF8 = '1'" + chr(10) + WIN_GATE_COMMAND))):
+        check(f"the Windows rule rejects {label}", bool(windows_hazards(mutant)),
+              "accepted")
+    check("...and accepts the real job, so the rejections above are not an always-fail rule",
+          not windows_hazards(windows_job), windows_hazards(windows_job))
+
     # Two loops below run once per step, so adding a step moves the total count and the invariant at
     # the bottom of this file fails with "raise EXPECTED". That is deliberate and not a derivation:
     # deriving the terms from the workflow made them self-cancel, which is how a silenced loop kept
@@ -4849,7 +4966,12 @@ VERDICT_REGIONS = {
     # so a check's captured output containing a non-cp1252 character no longer crashes the whole
     # report on a Windows console. No verdict logic changed; only the deliberate-edit gate itself
     # moved, which is exactly what re-pinning here is for.
-    "the booking loop and main()'s return": ("83f4ea150f5c", "which verdicts reach the exit code"),
+    # Repinned for TP-05 (`--tier`): the loop gained a `NOT-IN-TIER` branch ahead of `SKIPPED`, the
+    # summary gained an `out_of_tier` bucket (asserted to keep the buckets summing to len(CHECKS)), and
+    # the per-line note became a lookup. No verdict path moved: PASS/FAIL/ERROR/MISSING-DEP booking,
+    # the `failures`/`tool_errors` buckets and the exit-code ladder are byte-identical, and a
+    # NOT-IN-TIER check never reaches `failures`, so it can neither fail nor pass the run.
+    "the booking loop and main()'s return": ("7fd1244246cc", "which verdicts reach the exit code"),
 }
 observed = {
     "run()": fingerprint(body_of(gate_src, "def run(", "the command runner")),
@@ -4862,6 +4984,132 @@ for region, (pinned, decides) in VERDICT_REGIONS.items():
           f"hosted runner (a tool-cache path, a mounted volume) is invisible to every behavioural "
           f"fixture here, so this region changes only by updating VERDICT_REGIONS deliberately",
           observed[region] == pinned, f"observed {observed[region]}, pinned {pinned}")
+
+print("\n--tier stdlib: the Windows leg's selector (TP-05)")
+# The tier is derived (`deps == []` minus WINDOWS_WAIVERS), so the set it yields is pinned here as an
+# explicit sorted list. Adding a dependency-free check, or giving one a dependency, changes the computed
+# set and fails the comparison until this list is edited — a reviewed decision to add a suite to (or
+# remove one from) the leg that runs on Windows, not a side effect of writing a check.
+IN_TIER_STDLIB = [
+    "agent_tooling",
+    "branch_scope",
+    "check_text_encoding_suite",
+    "claude_rules_sync",
+    "erd_doc_counts",
+    "expression_set_schema_parity",
+    "generate_plan_readme_writer",
+    "link_skills_suite",
+    "plan_readme_consistency",
+    "plan_readme_discovery",
+    "plan_readme_parsing",
+    "pr_gate_suite",
+    "repo_paths_shared",
+    "sfdmu_csv_expectation",
+    "sfdmu_datasets",
+    "sfdmu_export_parser",
+    "skill_manifest",
+    "stdlib_offline_suites",
+    "sync_claude_rules_suite",
+    "text_encoding_gate",
+]
+_computed_tier = sorted(c["name"] for c in pr_gate.CHECKS if pr_gate.in_tier(c, "stdlib"))
+check("the stdlib tier is exactly the pinned IN_TIER_STDLIB — a new dependency-free check, or a changed "
+      "`deps`, must be added here on purpose",
+      _computed_tier == IN_TIER_STDLIB,
+      f"unpinned: {sorted(set(_computed_tier) - set(IN_TIER_STDLIB))}; "
+      f"gone: {sorted(set(IN_TIER_STDLIB) - set(_computed_tier))}")
+check("IN_TIER_STDLIB is sorted and free of duplicates, so a diff to it reads as one added or removed name",
+      IN_TIER_STDLIB == sorted(set(IN_TIER_STDLIB)), IN_TIER_STDLIB)
+check("no in-tier check declares a package dependency — the Windows job installs nothing",
+      not [c["name"] for c in pr_gate.CHECKS
+           if pr_gate.in_tier(c, "stdlib") and c["deps"]])
+check("every dependency-free check is in the tier or carries a written waiver",
+      all(pr_gate.in_tier(c, "stdlib") or c["name"] in pr_gate.WINDOWS_WAIVERS
+          for c in pr_gate.CHECKS if not c["deps"]))
+check("every waiver names a real check and gives a reason, so an exit from the tier cannot be silent",
+      all(n in {c["name"] for c in pr_gate.CHECKS} and str(why).strip()
+          for n, why in pr_gate.WINDOWS_WAIVERS.items()), pr_gate.WINDOWS_WAIVERS)
+check("`all` is every check", all(pr_gate.in_tier(c, "all") for c in pr_gate.CHECKS))
+_ran = []
+_real_tier_run, _real_tier_seq, _real_tier_changed = pr_gate.run, pr_gate.run_sequence, pr_gate.changed_files
+
+
+def _tier_gate(args, changed=None, code=0):
+    """main() with the runners stubbed, recording which argv it was asked to execute."""
+    del _ran[:]
+    pr_gate.run = lambda cmd: (_ran.append(list(cmd)) or (code, "", 0.0))
+    pr_gate.run_sequence = lambda cmds: (_ran.extend(list(c) for c in cmds) or (code, "", 0.0))
+    if changed is not None:
+        pr_gate.changed_files = lambda base: list(changed)
+    try:
+        return main_with(args)
+    finally:
+        pr_gate.run, pr_gate.run_sequence = _real_tier_run, _real_tier_seq
+        pr_gate.changed_files = _real_tier_changed
+
+
+def _statuses(out):
+    """check name -> the status printed on its summary line."""
+    return {name: status for status, name in re.findall(r"^\[([A-Z-]+)\s*\]\s+(\w+)", out, re.M)}
+
+
+_all_names = [c["name"] for c in pr_gate.CHECKS]
+_outside = [n for n in _all_names if n not in IN_TIER_STDLIB]
+code, out = _tier_gate(["--all", "--tier", "stdlib"])
+_st = _statuses(out)
+check("--all --tier stdlib exits 0 when every in-tier check passes", code == 0, (code, out[-300:]))
+check("every in-tier check ran and passed", all(_st.get(n) == "PASS" for n in IN_TIER_STDLIB),
+      {n: _st.get(n) for n in IN_TIER_STDLIB if _st.get(n) != "PASS"})
+check("every out-of-tier check reports NOT-IN-TIER — never SKIPPED, never PASS",
+      all(_st.get(n) == "NOT-IN-TIER" for n in _outside),
+      {n: _st.get(n) for n in _outside if _st.get(n) != "NOT-IN-TIER"})
+check("a check outside the tier was never executed", not any(
+    a for a in _ran if any(x in a for x in ("tests/test_docgen_helpers.py", "tests/build_harness",
+                                            "tests/test_rlm_sfdmu_redaction.py"))), _ran[:3])
+check("the summary line counts the checks outside the tier, so they cannot vanish from the arithmetic",
+      f"{len(_outside)} outside --tier stdlib." in out and f"{len(_all_names)} checks:" in out,
+      out.strip().splitlines()[-3:])
+code, out = _tier_gate(["--all"])
+check("without --tier no check is labelled NOT-IN-TIER (the exit code is not asserted: a machine "
+      "without pytest or cumulusci reports MISSING-DEP for the checks that need them)",
+      "NOT-IN-TIER" not in out and "outside --tier" not in out, out[-200:])
+# Composition. --tier restricts *after* selection, so it composes with all three selectors; a check
+# that the diff selected but the tier excludes is NOT-IN-TIER, not run and not SKIPPED.
+code, out = _tier_gate(["--base", "HEAD", "--tier", "stdlib"], changed=["tasks/rlm_cml.py"])
+_st = _statuses(out)
+check("--base composes with --tier: a diff-selected check outside the tier is NOT-IN-TIER",
+      code == 0 and _st.get("requests_offline_suites") == "NOT-IN-TIER", (code, _st))
+check("...and a diff-selected in-tier check still runs", _st.get("stdlib_offline_suites") == "PASS", _st)
+check("...and an in-tier check the diff did not select is SKIPPED, the diff's own label",
+      _st.get("erd_doc_counts") == "SKIPPED", _st)
+with tempfile.TemporaryDirectory() as _td:
+    _listing = os.path.join(_td, "changed.txt")
+    with open(_listing, "w", encoding="utf-8") as fh:
+        fh.write("tasks/rlm_cml.py\n")
+    code, out = _tier_gate(["--changed-files-from", _listing, "--tier", "stdlib"])
+_st = _statuses(out)
+check("--changed-files-from composes with --tier the same way",
+      code == 0 and _st.get("requests_offline_suites") == "NOT-IN-TIER"
+      and _st.get("stdlib_offline_suites") == "PASS", (code, _st))
+code, out = _tier_gate(["--all", "--tier", "stdlib"], code=1)
+check("a failing in-tier check still fails the tier run — the tier narrows what runs, not what fails",
+      code == 1 and "FAILED:" in out, (code, out[-200:]))
+code, out = _tier_gate(["--all", "--tier", "stdlib", "--requirements"])
+check("--tier stdlib --requirements emits nothing — the Windows job installs no package",
+      code == 0 and not out.strip(), out)
+_real_waivers = dict(pr_gate.WINDOWS_WAIVERS)
+try:
+    pr_gate.WINDOWS_WAIVERS = {n: "test: waive every check" for n in _all_names}
+    code, out = _tier_gate(["--all", "--tier", "stdlib"])
+finally:
+    pr_gate.WINDOWS_WAIVERS = _real_waivers
+check("an empty tier is a tool error (exit 2), so the leg cannot pass having run nothing",
+      code == 2 and "passed" not in out, (code, out[-200:]))
+code, out = run_gate("--all", "--tier", "bogus")
+check("an unknown tier is a usage error (exit 2)", code == 2, code)
+code, out = run_gate("--list")
+check("--list names the stdlib tier's members", "tier stdlib:" in out
+      and all(n in out.split("tier stdlib:")[1].split("\n")[0] for n in IN_TIER_STDLIB), out[-400:])
 
 print("\nCommand-line contract")
 code, out = run_gate("--list")
@@ -5189,7 +5437,7 @@ if FAILED:
     # carries only keys that cannot stop it running" against `{}` — so the reader chases nineteen
     # symptoms with the cause sitting among them unmarked. Naming it costs three lines and is the
     # difference between a diagnosis and a list.
-    if "exactly one job runs the gate" in FAILED:
+    if "exactly the reviewed set of jobs runs the gate (GATE_JOBS)" in FAILED:
         print("  cause: the gate job could not be identified, so every rule keyed on it is reporting "
               "an empty job rather than a real finding. Fix that one first — the rest are symptoms.")
 # Reported before the early exit, not after it: exiting on `FAILED` first meant a red run never
@@ -5217,7 +5465,9 @@ README_COUNT = re.compile(r"Verified by `tests/test_pr_gate\.py` \((\d+) checks"
 # added to CHECKS, and the same per-check loops add checks proportional to len(CHECKS).
 # Raised again for TP-03: rest_contracts and subprocess_contracts were added to CHECKS (6 more
 # per-check verdicts across the loops), the deliberate re-count and not a drift.
-EXPECTED = 735
+# Raised again for TP-05: --tier stdlib (tier pin, composition, empty tier) and the Windows job's
+# whitelist with its mutation controls, +40 checks, none looping over CHECKS.
+EXPECTED = 775
 _readme_text = pathlib.Path(os.path.join(REPO, "scripts/ai/README.md")).read_text(encoding="utf-8")
 cited = README_COUNT.search(_readme_text)
 check("the check count quoted in scripts/ai/README.md matches EXPECTED, so the prose cannot drift "

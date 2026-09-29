@@ -896,15 +896,23 @@ def _is_link_like(path: Path) -> bool:
 
     ``Path.is_symlink()`` misses a Windows junction on every Python version
     this repo supports (3.10+; ``os.path.isjunction`` needs 3.12+), so this
-    compares ``realpath`` against ``abspath`` instead: a real symlink or
-    junction resolves elsewhere, while an ordinary directory resolves to
-    itself. That also means an ordinary untracked directory dropped into a
+    compares the ``realpath`` of the entry against its name inside its
+    parent's ``realpath``: a real symlink or junction resolves elsewhere,
+    while an ordinary directory resolves to itself. That also means an ordinary untracked directory dropped into a
     discovery folder — e.g. the per-developer GitNexus skill catalog at
     ``.claude/skills/gitnexus/`` (A4) — is not miscounted as a spurious skill
     link: it is neither a real skill nor a rogue link, just unrelated content.
     """
+    # Only the final component's resolution counts. Comparing against abspath(path) also counted
+    # any difference in the *parent* chain: a tree under an 8.3 short-name root (GitHub's Windows
+    # runners: `C:\Users\RUNNER~1\...` expands to `runneradmin`) or under a symlinked root (macOS
+    # `/tmp` -> `/private/tmp`) made every plain directory in it read as a link. normcase, because
+    # on Windows the resolved name carries the on-disk casing, which may differ from the spelling
+    # that was asked for without being a link.
     try:
-        return os.path.realpath(path) != os.path.abspath(path)
+        resolved = os.path.normcase(os.path.realpath(path))
+        expected = os.path.normcase(os.path.join(os.path.realpath(path.parent), path.name))
+        return resolved != expected
     except OSError:
         return False
 
