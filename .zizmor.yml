@@ -1,0 +1,14 @@
+# zizmor configuration (TP-11, docs/references/test-plan-2026-09.md §4.6).
+#
+# Policy only. Findings that predate the CI step are NOT ignored here: they are counted per
+# (rule, file, message) in .github/zizmor-baseline.json and compared by scripts/lint/finding_baseline.py,
+# so a new finding of an already-listed rule fails instead of hiding behind the old one. Upkeep:
+# docs/guides/ci-runbook.md.
+rules:
+  unpinned-uses:
+    config:
+      policies:
+        # First-party actions are pinned by tag; Dependabot bumps them (.github/dependabot.yml).
+        "actions/*": ref-pin
+        # Everything else must be pinned to a full commit SHA (docker/* already is).
+        "*": hash-pin
