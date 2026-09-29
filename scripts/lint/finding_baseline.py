@@ -163,7 +163,9 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
     # Messages are arbitrary text: keep a non-ASCII one from crashing a cp1252 console.
     for stream in (sys.stdout, sys.stderr):
-        stream.reconfigure(encoding="utf-8", errors="replace")
+        reconfigure = getattr(stream, "reconfigure", None)  # absent on a replaced/captured stream
+        if reconfigure is not None:
+            reconfigure(encoding="utf-8", errors="replace")
 
     try:
         # Bytes decoded explicitly: sys.stdin's own encoding is the console/locale one on Windows.

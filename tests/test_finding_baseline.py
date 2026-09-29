@@ -150,7 +150,10 @@ def test_stdin_is_utf8_whatever_the_locale():
     """`-` reads stdin as bytes decoded explicitly; a locale codec would garble or crash here."""
     message = "verboten → 日本語"  # outside cp1252, so a console decode would fail
     findings = json.dumps([["r", "a.yml", message]], ensure_ascii=False).encode("utf-8")
+    # PYTHONIOENCODING=cp1252 makes the child's sys.stdin a cp1252 codec on every OS, so a read
+    # through it mis-decodes UTF-8 deterministically (a UTF-8 CI locale would otherwise hide it).
     env = {k: v for k, v in os.environ.items() if k not in ("PYTHONUTF8", "PYTHONIOENCODING")}
+    env["PYTHONIOENCODING"] = "cp1252"
     with tempfile.TemporaryDirectory() as tmp:
         baseline = Path(tmp) / "baseline.json"
         baseline.write_text(json.dumps(
