@@ -521,6 +521,13 @@ OBJECT_NAME_CASE_INSENSITIVE = [
 
 
 def main() -> int:
+    import sys
+
+    # A Windows console decodes with cp1252, which cannot encode the arrows/emoji printed below;
+    # degrade the character rather than crash the run. Only the error policy changes.
+    for _s in (sys.stdout, sys.stderr):
+        if hasattr(_s, "reconfigure"):
+            _s.reconfigure(errors="replace")
     failures = []
     all_cases = [
         ("object_name() is case-insensitive and subquery-aware (shared extractor)",

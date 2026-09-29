@@ -225,6 +225,13 @@ jobs:
           # The same version as `gate`, so the two legs differ by operating system only.
           python-version: "3.13"
 
+      # A Windows checkout cannot create the repo's symlinked skill directories (`core.symlinks` is
+      # off), so `.claude/skills/` and `.agents/skills/` arrive as stub files and `agent_tooling`
+      # fails on "native skill links". CLAUDE.md documents this repair for developers; the step runs
+      # it, which also exercises the junction code path on the OS where it matters. No admin rights.
+      - name: Repair skill links
+        run: python scripts/ai/link_skills.py --fix
+
       - name: Assert the locale encoding is in effect
         run: python -c "import locale, os, sys; assert 'PYTHONUTF8' not in os.environ and 'PYTHONIOENCODING' not in os.environ and not sys.flags.utf8_mode, 'UTF-8 mode is on, so this leg would not exercise the locale encoding'; print('utf8_mode', sys.flags.utf8_mode, 'locale', locale.getpreferredencoding(False))"
 

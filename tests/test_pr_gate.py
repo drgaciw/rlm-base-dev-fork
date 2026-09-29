@@ -154,8 +154,12 @@ def body_of(src, marker, label):
 
 
 def run_gate(*args):
+    # errors="replace": on a native Windows console the child writes cp1252 (its `--list` output has an
+    # em dash), which strict UTF-8 decoding rejects inside subprocess's reader thread — proc.stdout
+    # then comes back None and the concatenation below raised TypeError. Found by the Windows leg (TP-05).
     proc = subprocess.run([sys.executable, os.path.join(REPO, "scripts", "ai", "pr_gate.py"),
-                           *args], cwd=REPO, capture_output=True, text=True, encoding="utf-8")
+                           *args], cwd=REPO, capture_output=True, text=True, encoding="utf-8",
+                          errors="replace")
     return proc.returncode, proc.stdout + proc.stderr
 
 
@@ -1365,9 +1369,11 @@ if os.path.exists(workflow):
     WIN_JOB_KEYS = {"name", "runs-on", "timeout-minutes", "steps"}
     WIN_STEP_KEYS = {"Checkout repository": {"name", "uses", "with"},
                      "Set up Python": {"name", "uses", "with"},
+                     "Repair skill links": {"name", "run"},
                      "Assert the locale encoding is in effect": {"name", "run"},
                      "Run the stdlib gate": {"name", "run"}}
     WIN_GATE_COMMAND = "python scripts/ai/pr_gate.py --all --tier stdlib"
+    WIN_LINK_COMMAND = "python scripts/ai/link_skills.py --fix"
     # Assignments, not mentions: the assert step names both variables to test that they are absent.
     WIN_ENCODING_SET = re.compile(
         r"PYTHONUTF8\s*[:=]|PYTHONIOENCODING\s*[:=]|GITHUB_ENV|-X\s*utf8|setx?\s|PYTHONLEGACYWINDOWS",
@@ -1396,6 +1402,9 @@ if os.path.exists(workflow):
             for ln in run_lines(st):
                 if WIN_ENCODING_SET.search(ln):
                     bad.append(f"step {name!r} sets an encoding/environment override: {ln.strip()[:60]}")
+        repair = [st for st in steps if st.get("name") == "Repair skill links"]
+        if [[ln.strip() for ln in run_lines(st)] for st in repair] != [[WIN_LINK_COMMAND]]:
+            bad.append("the skill-link repair step is missing or is not exactly the one pinned command")
         gate_steps = [st for st in steps if step_runs(st, "scripts/ai/pr_gate.py")]
         if len(gate_steps) != 1:
             bad.append(f"{len(gate_steps)} steps run the gate, not exactly one")
@@ -1429,6 +1438,10 @@ if os.path.exists(workflow):
             ("a step shell", _step_with({"shell": "bash"})),
             ("a tolerated gate failure", _step_with({"continue-on-error": True})),
             ("a step env forcing UTF-8", _step_with({"env": {"PYTHONUTF8": "1"}})),
+            ("a skill-link repair that tolerates failure",
+             _mut(steps=[{**st, "run": WIN_LINK_COMMAND + " || true"}
+                         if st.get("name") == "Repair skill links" else st
+                         for st in windows_job.get("steps") or []])),
             ("a gate without the tier", _plain("python scripts/ai/pr_gate.py --all")),
             ("a gate with its verdict dropped",
              _plain("python scripts/ai/pr_gate.py --all --tier stdlib || true")),
@@ -5450,7 +5463,7 @@ README_COUNT = re.compile(r"Verified by `tests/test_pr_gate\.py` \((\d+) checks"
 # describes, not a drift.
 # Raised again for wave 2 (I2/A-M1): check_text_encoding_suite and text_encoding_gate were
 # added to CHECKS, and the same per-check loops add checks proportional to len(CHECKS).
-EXPECTED = 768
+EXPECTED = 769
 _readme_text = pathlib.Path(os.path.join(REPO, "scripts/ai/README.md")).read_text(encoding="utf-8")
 cited = README_COUNT.search(_readme_text)
 check("the check count quoted in scripts/ai/README.md matches EXPECTED, so the prose cannot drift "
