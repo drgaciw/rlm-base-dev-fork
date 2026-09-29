@@ -95,6 +95,29 @@ Check the return value and the exit code, not just the logic.
 **Silent scope narrowing.** A `WHERE` clause that quietly excludes rows the caller
 believes are included — filtering by status, type or ownership without saying so.
 
+**A test that mocked the unit under test.** A wrapper such as `_make_request`, or a
+`request()` helper, whose test replaces the wrapper itself with a fake, so the real body
+never runs. A-C1 shipped a `TypeError: got multiple values for keyword argument 'timeout'`
+in every context-extension call this way. *Ask: does the test call the real wrapper and
+patch one layer below it (`requests.Session.request`), asserting method, URL, headers and
+exactly one `timeout`?* `tests/test_rest_contracts.py` is the template; a new
+`_make_request`/`request` fails it until registered.
+
+**`sf` argv that breaks on Windows.** `subprocess.run(["sf", ...])` with `shell=False`
+does not consult PATHEXT, so a bare `"sf"` raises `FileNotFoundError` where the CLI is
+`sf.cmd` (A-C2). Resolve the executable with `shutil.which("sf") or "sf"`
+(`tasks/rlm_sfdmu.py::_sf_executable`) and never reach for `shell=True`. A helper that
+takes argv from its callers (`run_sf_json`) is not a fix point unless it resolves the
+executable itself. `tests/test_subprocess_contracts.py` pins the reference module and lists
+the modules still bare (`KNOWN_GAPS`, emptied by TP-13); a new bare `"sf"` fails it.
+
+**A token in a log line or argv.** An access token, session id or `accessToken` field
+reaching a logger, an exception message or a command line (X1). A CLI `--target-org` takes
+`org_config.username`, never the token. *Ask: is there a test that runs the path with a fake
+token and asserts it is in neither the captured log output nor the argv?*
+`tests/test_rlm_sfdmu_redaction.py` and the error-path checks in
+`tests/test_rest_contracts.py` are the templates.
+
 **Unverified numbers in documentation.** Arithmetic, record counts and rates asserted in
 a guide without a recorded live run behind them. Mark unverified figures as such rather
 than stating them plainly.
