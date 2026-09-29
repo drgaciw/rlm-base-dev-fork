@@ -306,6 +306,9 @@ check("no suite in tests/ is left unclaimed", pr_gate.unlisted_suites() == [],
       pr_gate.unlisted_suites())
 missing = [s for s in pr_gate.STDLIB_SUITES if not os.path.exists(os.path.join(REPO, s))]
 check("every stdlib suite the gate names exists on disk", missing == [], missing)
+check("the Robot e2e wrapper and Sleep-ratchet suites (TP-08) run in the stdlib check",
+      all(s in pr_gate.STDLIB_SUITES
+          for s in ("tests/test_rlm_robot_e2e.py", "tests/test_robot_sleep_ratchet.py")))
 missing = [s for s in pr_gate.CLAIMED_SUITES if not os.path.exists(os.path.join(REPO, s))]
 check("every claimed suite or directory exists on disk", missing == [], missing)
 missing = [s for s in pr_gate.EXCLUDED_SUITES if not os.path.exists(os.path.join(REPO, s))]
@@ -1302,8 +1305,12 @@ if os.path.exists(workflow):
     # "Mechanical checks (Windows stdlib)" (TP-05): the gate's stdlib tier on windows-latest with
     # PYTHONUTF8 unset. A distinct name on purpose — it must never be able to satisfy the
     # "Mechanical checks" context; making it *required* is a repo-settings change for the maintainer.
+    # "LWC Jest tests" (TP-07: `npm ci` + jest --coverage over the LWC bundles, steps gated on a
+    # diff of LWC/jest/npm paths so the check name is always published) — added by editing this
+    # list, same review; its own published name, satisfies no branch-ruleset context this repo
+    # relies on, and it holds no steps of the gate job.
     PUBLISHED = ["Mechanical checks", "Mechanical checks (Windows stdlib)", "Lint (changed files)",
-                "Docker ARG defaults match tool-versions.env"]
+                "Docker ARG defaults match tool-versions.env", "LWC Jest tests"]
     published = [(j.get("name") or key) for key, j in (doc.get("jobs") or {}).items()]
     check("the workflow publishes exactly the check-run names it was reviewed with (PUBLISHED) — the "
           "job *key* is free to be renamed, since a branch ruleset matches the `name:`; add a job by "
@@ -5467,7 +5474,8 @@ README_COUNT = re.compile(r"Verified by `tests/test_pr_gate\.py` \((\d+) checks"
 # per-check verdicts across the loops), the deliberate re-count and not a drift.
 # Raised again for TP-05: --tier stdlib (tier pin, composition, empty tier) and the Windows job's
 # whitelist with its mutation controls, +40 checks, none looping over CHECKS.
-EXPECTED = 775
+# TP-08 adds one check (its suites are in STDLIB_SUITES): 775 -> 776.
+EXPECTED = 776
 _readme_text = pathlib.Path(os.path.join(REPO, "scripts/ai/README.md")).read_text(encoding="utf-8")
 cited = README_COUNT.search(_readme_text)
 check("the check count quoted in scripts/ai/README.md matches EXPECTED, so the prose cannot drift "

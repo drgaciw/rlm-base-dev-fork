@@ -276,10 +276,9 @@ jobs:
         uses: actions/setup-node@v7
         with:
           node-version-file: "package.json" # resolves engines.node (>=22)
-          # No `cache: npm`: setup-node's npm cache keys off package-lock.json,
-          # which is gitignored here (C7 — tracked as a follow-up, out of
-          # scope for this PR). `npm install` below is used instead of
-          # `npm ci` for the same reason.
+          # setup-node's npm cache keys off the committed package-lock.json,
+          # and `npm ci` below installs exactly that lockfile.
+          cache: "npm"
 
       - name: List changed files
         id: diff
@@ -323,9 +322,9 @@ jobs:
           # instead of being split into two bogus paths.
           echo "${PY_FILES}" | xargs -r -d '\n' python -m ruff check
 
-      - name: npm install
+      - name: npm ci
         if: steps.diff.outputs.js_files != '' || steps.diff.outputs.prettier_files != ''
-        run: npm install
+        run: npm ci
 
       - name: eslint
         if: steps.diff.outputs.js_files != ''
@@ -342,6 +341,84 @@ jobs:
         run: |
           set -euo pipefail
           echo "${PRETTIER_FILES}" | xargs -r -d '\n' npx prettier --check
+
+      # ---- Apex static analysis (TP-06, docs/references/test-plan-2026-09.md §4.2) -------------
+      # Runs only when a PR changes Apex. Salesforce Code Analyzer's PMD engine, Security and
+      # ErrorProne tags, compared with the committed count baseline (config/code-analyzer-
+      # baseline.json) by scripts/lint/finding_baseline.py: a new finding, or one more of an old one,
+      # fails; a fixed one only warns. The scan covers ALL Apex, not just the changed files, so the
+      # comparison is always against the whole baseline; a PR can only add findings by changing Apex.
+      # No Apex test runs here — that needs an org (nightly job, TP-04).
+      - name: Detect changed Apex
+        id: apex
+        run: |
+          set -euo pipefail
+          if grep -qE '\.(cls|trigger)$' changed_files.txt; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install Salesforce Code Analyzer
+        if: steps.apex.outputs.changed == 'true'
+        env:
+          # Exact pin. A new version can change rules and messages: bump it in its own PR and
+          # regenerate config/code-analyzer-baseline.json (procedure: the "Apex findings vs
+          # baseline" step below).
+          CODE_ANALYZER_VERSION: "5.16.0"
+        run: |
+          set -euo pipefail
+          # The sf CLI version is the repo-wide pin; Java comes from the runner image (17+ needed).
+          sf_version="$(grep -E '^SF_CLI_VERSION=' config/tool-versions.env | cut -d= -f2)"
+          npm install --global "@salesforce/cli@${sf_version}"
+          sf plugins install "code-analyzer@${CODE_ANALYZER_VERSION}"
+          sf --version
+          sf plugins | grep -E 'code-analyzer'
+
+      - name: Apex Security/ErrorProne findings
+        if: steps.apex.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+          # code-analyzer.yml (repo root) limits PMD to .cls/.trigger. --workspace . with two target
+          # directories = every Apex file in the repo. Exit code 1 only means "violations were
+          # found" (the comparer below decides whether that matters); anything else is a real error.
+          set +e
+          sf code-analyzer run --workspace . --target force-app --target unpackaged \
+            --rule-selector pmd:Security --rule-selector pmd:ErrorProne \
+            --output-file code-analyzer-results.json
+          code=$?
+          set -e
+          if [ ! -s code-analyzer-results.json ]; then
+            echo "::error::Code Analyzer wrote no results (exit ${code})"
+            exit 2
+          fi
+
+      - name: Upload Apex analysis results
+        if: always() && steps.apex.outputs.changed == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: code-analyzer-results
+          path: code-analyzer-results.json
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Apex findings vs baseline
+        if: steps.apex.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+          # Blocking. Exit 1 = a finding the baseline does not allow (a new rule, file or message, or
+          # one more of an old one); exit 2 = the analysis itself failed (e.g. an engine crashed),
+          # which is never read as a clean run. Fixed findings only warn.
+          #
+          # To regenerate the baseline (Code Analyzer bump, or after fixing findings): download the
+          # `code-analyzer-results` artifact of a green run of THIS job (Linux paths, so the file
+          # matches what CI will compare) and run
+          #   python scripts/lint/finding_baseline.py --format code-analyzer --name "Apex finding" \
+          #     --baseline config/code-analyzer-baseline.json --write code-analyzer-results.json
+          # `--write` keeps each entry's `reason`; give new entries one. A renamed or moved .cls
+          # re-surfaces its entries as new findings — regenerate in the same PR.
+          python scripts/lint/finding_baseline.py --format code-analyzer --name "Apex finding" \
+            --baseline config/code-analyzer-baseline.json code-analyzer-results.json
 
   # config/tool-versions.env is the single source of truth for pinned tool
   # versions; docker/Dockerfile's ARG defaults are a plain-`docker build`
@@ -378,3 +455,61 @@ jobs:
             fi
           done < <(grep -E '^[A-Za-z_][A-Za-z0-9_]*=' config/tool-versions.env)
           exit "${fail}"
+
+  # Owner: TP-07 (LWC Jest baseline; test plan docs/references/test-plan-2026-09.md 4.3).
+  # The job always runs on a pull request so its check name is always published, but every
+  # step after the diff is skipped unless the PR touches LWC sources, the jest/npm config or
+  # the lockfile. `npm ci` (not `npm install`) — package-lock.json is committed for this job.
+  lwc-tests:
+    name: LWC Jest tests
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Detect LWC or jest changes
+        id: diff
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          if git diff --name-only "${BASE_SHA}" "${HEAD_SHA}" \
+              | grep -E '^((force-app|unpackaged)/.*/lwc/|jest\.config\.js$|package(-lock)?\.json$|sfdx-project\.json$|\.github/workflows/pr-checks\.yml$)' \
+              > /dev/null; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "No LWC, jest or npm changes in this PR; skipping LWC Jest tests." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Set up Node.js
+        if: steps.diff.outputs.run == 'true'
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: "package.json" # resolves engines.node (>=22)
+          cache: "npm"
+
+      - name: Install dependencies
+        if: steps.diff.outputs.run == 'true'
+        run: npm ci
+
+      - name: Run LWC Jest tests with coverage
+        if: steps.diff.outputs.run == 'true'
+        run: npm run test:coverage
+
+      - name: Upload coverage
+        if: always() && steps.diff.outputs.run == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: lwc-coverage
+          path: coverage/
+          retention-days: 14
+          if-no-files-found: ignore

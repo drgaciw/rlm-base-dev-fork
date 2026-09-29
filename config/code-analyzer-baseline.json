@@ -1,0 +1,439 @@
+{
+  "description": "Allowed Apex finding counts per (rule, file, message).",
+  "entries": [
+    {
+      "rule": "pmd:ApexCRUDViolation",
+      "file": "force-app/main/default/classes/RLM_AssetInfoUtility.cls",
+      "message": "Validate CRUD permission before SOQL/DML operation or enforce user mode",
+      "count": 2,
+      "reason": "SECURITY: present when the Apex gate was introduced (TP-06, 2026-09); fix and shrink this entry, do not add to it."
+    },
+    {
+      "rule": "pmd:ApexCRUDViolation",
+      "file": "force-app/main/default/classes/RLM_DFOTenantProvisioningCallout.cls",
+      "message": "Validate CRUD permission before SOQL/DML operation or enforce user mode",
+      "count": 3,
+      "reason": "SECURITY: present when the Apex gate was introduced (TP-06, 2026-09); fix and shrink this entry, do not add to it."
+    },
+    {
+      "rule": "pmd:ApexCRUDViolation",
+      "file": "force-app/main/default/classes/RLM_OrderItemContractingUtility.cls",
+      "message": "Validate CRUD permission before SOQL/DML operation or enforce user mode",
+      "count": 3,
+      "reason": "SECURITY: present when the Apex gate was introduced (TP-06, 2026-09); fix and shrink this entry, do not add to it."
+    },
+    {
+      "rule": "pmd:ApexCRUDViolation",
+      "file": "force-app/main/default/classes/RLM_QuoteModelUtility.cls",
+      "message": "Validate CRUD permission before SOQL/DML operation or enforce user mode",
+      "count": 4,
+      "reason": "SECURITY: present when the Apex gate was introduced (TP-06, 2026-09); fix and shrink this entry, do not add to it."
+    },
+    {
+      "rule": "pmd:ApexCRUDViolation",
+      "file": "unpackaged/post_agents/classes/RLM_AI_AddProductToQuoteService.cls",
+      "message": "Validate CRUD permission before SOQL/DML operation or enforce user mode",
+      "count": 3,
+      "reason": "SECURITY: present when the Apex gate was introduced (TP-06, 2026-09); fix and shrink this entry, do not add to it."
+    },
+    {
+      "rule": "pmd:ApexCRUDViolation",
+      "file": "unpackaged/post_agents/classes/RLM_AI_ApplyQuoteLineDiscountsService.cls",
+      "message": "Validate CRUD permission before SOQL/DML operation or enforce user mode",
+      "count": 2,
+      "reason": "SECURITY: present when the Apex gate was introduced (TP-06, 2026-09); fix and shrink this entry, do not add to it."
+    },
+    {
+      "rule": "pmd:ApexCRUDViolation",
+      "file": "unpackaged/post_agents/classes/RLM_AI_AttributeResolver.cls",
+      "message": "Validate CRUD permission before SOQL/DML operation or enforce user mode",
+      "count": 5,
+      "reason": "SECURITY: present when the Apex gate was introduced (TP-06, 2026-09); fix and shrink this entry, do not add to it."
+    },
+    {
+      "rule": "pmd:ApexCRUDViolation",
+      "file": "unpackaged/post_agents/classes/RLM_AI_ConfigServiceUtils.cls",
+      "message": "Validate CRUD permission before SOQL/DML operation or enforce user mode",
+      "count": 1,
+      "reason": "SECURITY: present when the Apex gate was introduced (TP-06, 2026-09); fix and shrink this entry, do not add to it."
+    },
+    {
+      "rule": "pmd:ApexCRUDViolation",
+      "file": "unpackaged/post_agents/classes/RLM_AI_ProductAttributeReadService.cls",
+      "message": "Validate CRUD permission before SOQL/DML operation or enforce user mode",
+      "count": 1,
+      "reason": "SECURITY: present when the Apex gate was introduced (TP-06, 2026-09); fix and shrink this entry, do not add to it."
+    },
+    {
+      "rule": "pmd:ApexCRUDViolation",
+      "file": "unpackaged/post_agents/classes/RLM_AI_ProductAttributeSaveService.cls",
+      "message": "Validate CRUD permission before SOQL/DML operation or enforce user mode",
+      "count": 4,
+      "reason": "SECURITY: present when the Apex gate was introduced (TP-06, 2026-09); fix and shrink this entry, do not add to it."
+    },
+    {
+      "rule": "pmd:ApexCRUDViolation",
+      "file": "unpackaged/post_agents/classes/RLM_AI_QuoteDemoSummaryService.cls",
+      "message": "Validate CRUD permission before SOQL/DML operation or enforce user mode",
+      "count": 2,
+      "reason": "SECURITY: present when the Apex gate was introduced (TP-06, 2026-09); fix and shrink this entry, do not add to it."
+    },
+    {
+      "rule": "pmd:ApexCRUDViolation",
+      "file": "unpackaged/post_agents/classes/RLM_AI_QuoteLineItemLookupService.cls",
+      "message": "Validate CRUD permission before SOQL/DML operation or enforce user mode",
+      "count": 1,
+      "reason": "SECURITY: present when the Apex gate was introduced (TP-06, 2026-09); fix and shrink this entry, do not add to it."
+    },
+    {
+      "rule": "pmd:ApexCRUDViolation",
+      "file": "unpackaged/post_agents/classes/RLM_AI_UpdateRecordFieldsService.cls",
+      "message": "Validate CRUD permission before SOQL/DML operation or enforce user mode",
+      "count": 4,
+      "reason": "SECURITY: present when the Apex gate was introduced (TP-06, 2026-09); fix and shrink this entry, do not add to it."
+    },
+    {
+      "rule": "pmd:ApexCRUDViolation",
+      "file": "unpackaged/post_constraints/classes/UTIL_ConfigHelper.cls",
+      "message": "Validate CRUD permission before SOQL/DML operation or enforce user mode",
+      "count": 1,
+      "reason": "SECURITY: present when the Apex gate was introduced (TP-06, 2026-09); fix and shrink this entry, do not add to it."
+    },
+    {
+      "rule": "pmd:ApexCRUDViolation",
+      "file": "unpackaged/post_constraints/triggers/RLM_QuoteItemTrigger.trigger",
+      "message": "Validate CRUD permission before SOQL/DML operation or enforce user mode",
+      "count": 3,
+      "reason": "SECURITY: present when the Apex gate was introduced (TP-06, 2026-09); fix and shrink this entry, do not add to it."
+    },
+    {
+      "rule": "pmd:ApexCRUDViolation",
+      "file": "unpackaged/post_docgen/classes/RLM_DocumentGenerationCreate.cls",
+      "message": "Validate CRUD permission before SOQL/DML operation or enforce user mode",
+      "count": 2,
+      "reason": "SECURITY: present when the Apex gate was introduced (TP-06, 2026-09); fix and shrink this entry, do not add to it."
+    },
+    {
+      "rule": "pmd:ApexCRUDViolation",
+      "file": "unpackaged/post_docgen/classes/RLM_DocumentGenerationMerge.cls",
+      "message": "Validate CRUD permission before SOQL/DML operation or enforce user mode",
+      "count": 1,
+      "reason": "SECURITY: present when the Apex gate was introduced (TP-06, 2026-09); fix and shrink this entry, do not add to it."
+    },
+    {
+      "rule": "pmd:ApexCRUDViolation",
+      "file": "unpackaged/post_docgen/classes/RLM_ReturnPDFDocument.cls",
+      "message": "Validate CRUD permission before SOQL/DML operation or enforce user mode",
+      "count": 1,
+      "reason": "SECURITY: present when the Apex gate was introduced (TP-06, 2026-09); fix and shrink this entry, do not add to it."
+    },
+    {
+      "rule": "pmd:ApexCRUDViolation",
+      "file": "unpackaged/post_utils/classes/RLM_ARC_AssetValidator.cls",
+      "message": "Validate CRUD permission before SOQL/DML operation or enforce user mode",
+      "count": 6,
+      "reason": "SECURITY: present when the Apex gate was introduced (TP-06, 2026-09); fix and shrink this entry, do not add to it."
+    },
+    {
+      "rule": "pmd:ApexCRUDViolation",
+      "file": "unpackaged/post_utils/classes/RLM_AccountUtilities.cls",
+      "message": "Validate CRUD permission before SOQL/DML operation or enforce user mode",
+      "count": 128,
+      "reason": "SECURITY: present when the Apex gate was introduced (TP-06, 2026-09); fix and shrink this entry, do not add to it."
+    },
+    {
+      "rule": "pmd:ApexCRUDViolation",
+      "file": "unpackaged/post_utils/classes/RLM_ExpressionSetManagerController.cls",
+      "message": "Validate CRUD permission before SOQL/DML operation or enforce user mode",
+      "count": 1,
+      "reason": "SECURITY: present when the Apex gate was introduced (TP-06, 2026-09); fix and shrink this entry, do not add to it."
+    },
+    {
+      "rule": "pmd:ApexCRUDViolation",
+      "file": "unpackaged/post_utils/classes/RLM_UsageUploaderController.cls",
+      "message": "Validate CRUD permission before SOQL/DML operation or enforce user mode",
+      "count": 14,
+      "reason": "SECURITY: present when the Apex gate was introduced (TP-06, 2026-09); fix and shrink this entry, do not add to it."
+    },
+    {
+      "rule": "pmd:ApexCRUDViolation",
+      "file": "unpackaged/pre/4_tax/RLM_AvalaraJSONBuilder.cls",
+      "message": "Validate CRUD permission before SOQL/DML operation or enforce user mode",
+      "count": 1,
+      "reason": "SECURITY: present when the Apex gate was introduced (TP-06, 2026-09); fix and shrink this entry, do not add to it."
+    },
+    {
+      "rule": "pmd:ApexDangerousMethods",
+      "file": "unpackaged/post_utils/classes/RLM_AccountUtilities.cls",
+      "message": "Calling potentially dangerous method",
+      "count": 1,
+      "reason": "SECURITY: present when the Apex gate was introduced (TP-06, 2026-09); fix and shrink this entry, do not add to it."
+    },
+    {
+      "rule": "pmd:ApexSOQLInjection",
+      "file": "unpackaged/post_agents/classes/RLM_AI_UpdateRecordFieldsService.cls",
+      "message": "Avoid untrusted/unescaped variables in DML query",
+      "count": 1,
+      "reason": "SECURITY: present when the Apex gate was introduced (TP-06, 2026-09); fix and shrink this entry, do not add to it."
+    },
+    {
+      "rule": "pmd:ApexSOQLInjection",
+      "file": "unpackaged/post_billing_ui/classes/RLM_CollectionsDashboardController.cls",
+      "message": "Avoid untrusted/unescaped variables in DML query",
+      "count": 8,
+      "reason": "SECURITY: present when the Apex gate was introduced (TP-06, 2026-09); fix and shrink this entry, do not add to it."
+    },
+    {
+      "rule": "pmd:ApexSOQLInjection",
+      "file": "unpackaged/post_billing_ui/classes/RLM_DisputeDetailsController.cls",
+      "message": "Avoid untrusted/unescaped variables in DML query",
+      "count": 1,
+      "reason": "SECURITY: present when the Apex gate was introduced (TP-06, 2026-09); fix and shrink this entry, do not add to it."
+    },
+    {
+      "rule": "pmd:ApexSOQLInjection",
+      "file": "unpackaged/post_billing_ui/classes/RLM_OnAccountBillingController.cls",
+      "message": "Avoid untrusted/unescaped variables in DML query",
+      "count": 1,
+      "reason": "SECURITY: present when the Apex gate was introduced (TP-06, 2026-09); fix and shrink this entry, do not add to it."
+    },
+    {
+      "rule": "pmd:ApexSOQLInjection",
+      "file": "unpackaged/post_billing_ui/classes/RLM_SplitInvoicesController.cls",
+      "message": "Avoid untrusted/unescaped variables in DML query",
+      "count": 2,
+      "reason": "SECURITY: present when the Apex gate was introduced (TP-06, 2026-09); fix and shrink this entry, do not add to it."
+    },
+    {
+      "rule": "pmd:ApexSOQLInjection",
+      "file": "unpackaged/post_large_stx/classes/RLM_SetUpQuoteInvocable.cls",
+      "message": "Avoid untrusted/unescaped variables in DML query",
+      "count": 1,
+      "reason": "SECURITY: present when the Apex gate was introduced (TP-06, 2026-09); fix and shrink this entry, do not add to it."
+    },
+    {
+      "rule": "pmd:ApexSOQLInjection",
+      "file": "unpackaged/post_utils/classes/RLM_UsageDataController.cls",
+      "message": "Avoid untrusted/unescaped variables in DML query",
+      "count": 1,
+      "reason": "SECURITY: present when the Apex gate was introduced (TP-06, 2026-09); fix and shrink this entry, do not add to it."
+    },
+    {
+      "rule": "pmd:ApexSharingViolations",
+      "file": "unpackaged/post_utils/classes/RLM_AccountUtilities.cls",
+      "message": "Apex classes should declare a sharing model if DML or SOQL/SOSL is used",
+      "count": 1,
+      "reason": "SECURITY: present when the Apex gate was introduced (TP-06, 2026-09); fix and shrink this entry, do not add to it."
+    },
+    {
+      "rule": "pmd:ApexSuggestUsingNamedCred",
+      "file": "unpackaged/post_utils/classes/RLM_ExpressionSetManagerController.cls",
+      "message": "Suggest named credentials for authentication",
+      "count": 2,
+      "reason": "SECURITY: present when the Apex gate was introduced (TP-06, 2026-09); fix and shrink this entry, do not add to it."
+    },
+    {
+      "rule": "pmd:ApexSuggestUsingNamedCred",
+      "file": "unpackaged/post_utils/classes/RLM_RebuildSearchIndex.cls",
+      "message": "Suggest named credentials for authentication",
+      "count": 1,
+      "reason": "SECURITY: present when the Apex gate was introduced (TP-06, 2026-09); fix and shrink this entry, do not add to it."
+    },
+    {
+      "rule": "pmd:AvoidHardcodedCredentialsInFieldDecls",
+      "file": "force-app/main/default/classes/DFOApexMockService.cls",
+      "message": "Hard coded credentials assigned to variable: MOCK_CALLOUT_NAMED_CREDENTIAL matched the token: CREDENTIAL",
+      "count": 1,
+      "reason": "SECURITY: present when the Apex gate was introduced (TP-06, 2026-09); fix and shrink this entry, do not add to it."
+    },
+    {
+      "rule": "pmd:AvoidHardcodedCredentialsInFieldDecls",
+      "file": "unpackaged/post_manufacturing_core/classes/RLM_MFG_OrderToServiceContract.cls",
+      "message": "Hard coded credentials assigned to variable: MAINTENANCE_VISIT_TOKEN matched the token: TOKEN",
+      "count": 1,
+      "reason": "SECURITY: present when the Apex gate was introduced (TP-06, 2026-09); fix and shrink this entry, do not add to it."
+    },
+    {
+      "rule": "pmd:AvoidHardcodedCredentialsInFieldDecls",
+      "file": "unpackaged/post_manufacturing_core/classes/RLM_MFG_OrderToServiceContract.cls",
+      "message": "Hard coded credentials assigned to variable: SERVICE_CONTRACT_TOKEN matched the token: TOKEN",
+      "count": 1,
+      "reason": "SECURITY: present when the Apex gate was introduced (TP-06, 2026-09); fix and shrink this entry, do not add to it."
+    },
+    {
+      "rule": "pmd:AvoidHardcodingId",
+      "file": "unpackaged/post_billing_ui/classes/RLM_BillingScheduleGroupServiceTest.cls",
+      "message": "Hardcoding Ids is bound to break when changing environments.",
+      "count": 4,
+      "reason": "ERROR-PRONE: present when the Apex gate was introduced (TP-06, 2026-09); fix and shrink this entry, do not add to it."
+    },
+    {
+      "rule": "pmd:AvoidHardcodingId",
+      "file": "unpackaged/post_docgen/classes/RLM_DocumentGenerationCreateTest.cls",
+      "message": "Hardcoding Ids is bound to break when changing environments.",
+      "count": 2,
+      "reason": "ERROR-PRONE: present when the Apex gate was introduced (TP-06, 2026-09); fix and shrink this entry, do not add to it."
+    },
+    {
+      "rule": "pmd:AvoidHardcodingId",
+      "file": "unpackaged/post_large_stx/classes/RLM_PreProcessOrderControllerTest.cls",
+      "message": "Hardcoding Ids is bound to break when changing environments.",
+      "count": 6,
+      "reason": "ERROR-PRONE: present when the Apex gate was introduced (TP-06, 2026-09); fix and shrink this entry, do not add to it."
+    },
+    {
+      "rule": "pmd:AvoidHardcodingId",
+      "file": "unpackaged/post_utils/classes/RLM_ExpressionSetManagerControllerTest.cls",
+      "message": "Hardcoding Ids is bound to break when changing environments.",
+      "count": 3,
+      "reason": "ERROR-PRONE: present when the Apex gate was introduced (TP-06, 2026-09); fix and shrink this entry, do not add to it."
+    },
+    {
+      "rule": "pmd:EmptyCatchBlock",
+      "file": "unpackaged/post_agents/classes/RLM_AI_ConfigServiceUtilsTest.cls",
+      "message": "Avoid empty catch blocks",
+      "count": 1,
+      "reason": "ERROR-PRONE: present when the Apex gate was introduced (TP-06, 2026-09); fix and shrink this entry, do not add to it."
+    },
+    {
+      "rule": "pmd:EmptyCatchBlock",
+      "file": "unpackaged/post_billing_ui/classes/RLM_BSGContextController.cls",
+      "message": "Avoid empty catch blocks",
+      "count": 2,
+      "reason": "ERROR-PRONE: present when the Apex gate was introduced (TP-06, 2026-09); fix and shrink this entry, do not add to it."
+    },
+    {
+      "rule": "pmd:EmptyCatchBlock",
+      "file": "unpackaged/post_billing_ui/classes/RLM_BSGTimelineController.cls",
+      "message": "Avoid empty catch blocks",
+      "count": 2,
+      "reason": "ERROR-PRONE: present when the Apex gate was introduced (TP-06, 2026-09); fix and shrink this entry, do not add to it."
+    },
+    {
+      "rule": "pmd:EmptyCatchBlock",
+      "file": "unpackaged/post_billing_ui/classes/RLM_BillingScheduleGroupControllerTest.cls",
+      "message": "Avoid empty catch blocks",
+      "count": 1,
+      "reason": "ERROR-PRONE: present when the Apex gate was introduced (TP-06, 2026-09); fix and shrink this entry, do not add to it."
+    },
+    {
+      "rule": "pmd:EmptyCatchBlock",
+      "file": "unpackaged/post_billing_ui/classes/RLM_CollectionsDashboardController.cls",
+      "message": "Avoid empty catch blocks",
+      "count": 33,
+      "reason": "ERROR-PRONE: present when the Apex gate was introduced (TP-06, 2026-09); fix and shrink this entry, do not add to it."
+    },
+    {
+      "rule": "pmd:EmptyCatchBlock",
+      "file": "unpackaged/post_billing_ui/classes/RLM_DisputeDetailsController.cls",
+      "message": "Avoid empty catch blocks",
+      "count": 3,
+      "reason": "ERROR-PRONE: present when the Apex gate was introduced (TP-06, 2026-09); fix and shrink this entry, do not add to it."
+    },
+    {
+      "rule": "pmd:EmptyCatchBlock",
+      "file": "unpackaged/post_billing_ui/classes/RLM_DisputeDetailsControllerTest.cls",
+      "message": "Avoid empty catch blocks",
+      "count": 1,
+      "reason": "ERROR-PRONE: present when the Apex gate was introduced (TP-06, 2026-09); fix and shrink this entry, do not add to it."
+    },
+    {
+      "rule": "pmd:EmptyCatchBlock",
+      "file": "unpackaged/post_billing_ui/classes/RLM_InvoiceAgingControllerTest.cls",
+      "message": "Avoid empty catch blocks",
+      "count": 1,
+      "reason": "ERROR-PRONE: present when the Apex gate was introduced (TP-06, 2026-09); fix and shrink this entry, do not add to it."
+    },
+    {
+      "rule": "pmd:EmptyCatchBlock",
+      "file": "unpackaged/post_billing_ui/classes/RLM_OnAccountBillingController.cls",
+      "message": "Avoid empty catch blocks",
+      "count": 7,
+      "reason": "ERROR-PRONE: present when the Apex gate was introduced (TP-06, 2026-09); fix and shrink this entry, do not add to it."
+    },
+    {
+      "rule": "pmd:EmptyCatchBlock",
+      "file": "unpackaged/post_billing_ui/classes/RLM_PaymentsDataController.cls",
+      "message": "Avoid empty catch blocks",
+      "count": 1,
+      "reason": "ERROR-PRONE: present when the Apex gate was introduced (TP-06, 2026-09); fix and shrink this entry, do not add to it."
+    },
+    {
+      "rule": "pmd:EmptyCatchBlock",
+      "file": "unpackaged/post_billing_ui/classes/RLM_SplitInvoicesController.cls",
+      "message": "Avoid empty catch blocks",
+      "count": 2,
+      "reason": "ERROR-PRONE: present when the Apex gate was introduced (TP-06, 2026-09); fix and shrink this entry, do not add to it."
+    },
+    {
+      "rule": "pmd:EmptyCatchBlock",
+      "file": "unpackaged/post_billing_ui/classes/RLM_SplitInvoicesControllerTest.cls",
+      "message": "Avoid empty catch blocks",
+      "count": 1,
+      "reason": "ERROR-PRONE: present when the Apex gate was introduced (TP-06, 2026-09); fix and shrink this entry, do not add to it."
+    },
+    {
+      "rule": "pmd:EmptyCatchBlock",
+      "file": "unpackaged/post_billing_ui/classes/RLM_TxnJournalRelatedListControllerTest.cls",
+      "message": "Avoid empty catch blocks",
+      "count": 1,
+      "reason": "ERROR-PRONE: present when the Apex gate was introduced (TP-06, 2026-09); fix and shrink this entry, do not add to it."
+    },
+    {
+      "rule": "pmd:EmptyCatchBlock",
+      "file": "unpackaged/post_docgen/classes/RLM_ReturnPDFDocument.cls",
+      "message": "Avoid empty catch blocks",
+      "count": 1,
+      "reason": "ERROR-PRONE: present when the Apex gate was introduced (TP-06, 2026-09); fix and shrink this entry, do not add to it."
+    },
+    {
+      "rule": "pmd:EmptyCatchBlock",
+      "file": "unpackaged/post_inapp/classes/RLM_Learning_FrameworkTest.cls",
+      "message": "Avoid empty catch blocks",
+      "count": 2,
+      "reason": "ERROR-PRONE: present when the Apex gate was introduced (TP-06, 2026-09); fix and shrink this entry, do not add to it."
+    },
+    {
+      "rule": "pmd:EmptyCatchBlock",
+      "file": "unpackaged/post_utils/classes/RLM_AccountUtilities.cls",
+      "message": "Avoid empty catch blocks",
+      "count": 1,
+      "reason": "ERROR-PRONE: present when the Apex gate was introduced (TP-06, 2026-09); fix and shrink this entry, do not add to it."
+    },
+    {
+      "rule": "pmd:EmptyCatchBlock",
+      "file": "unpackaged/post_utils/classes/RLM_DecisionTableManagerController.cls",
+      "message": "Avoid empty catch blocks",
+      "count": 1,
+      "reason": "ERROR-PRONE: present when the Apex gate was introduced (TP-06, 2026-09); fix and shrink this entry, do not add to it."
+    },
+    {
+      "rule": "pmd:EmptyIfStmt",
+      "file": "unpackaged/pre/4_tax/RLM_MockAppAdapter.cls",
+      "message": "Avoid empty if statements",
+      "count": 1,
+      "reason": "ERROR-PRONE: present when the Apex gate was introduced (TP-06, 2026-09); fix and shrink this entry, do not add to it."
+    },
+    {
+      "rule": "pmd:EmptyIfStmt",
+      "file": "unpackaged/pre/4_tax/RLM_MockTaxAdapter.cls",
+      "message": "Avoid empty if statements",
+      "count": 1,
+      "reason": "ERROR-PRONE: present when the Apex gate was introduced (TP-06, 2026-09); fix and shrink this entry, do not add to it."
+    },
+    {
+      "rule": "pmd:EmptyStatementBlock",
+      "file": "unpackaged/pre/4_tax/RLM_MockAppAdapter.cls",
+      "message": "Avoid empty block statements.",
+      "count": 1,
+      "reason": "ERROR-PRONE: present when the Apex gate was introduced (TP-06, 2026-09); fix and shrink this entry, do not add to it."
+    },
+    {
+      "rule": "pmd:EmptyStatementBlock",
+      "file": "unpackaged/pre/4_tax/RLM_MockTaxAdapter.cls",
+      "message": "Avoid empty block statements.",
+      "count": 1,
+      "reason": "ERROR-PRONE: present when the Apex gate was introduced (TP-06, 2026-09); fix and shrink this entry, do not add to it."
+    }
+  ]
+}

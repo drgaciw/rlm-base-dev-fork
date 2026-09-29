@@ -426,10 +426,15 @@ CHECKS = [
         cmd=None,  # expanded at runtime — see STDLIB_SUITES
         # `docs/references/` is a non-code input one of these suites reads and asserts against (the
         # usage-consumption skill's stated check count), so editing it could invalidate a suite that
-        # was not selected to notice.
+        # was not selected to notice. `robot/` is read the same way: tests/test_robot_sleep_ratchet.py
+        # counts Sleep waits in it and tests/test_rlm_robot_e2e.py checks robot/QUARANTINE.md against
+        # the `flaky` tags in it.
         triggers=["tasks/", "scripts/", "tests/", "datasets/", "cumulusci.yml",
-                  "force-app/", "unpackaged/",
+                  "force-app/", "unpackaged/", "robot/",
                   ".agents/", ".claude/", ".cursor/", "docs/references/",
+                  # tests/test_finding_baseline.py pins the Apex gate (TP-06): the Lint step, its
+                  # Code Analyzer config and the committed baseline it compares against.
+                  ".github/workflows/pr-checks.yml", "code-analyzer.yml", "config/code-analyzer-baseline.json",
                   "AGENTS.md", "CLAUDE.md", "README.md", ".gitnexusrc"],
         deps=[], gating=True,
     ),
@@ -684,7 +689,9 @@ STDLIB_SUITES = [
     "tests/test_qb_multicurrency_data.py",
     "tests/test_renewal_bucket_planner.py",
     "tests/test_rlm_apex_file.py",
+    "tests/test_rlm_robot_e2e.py",
     "tests/test_rlm_sf_cli.py",
+    "tests/test_robot_sleep_ratchet.py",
     "tests/test_snapshot_dev_guide.py",
     "tests/test_snapshot_help.py",
     "tests/test_validate_keys_targets.py",
