@@ -34,10 +34,10 @@ Run: `python tests/test_rlm_sf_cli.py`  (also collectable by pytest).
 from __future__ import annotations
 
 import ast
+import importlib.util
 import json
 import pathlib
 import re
-import subprocess
 import sys
 import unittest
 from unittest import mock
@@ -47,11 +47,25 @@ TASKS_DIR = ROOT / "tasks"
 THIS_FILE = pathlib.Path(__file__).resolve()
 sys.path.insert(0, str(ROOT))
 
-import tasks.rlm_agents_common as rlm_agents_common  # noqa: E402
-import tasks.rlm_create_persona_user as rlm_create_persona_user  # noqa: E402
+# `tasks.rlm_sf_cli` and `tasks.rlm_agents_common` are imported normally and FIRST: they are the
+# modules the others resolve through `from tasks.rlm_sf_cli import ...`, and importing them
+# registers them in sys.modules. The remaining task modules are loaded by file path, because once
+# CumulusCI is loaded (it is installed in CI) the `tasks` namespace package's `__path__` collapses
+# and every later `import tasks.<x>` fails - see tests/test_rest_contracts.py::_load.
 import tasks.rlm_sf_cli as rlm_sf_cli  # noqa: E402
-import tasks.rlm_test_agents as rlm_test_agents  # noqa: E402
-import tasks.rlm_validate_setup as rlm_validate_setup  # noqa: E402
+import tasks.rlm_agents_common as rlm_agents_common  # noqa: E402
+
+
+def _load(name: str):
+    spec = importlib.util.spec_from_file_location(f"_tp13_{name}", TASKS_DIR / f"{name}.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+rlm_create_persona_user = _load("rlm_create_persona_user")
+rlm_test_agents = _load("rlm_test_agents")
+rlm_validate_setup = _load("rlm_validate_setup")
 
 SHIM = r"C:\Users\dev\AppData\Roaming\npm\sf.cmd"
 

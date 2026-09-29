@@ -32,6 +32,9 @@ import re
 import subprocess
 from pathlib import Path
 
+# Before the CCI try/except: see the same-package import note in tasks/rlm_sfdmu.py.
+from tasks.rlm_sf_cli import sf_executable
+
 try:
     from cumulusci.core.exceptions import CommandException, TaskOptionsError
     from cumulusci.tasks.salesforce import BaseSalesforceTask
@@ -41,7 +44,6 @@ except ImportError:  # pragma: no cover - allows bare import in unit context
     TaskOptionsError = Exception
 
 from tasks.rlm_agents_common import run_sf_json
-from tasks.rlm_sf_cli import sf_executable
 
 DEFAULT_AGENT = "quoting-assistant"
 AGENT_TEST_SUITES = {
