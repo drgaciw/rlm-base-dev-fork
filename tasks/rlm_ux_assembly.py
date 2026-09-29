@@ -31,6 +31,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 import xml.etree.ElementTree as ET
+from tasks.rlm_sf_cli import sf_executable
 
 try:
     import yaml
@@ -1449,7 +1450,7 @@ class AssembleAndDeployUX(SFDXBaseTask):
             )
 
         cmd = [
-            "sf",
+            sf_executable(),
             "project",
             "deploy",
             "start",

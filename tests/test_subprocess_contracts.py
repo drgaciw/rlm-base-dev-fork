@@ -3,8 +3,8 @@
 
 On native Windows the Salesforce CLI is installed as `sf.cmd`. `subprocess.run(["sf", ...])`
 with list argv and `shell=False` does not consult PATHEXT the way a shell does, so a bare
-`"sf"` as argv[0] raises FileNotFoundError there (A-C2). `tasks/rlm_sfdmu.py::_sf_executable`
-is the one fix in the tree: it resolves `shutil.which("sf") or "sf"`.
+`"sf"` as argv[0] raises FileNotFoundError there (A-C2). `tasks/rlm_sf_cli.py::sf_executable`
+(TP-13) is the one resolver in the tree: `shutil.which("sf") or "sf"`.
 
 Three things are pinned here, offline and without CumulusCI or a Salesforce org:
 
@@ -12,15 +12,15 @@ Three things are pinned here, offline and without CumulusCI or a Salesforce org:
    `shutil.which` patched to a `.cmd` shim path and `subprocess.run` recorded: argv[0] is the
    shim, argv is a list of strings, `shell` is never truthy. A registry check fails when a new
    subprocess site appears in the module without being added here.
-2. **Gap accounting** - `KNOWN_GAPS` lists the modules that still pass a bare `"sf"`. The
+2. **Gap accounting** - `KNOWN_GAPS` lists the modules that still pass a bare `"sf"`. It is
+   empty since TP-13; it stays as the allowlist mechanism so a future exception is explicit. The
    bare-argv detection is AST-based (a list/tuple literal whose first element is the string
    `"sf"`), so a fix or a regression cannot slip past a string match. The test fails on a
    STALE entry (listed but no longer bare: delete it) and on a NEW gap (bare but unlisted).
-   The follow-up that empties the dict is TP-13 (see `docs/references/test-plan-2026-09.md`).
-3. **`run_sf_json` is covered through its callers** - `tasks/rlm_agents_common.run_sf_json`
-   takes argv from its callers and does not resolve the executable itself, so it is not a fix
-   point and each caller's literal is a gap. If `run_sf_json` starts resolving the executable
-   the callers stop being gaps and a behavioural check takes over.
+3. **`run_sf_json` is a fix point** - `tasks/rlm_agents_common.run_sf_json` resolves argv[0]
+   itself, so its callers' `"sf"` literals are not gaps and a behavioural check proves it
+   (tests/test_rlm_sf_cli.py pins the rest of the argv). If it ever stops resolving, each
+   caller's literal becomes a gap again and must be listed or fixed.
 
 No `shell=True` (or `os.system`) is allowed anywhere in `tasks/`.
 
@@ -48,28 +48,11 @@ import tasks.rlm_sfdmu as rlm_sfdmu  # noqa: E402
 SHIM = r"C:\Users\dev\AppData\Roaming\npm\sf.cmd"
 FAKE_TOKEN = "00Dxx0000001gABEAY!AQFAKEACCESSTOKENVALUE1234567890ABCDE"
 
-# module (tasks/<name>.py) -> why its `sf` argv is still bare. TP-13 ("Windows-safe sf
-# resolution in tasks/") applies a shared tasks/rlm_sf_cli.py::sf_executable() to every module
-# below and to run_sf_json, and empties this dict as its acceptance criterion. The test asserts
-# each entry is STILL bare, so an entry must be deleted in the same change that fixes it.
-_DIRECT = "argv[0] is the literal 'sf' passed to subprocess.run"
-_VIA_HELPER = (
-    "argv[0] is the literal 'sf' handed to rlm_agents_common.run_sf_json, which does not "
-    "resolve the executable (not a fix point)"
-)
-KNOWN_GAPS = {
-    "rlm_apex_file": _DIRECT + " - TP-13",
-    "rlm_bre": _DIRECT + " (retrieve + convert) - TP-13",
-    "rlm_repair_pricing_schedules": _DIRECT + " - TP-13",
-    "rlm_stamp_commit": _DIRECT + " - TP-13",
-    "rlm_ux_assembly": _DIRECT + " - TP-13",
-    "rlm_validate_setup": _DIRECT + " (sf --version / plugins) - TP-13",
-    "rlm_create_persona_user": _DIRECT + " via its local _run helper (create user, query, assign) - TP-13",
-    "rlm_test_agents": _DIRECT + " (agent test run) and " + _VIA_HELPER + " (agent test create) - TP-13",
-    "rlm_activate_agents": _VIA_HELPER + " - TP-13",
-    "rlm_deactivate_agents": _VIA_HELPER + " - TP-13",
-    "rlm_publish_agents": _VIA_HELPER + " - TP-13",
-}
+# module (tasks/<name>.py) -> why its `sf` argv is still bare. Empty since TP-13 applied the
+# shared tasks/rlm_sf_cli.py::sf_executable() to every module and to run_sf_json. Do not add an
+# entry to silence a new bare 'sf': resolve the executable instead. The test asserts each entry
+# is STILL bare, so an entry must be deleted in the same change that fixes it.
+KNOWN_GAPS: dict = {}
 
 # Every module that calls run_sf_json. A new caller has to be added here on purpose, which is
 # the prompt to check that its argv resolves the executable.

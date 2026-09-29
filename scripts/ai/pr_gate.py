@@ -653,6 +653,7 @@ STDLIB_SUITES = [
     "tests/test_qb_multicurrency_data.py",
     "tests/test_renewal_bucket_planner.py",
     "tests/test_rlm_apex_file.py",
+    "tests/test_rlm_sf_cli.py",
     "tests/test_snapshot_dev_guide.py",
     "tests/test_snapshot_help.py",
     "tests/test_validate_keys_targets.py",

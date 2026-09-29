@@ -5,6 +5,7 @@ from pathlib import Path
 import xml.etree.ElementTree as ET
 
 from tasks import rlm_rest_base
+from tasks.rlm_sf_cli import sf_executable
 
 try:
     from cumulusci.core.tasks import BaseTask
@@ -179,7 +180,7 @@ class EnsurePricingSchedules(BaseTask):
             raise TaskOptionsError("No target org username available for deploy.")
 
         cmd = [
-            "sf",
+            sf_executable(),
             "project",
             "deploy",
             "start",
