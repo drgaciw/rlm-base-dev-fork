@@ -24,11 +24,13 @@ import test_health as H  # noqa: E402
 RESULTS = []
 
 
-def check(name, condition):
+def check(name, condition, detail=""):
     RESULTS.append((name, bool(condition)))
     print(f"  [{'PASS' if condition else 'FAIL'}] {name}")
+    if detail and not condition:
+        print(f"         {detail}")
     if "pytest" in sys.modules:
-        assert condition, name
+        assert condition, f"{name} {detail}"
 
 
 def write(path, text):
@@ -283,12 +285,19 @@ def e2e_summary(**tests):
                                                for n, r in tests.items()]})
 
 
+def e2e_run_dir(run_id):
+    """The real producer's per-invocation directory (tasks/rlm_robot_e2e.py): e2e_%Y%m%d_%H%M%S, which
+    differs on every run, so a key built from it would never correlate across runs."""
+    n = int(run_id) % 100
+    return f"e2e_202609{20 + n:02d}_03{n:02d}00"
+
+
 def build_run(root, run_id, second, t1, t2, t3=None, verify="PASS"):
     run = root / run_id
     fail = "<failure/>" if second == "fail" else ""
     write(run / f"verify-org-{run_id}" / "test-results" / "apex" / "a.xml", JUNIT.format(second=f'<testcase classname="A" name="t2">{fail}</testcase>'))
     write(run / f"verify-org-{run_id}" / "robot" / "verify" / "docs" / "output.xml", ROBOT_XML.format(s=verify))
-    stage = run / f"e2e-org-{run_id}" / "robot" / "e2e" / "2-robot_e2e"
+    stage = run / f"e2e-org-{run_id}" / "robot" / "e2e" / "2-robot_e2e" / e2e_run_dir(run_id)
     tests = {"Suite.T1": t1, "Suite.T2": t2}
     if t3:
         tests["Suite.T3"] = t3
@@ -351,17 +360,67 @@ def test_report():
 def test_report_e2e_quarantine_stage_and_recovery_rules():
     with tempfile.TemporaryDirectory() as d:
         art = Path(d) / "a"
-        write(art / "1" / "e2e-o-1" / "e2e-quarantine" / "1-robot_e2e" / "e2e-summary.json",
+        # Real depth: <outputdir>/e2e_<timestamp>/e2e-summary.json, outputdir = .../e2e-quarantine.
+        write(art / "1" / "e2e-o-1" / "e2e-quarantine" / "e2e_20260922_030000" / "e2e-summary.json",
               e2e_summary(**{"S.Q": "fail"}))
-        write(art / "2" / "e2e-o-2" / "e2e-quarantine" / "1-robot_e2e" / "e2e-summary.json",
+        write(art / "2" / "e2e-o-2" / "e2e-quarantine" / "e2e_20260923_030000" / "e2e-summary.json",
               e2e_summary(**{"S.Q": "skip"}))
         runs, _ = H.load_runs(art, None)
         counts = H.stage_counts(runs)
         check("results under e2e-quarantine are their own stage", set(counts) == {"robot-e2e-quarantine"})
+        keys = {key for r in runs for _, key, _ in r.results}
+        check("the key drops the e2e_<timestamp> directory: one stable key across two runs",
+              keys == {"e2e-o/e2e-quarantine::S.Q"}, str(keys))
         closed, still_open = H.outages(runs)
         check("a skip neither recovers nor extends a failure", not closed and len(still_open) == 1)
         check("without a runs file runs are ordered by id and carry no time", [r.run_id for r in runs] == ["1", "2"]
               and all(r.time is None for r in runs))
+
+
+def test_e2e_key_is_stable_across_timestamped_run_dirs():
+    """Regression: the key used the summary's parent directory, which is e2e_<timestamp>, so a failure
+    and its recovery on the next run were two unrelated tests and the outage never closed."""
+    check("the fixture's timestamped run directories differ between runs (else this test proves nothing)",
+          e2e_run_dir("101") != e2e_run_dir("102") and H.E2E_RUN_DIR.match(e2e_run_dir("101")))
+    with tempfile.TemporaryDirectory() as d:
+        tmp = Path(d)
+        art = tmp / "artifacts"
+        build_run(art, "101", "pass", "pass", "fail")
+        build_run(art, "102", "pass", "pass", "pass")
+        runs_file = write(tmp / "runs.json", json.dumps([
+            {"id": 101, "created_at": "2026-09-22T03:00:00Z", "conclusion": "failure", "workflow": "nightly"},
+            {"id": 102, "created_at": "2026-09-22T15:00:00Z", "conclusion": "success", "workflow": "nightly"}]))
+        runs, _ = H.load_runs(art, runs_file)
+        e2e_keys = [{k for stage, k, _ in r.results if stage == "robot-e2e"} for r in runs]
+        check("the same e2e test has the same key in both runs",
+              e2e_keys[0] == e2e_keys[1] and "e2e-org/2-robot_e2e::Suite.T2" in e2e_keys[0], str(e2e_keys))
+        closed, still_open = H.outages(runs)
+        e2e_closed = [k for k in closed if k.startswith("robot-e2e: ")]
+        check("a failure followed by a same-day recovery closes the outage (12 h) and is not still open",
+              e2e_closed == ["robot-e2e: e2e-org/2-robot_e2e::Suite.T2"]
+              and not [k for k in still_open if k.startswith("robot-e2e: ")], f"{closed} {still_open}")
+        robot = write(tmp / "QUARANTINE.md", register())
+        reg = write(tmp / "registry.json", registry())
+        rc, out = cli("report", "--artifacts", art, "--runs", runs_file, "--robot", robot, "--registry", reg,
+                      "--today", "2026-09-30")
+        check("the report shows the recovery and no still-failing e2e test",
+              rc == 0 and "Mean time to recovery" in out and "Still failing" not in out)
+
+
+def test_gaps_are_recorded():
+    with tempfile.TemporaryDirectory() as d:
+        tmp = Path(d)
+        gaps = write(tmp / "gaps.txt", "run 7: e2e-org-7 (download failed)\nrun 8: verify-org-8 (download failed)\n")
+        robot = write(tmp / "QUARANTINE.md", register())
+        reg = write(tmp / "registry.json", registry())
+        rc, out = cli("report", "--artifacts", tmp / "none", "--gaps", gaps, "--robot", robot, "--registry", reg,
+                      "--today", "2026-09-30")
+        check("artifacts that failed to download are named under data quality, not silently dropped",
+              rc == 0 and "2 artifact(s) could not be downloaded" in out and "e2e-org-7" in out
+              and "verify-org-8" in out)
+        rc, out = cli("report", "--artifacts", tmp / "none", "--gaps", tmp / "absent.txt", "--robot", robot,
+                      "--registry", reg, "--today", "2026-09-30")
+        check("no gaps file (nothing failed) adds no note", rc == 0 and "could not be downloaded" not in out)
 
 
 # ---- zizmor drift audit ------------------------------------------------------------------
@@ -435,6 +494,8 @@ def main():
     test_merged_table()
     test_report()
     test_report_e2e_quarantine_stage_and_recovery_rules()
+    test_e2e_key_is_stable_across_timestamped_run_dirs()
+    test_gaps_are_recorded()
     test_zizmor_audit()
     test_cli_surface()
 

@@ -31,6 +31,7 @@ Artifact layout `report` reads (built by .github/workflows/test-health.yml):
 
   <artifacts>/<run id>/<artifact name>/**     one directory per downloaded artifact
   <runs.json>                                 [{"id", "created_at", "conclusion", "workflow"}]
+  <gaps file>  (optional)                     one line per artifact that failed to download
 
 Definitions used in the report (kept next to the numbers in its output):
 
@@ -67,6 +68,7 @@ COLUMNS = ("test", "owner", "issue", "root_cause", "added", "expires", "evidence
 JSON_KEYS = COLUMNS + ("layer",)
 ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 ISSUE_REF = re.compile(r"^(https://\S+|#\d+)$")
+E2E_RUN_DIR = re.compile(r"^e2e_\d{8}_\d{6}$")  # tasks/rlm_robot_e2e.py: e2e_%Y%m%d_%H%M%S
 
 
 class HealthError(Exception):
@@ -347,7 +349,13 @@ def collect_run(run_dir, run):
         try:
             if path.name == "e2e-summary.json":
                 stage = "robot-e2e-quarantine" if "e2e-quarantine" in rel.parts else "robot-e2e"
-                key = f"{artifact}/{path.parent.name}"
+                # tasks/rlm_robot_e2e.py writes <outputdir>/e2e_<timestamp>/e2e-summary.json. The
+                # timestamp changes every run, so the label is the directory above it (the numbered
+                # suite stage, or e2e-quarantine), or no test would ever correlate across runs.
+                label_dir = path.parent
+                if E2E_RUN_DIR.match(label_dir.name):
+                    label_dir = label_dir.parent
+                key = f"{artifact}/{label_dir.name}"
                 data = json.loads(path.read_text(encoding="utf-8"))
                 run.results += e2e_summary_results(data, stage, key)
             elif path.suffix.lower() == ".xml":
@@ -366,7 +374,7 @@ def collect_run(run_dir, run):
     return ignored, unreadable
 
 
-def load_runs(artifacts_dir, runs_file):
+def load_runs(artifacts_dir, runs_file, gaps_file=None):
     """-> (runs ordered oldest first, notes). Run metadata comes from `runs_file` when given."""
     meta = {}
     notes = []
@@ -376,6 +384,15 @@ def load_runs(artifacts_dir, runs_file):
             meta = {str(r["id"]): r for r in listing}
         except (OSError, ValueError, KeyError, TypeError) as exc:
             notes.append(f"runs file unreadable ({type(exc).__name__}: {exc}); no run times, so no MTTR")
+    if gaps_file is not None and Path(gaps_file).is_file():
+        try:
+            gaps = [ln.strip() for ln in Path(gaps_file).read_text(encoding="utf-8").splitlines() if ln.strip()]
+        except OSError as exc:
+            gaps = []
+            notes.append(f"gaps file unreadable ({type(exc).__name__}: {exc})")
+        if gaps:
+            notes.append(f"{len(gaps)} artifact(s) could not be downloaded, so their results are missing: "
+                         + "; ".join(gaps))
     runs = {}
     root = Path(artifacts_dir)
     if root.is_dir():
@@ -616,7 +633,7 @@ def cmd_check_quarantine(args):
 
 def cmd_report(args):
     today = _today(args.today)
-    runs, notes = load_runs(args.artifacts, args.runs)
+    runs, notes = load_runs(args.artifacts, args.runs, args.gaps)
     try:
         entries, quarantine_error = load_quarantine(args.robot, args.registry), None
     except HealthError as exc:
@@ -656,6 +673,7 @@ def main(argv=None):
     sources(report)
     report.add_argument("--artifacts", type=Path, required=True, help="<dir>/<run id>/<artifact>/**")
     report.add_argument("--runs", type=Path, help="runs.json with id, created_at, conclusion, workflow")
+    report.add_argument("--gaps", type=Path, help="one line per artifact that failed to download (noted in the report)")
     report.set_defaults(func=cmd_report)
 
     audit = sub.add_parser("zizmor-audit", help="non-gating zizmor drift audit against the count baseline")
