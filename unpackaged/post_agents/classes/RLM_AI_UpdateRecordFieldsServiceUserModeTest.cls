@@ -49,9 +49,9 @@ private class RLM_AI_UpdateRecordFieldsServiceUserModeTest {
             insert ps;
             insert new ObjectPermissions(
                 ParentId = ps.Id, SobjectType = 'Quote', PermissionsRead = true, PermissionsEdit = true);
-            // Read-only companions, as in RLM_QuotingAssistant (Opportunity read) plus Product2 read,
-            // which the line resolver's Product2.Name lookup needs; the real agent user gets that from
-            // its standard quoting grants. They give no write access to anything.
+            // Read-only companions mirroring the shipped RLM_QuotingAssistant permission set (Opportunity
+            // read) plus Product2 read for the agent user's standard quoting grants. Not claimed to be
+            // needed by the service: its lookup queries run in system mode. They give no write access.
             insert new List<ObjectPermissions>{
                 new ObjectPermissions(ParentId = ps.Id, SobjectType = 'Opportunity', PermissionsRead = true),
                 new ObjectPermissions(ParentId = ps.Id, SobjectType = 'Product2', PermissionsRead = true)
