@@ -400,7 +400,11 @@ CHECKS = [
         triggers=["tasks/", "scripts/", "tests/", "datasets/", "cumulusci.yml",
                   "force-app/", "unpackaged/",
                   ".agents/", ".claude/", ".cursor/", "docs/references/",
-                  "AGENTS.md", "CLAUDE.md", "README.md", ".gitnexusrc"],
+                  "AGENTS.md", "CLAUDE.md", "README.md", ".gitnexusrc",
+                  # tests/test_workflow_lint.py (TP-11) reads the Lint job's pins, the zizmor
+                  # config and baseline, and the runbook that documents them.
+                  ".github/workflows/pr-checks.yml", ".github/zizmor-baseline.json",
+                  ".zizmor.yml", "docs/guides/ci-runbook.md"],
         deps=[], gating=True,
     ),
     dict(
@@ -634,6 +638,7 @@ STDLIB_SUITES = [
     "tests/test_snapshot_dev_guide.py",
     "tests/test_snapshot_help.py",
     "tests/test_validate_keys_targets.py",
+    "tests/test_workflow_lint.py",
 ]
 
 # Offline like the list above, but they reach a `tasks/` module that imports `requests`, so the
