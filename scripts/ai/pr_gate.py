@@ -432,6 +432,9 @@ CHECKS = [
         triggers=["tasks/", "scripts/", "tests/", "datasets/", "cumulusci.yml",
                   "force-app/", "unpackaged/", "robot/",
                   ".agents/", ".claude/", ".cursor/", "docs/references/",
+                  # tests/test_finding_baseline.py pins the Apex gate (TP-06): the Lint step, its
+                  # Code Analyzer config and the committed baseline it compares against.
+                  ".github/workflows/pr-checks.yml", "code-analyzer.yml", "config/code-analyzer-baseline.json",
                   "AGENTS.md", "CLAUDE.md", "README.md", ".gitnexusrc"],
         deps=[], gating=True,
     ),
