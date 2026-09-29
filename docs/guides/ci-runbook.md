@@ -105,34 +105,62 @@ the first execution is the scheduled one. Prove it earlier:
 **When:** after any PR that changes a `docker/*` action pin in
 `docker-publish.yml`, before the next Monday 07:00 UTC.
 
-**Dispatch** (Actions → *Publish build-environment image* → *Run workflow*, or):
+**Dispatch from a throwaway branch, never from the default branch.**
+`docker-publish.yml` adds `:latest` to the published tags whenever the run's
+ref is the default branch, whatever the `tag` input says:
+
+```yaml
+# docker-publish.yml, "Set image coordinates" step
+if [ "${EVENT_NAME}" = "schedule" ] || [ "${GITHUB_REF_NAME}" = "${DEFAULT_BRANCH}" ]; then
+  tags="$(printf '%s\n%s' "${image}:${tag}" "${image}:latest")"
+# ... (else: tags="${image}:${tag}")
+```
+
+A smoke dispatched with `--ref main` therefore overwrites the production
+`:latest` with the **single-architecture** smoke image and breaks `arm64`
+pulls until the next scheduled multi-arch build. The workflow's own guard
+(`if [ "${tag}" = "latest" ] && [ "${GITHUB_REF_NAME}" != "${DEFAULT_BRANCH}" ]`)
+only refuses `tag=latest` off the default branch; it does not stop `:latest`
+being added on it.
 
 ```bash
-gh workflow run docker-publish.yml --repo <owner>/<repo> --ref main \
-  -f tag="ci-smoke-$(date -u +%Y%m%d)" -f platforms=linux/amd64
+day="$(date -u +%Y%m%d)"
+# 1. a short-lived branch from the default branch (it carries the bumped pin)
+git fetch <remote> main
+git push <remote> "<remote>/main:refs/heads/ci-smoke/${day}"
+# 2. dispatch from that branch (Actions -> Publish build-environment image ->
+#    Run workflow also works: pick the ci-smoke/<date> branch, not main)
+gh workflow run docker-publish.yml --repo <owner>/<repo> --ref "ci-smoke/${day}" \
+  -f tag="ci-smoke-${day}" -f platforms=linux/amd64
 gh run list --repo <owner>/<repo> --workflow docker-publish.yml --limit 1
 gh run watch <run-id> --repo <owner>/<repo>
 ```
 
-- The `tag` input is required. Use `ci-smoke-YYYYMMDD`, never `latest`: a
-  `latest` tag is refused off the default branch and would overwrite the
-  published image on it.
+- The `tag` input is required. Use `ci-smoke-YYYYMMDD`, never `latest`.
 - `platforms=linux/amd64` keeps the run short. It does **not** exercise the
   `linux/arm64` path or QEMU emulation; a bump of `setup-qemu-action` is only
-  fully proved by the scheduled multi-arch run, or by dispatching once with the
-  default `linux/amd64,linux/arm64`.
-- The workflow pushes (`push: true`), so the run publishes
-  `ghcr.io/<owner>/rlm-base:ci-smoke-YYYYMMDD` (dispatching from a branch other
-  than the default publishes that one tag only).
+  fully proved by the scheduled multi-arch run, or by dispatching once from
+  the smoke branch with the default `linux/amd64,linux/arm64`.
+- The workflow pushes (`push: true`). From the smoke branch it publishes only
+  `ghcr.io/<owner>/rlm-base:ci-smoke-YYYYMMDD`. To be sure, note the digest of
+  `ghcr.io/<owner>/rlm-base:latest` before dispatching
+  (`docker buildx imagetools inspect ghcr.io/<owner>/rlm-base:latest`) and
+  confirm it is unchanged afterwards.
 
 **Pass criteria:** the run is green, and the job summary shows
 `Published ghcr.io/<owner>/rlm-base:ci-smoke-YYYYMMDD`. Optionally
 `docker pull` that tag to confirm the image is there.
 
-**Clean up:** delete the `ci-smoke-*` package version afterwards (GitHub →
-Packages → `rlm-base` → the version → *Delete*), so smoke tags do not
-accumulate. A failed smoke run means the bump should be reverted or fixed before
-the cron fires; note the run URL in the PR that introduced the bump.
+**Clean up:** delete both artefacts afterwards.
+
+```bash
+git push <remote> --delete "ci-smoke/${day}"
+```
+
+and delete the `ci-smoke-*` package version (GitHub -> Packages -> `rlm-base`
+-> the version -> *Delete*), so smoke tags do not accumulate. A failed smoke
+run means the bump should be reverted or fixed before the cron fires; note the
+run URL in the PR that introduced the bump.
 
 This is a manual procedure. Nothing in CI dispatches it, so the run result
 above is evidence for a PR only when someone has actually done it.
