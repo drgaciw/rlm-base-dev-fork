@@ -1,0 +1,26 @@
+# Salesforce Code Analyzer (v5) configuration — read from the repo root by `sf code-analyzer run`.
+#
+# Used by the "Apex static analysis" steps of the Lint job in .github/workflows/pr-checks.yml
+# (TP-06, docs/references/test-plan-2026-09.md §4.2). The gate selects only the PMD rules tagged
+# Security or ErrorProne and compares them with config/code-analyzer-baseline.json
+# (scripts/lint/finding_baseline.py). Everything else this file does is keep that run narrow and
+# reproducible:
+#
+#   * PMD is limited to Apex (.cls/.trigger). Its default file-extension map would also feed
+#     `.xml`, `.html`, `.js` and Visualforce files to PMD's own Security/ErrorProne rule sets;
+#     LWC JavaScript already has ESLint in the Lint job and this gate is about Apex.
+#   * Nothing else is configured on purpose: no rule overrides, so a rule's severity and tags are
+#     the ones the pinned Code Analyzer version ships. Changing the pin (CODE_ANALYZER_VERSION in
+#     pr-checks.yml) can change findings; regenerate the baseline in the same PR.
+
+engines:
+  pmd:
+    file_extensions:
+      apex:
+        - .cls
+        - .trigger
+      html: []
+      javascript: []
+      typescript: []
+      visualforce: []
+      xml: []

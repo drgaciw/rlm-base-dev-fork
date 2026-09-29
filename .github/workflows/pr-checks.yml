@@ -294,6 +294,74 @@ jobs:
           set -euo pipefail
           echo "${PRETTIER_FILES}" | xargs -r -d '\n' npx prettier --check
 
+      # ---- Apex static analysis (TP-06, docs/references/test-plan-2026-09.md §4.2) -------------
+      # Runs only when a PR changes Apex. Salesforce Code Analyzer's PMD engine, Security and
+      # ErrorProne tags, compared with the committed count baseline (config/code-analyzer-
+      # baseline.json) by scripts/lint/finding_baseline.py: a new finding, or one more of an old one,
+      # fails; a fixed one only warns. The scan covers ALL Apex, not just the changed files, so the
+      # comparison is always against the whole baseline; a PR can only add findings by changing Apex.
+      # No Apex test runs here — that needs an org (nightly job, TP-04).
+      - name: Detect changed Apex
+        id: apex
+        run: |
+          set -euo pipefail
+          if grep -qE '\.(cls|trigger)$' changed_files.txt; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install Salesforce Code Analyzer
+        if: steps.apex.outputs.changed == 'true'
+        env:
+          # Exact pin. A new version can change rules and messages: bump it in its own PR and
+          # regenerate config/code-analyzer-baseline.json (see docs/guides/ci-runbook.md).
+          CODE_ANALYZER_VERSION: "5.16.0"
+        run: |
+          set -euo pipefail
+          # The sf CLI version is the repo-wide pin; Java comes from the runner image (17+ needed).
+          sf_version="$(grep -E '^SF_CLI_VERSION=' config/tool-versions.env | cut -d= -f2)"
+          npm install --global "@salesforce/cli@${sf_version}"
+          sf plugins install "code-analyzer@${CODE_ANALYZER_VERSION}"
+          sf --version
+          sf plugins | grep -E 'code-analyzer'
+
+      - name: Apex Security/ErrorProne findings
+        if: steps.apex.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+          # code-analyzer.yml (repo root) limits PMD to .cls/.trigger. --workspace . with two target
+          # directories = every Apex file in the repo. Exit code 1 only means "violations were
+          # found" (the comparer below decides whether that matters); anything else is a real error.
+          set +e
+          sf code-analyzer run --workspace . --target force-app --target unpackaged \
+            --rule-selector pmd:Security --rule-selector pmd:ErrorProne \
+            --output-file code-analyzer-results.json
+          code=$?
+          set -e
+          if [ ! -s code-analyzer-results.json ]; then
+            echo "::error::Code Analyzer wrote no results (exit ${code})"
+            exit 2
+          fi
+
+      - name: Upload Apex analysis results
+        if: always() && steps.apex.outputs.changed == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: code-analyzer-results
+          path: code-analyzer-results.json
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Apex findings vs baseline
+        if: steps.apex.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+          # REPORT-ONLY until the baseline is committed (next commit): prints what it would fail on.
+          python scripts/lint/finding_baseline.py --format code-analyzer --name "Apex finding" \
+            --baseline config/code-analyzer-baseline.json code-analyzer-results.json \
+            || echo "::warning::report-only: the baseline is not enforced yet"
+
   # config/tool-versions.env is the single source of truth for pinned tool
   # versions; docker/Dockerfile's ARG defaults are a plain-`docker build`
   # fallback that is kept in sync with it "by convention" (its own header
