@@ -348,7 +348,7 @@ silently each fail the suite.
 
 Runs the mechanical checks a change actually needs, and reports the status of **every**
 check — including the ones it skipped, and why. One command instead of remembering which
-of thirty-one validators a given diff should have run.
+of thirty-three validators a given diff should have run.
 
 ```bash
 python scripts/ai/pr_gate.py --base origin/main   # select from the diff vs a base ref
@@ -581,19 +581,19 @@ it the violation, because on a correct file a working rule and a blind one retur
 answer. This file is densely commented precisely because each setting matters, which is what
 made the first version of three separate guards vacuous.
 
-A full `--all` run is 31 checks in about 100 seconds on a Windows machine with no
+A full `--all` run is 33 checks in about 100 seconds on a Windows machine with no
 CumulusCI/pytest installed, dominated by three suites: `stdlib_offline_suites` and
 `pr_gate_suite` at roughly 27s each and `branch_scope` (`tests/test_branch_scope.py`) at about
 21s — together well over half the wall-clock total — while most of the remaining checks finish
 in a second or two, and a typical docs-only selection is a couple of seconds. Re-measured for
 wave 2 (A-L3/I4): the prior "17 seconds" figure predated `branch_scope` needing real `git`/`gh`
 subprocess round-trips per case and was never re-timed against it. That timing is measured on a
-machine where five of the thirty-one (`doc_build_steps`, `extend_stdctx_recovery` — need
+machine where five of the thirty-three (`doc_build_steps`, `extend_stdctx_recovery` — need
 `cumulusci`; `docgen_suite`, `harness_suites`, `billing_portal_suites` — need `pytest`) are
 blocked on optional dependencies and so contribute nothing, which is worth naming rather than
-leaving the reader to assume all thirty-one ran: with those installed the number is higher.
+leaving the reader to assume all thirty-three ran: with those installed the number is higher.
 
-Verified by `tests/test_pr_gate.py` (729 checks, throwaway repos, no network — hermetic for all but
+Verified by `tests/test_pr_gate.py` (735 checks, throwaway repos, no network — hermetic for all but
 one, the fixture that runs the real gate and so selects the real `skill_manifest` check, which
 resolves sibling repos by absolute path and therefore fails in a detached worktree), which
 drives the verdict rather than the helpers. Every mutation below is confirmed to fail the
@@ -613,7 +613,7 @@ empty stdout, indistinguishable from a clean tree, so it would drop uncommitted 
 the selection and, in the CCI-reference check, report "no drift" and pass — `--untracked-files=all`
 dropped, the setuptools co-requirement dropped or emitted after the package that needs it,
 a directory claim swallowing shell suites again, `pyproject.toml` removed from either
-pytest-driven check's triggers, each of the thirty-one trigger lists narrowed back off an input its
+pytest-driven check's triggers, each of the thirty-three trigger lists narrowed back off an input its
 check reads or a script it runs, and each of the four read-enumeration shapes stopped being recognised (directory
 arguments unexpanded, rooted single segments unseen, chain prefixes unfiltered, a root
 directory counted as a read). The rest of the corpus — the figure given below, counted
