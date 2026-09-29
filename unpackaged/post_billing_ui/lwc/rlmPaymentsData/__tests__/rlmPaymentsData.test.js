@@ -1,5 +1,9 @@
-import { createElement } from "lwc";
 import RlmPaymentsData from "c/rlmPaymentsData";
+import {
+  clearDocument,
+  flushPromises,
+  mountComponent
+} from "@rlm/lwc-test-utils";
 import getPaymentScheduleItems from "@salesforce/apex/RLM_PaymentsDataController.getPaymentScheduleItems";
 import getAccountOptions from "@salesforce/apex/RLM_PaymentsDataController.getAccountOptions";
 
@@ -31,28 +35,18 @@ jest.mock(
 
 const TAG = "c-rlm-payments-data";
 
-function mount(props = {}) {
-  const el = createElement(TAG, { is: RlmPaymentsData });
-  Object.assign(el, { recordId: "001000000000001AAA" }, props);
-  document.body.appendChild(el);
-  return el;
-}
-
-async function flush() {
-  await Promise.resolve();
-  await Promise.resolve();
-}
+const mount = (props = {}) =>
+  mountComponent(TAG, RlmPaymentsData, {
+    ...{ recordId: "001000000000001AAA" },
+    ...props
+  });
 
 describe("c-rlm-payments-data", () => {
-  afterEach(() => {
-    while (document.body.firstChild) {
-      document.body.removeChild(document.body.firstChild);
-    }
-  });
+  afterEach(clearDocument);
 
   it("renders without throwing", async () => {
     const el = mount();
-    await flush();
+    await flushPromises();
     expect(el.isConnected).toBe(true);
     expect(el.shadowRoot).not.toBeNull();
   });
@@ -61,7 +55,7 @@ describe("c-rlm-payments-data", () => {
     const el = mount();
     getAccountOptions.emit([]);
     getPaymentScheduleItems.emit([]);
-    await flush();
+    await flushPromises();
     expect(el.isConnected).toBe(true);
     expect(el.shadowRoot.childElementCount).toBeGreaterThan(0);
   });
@@ -73,7 +67,7 @@ describe("c-rlm-payments-data", () => {
       body: { message: "boom" },
       status: 500
     });
-    await flush();
+    await flushPromises();
     expect(el.isConnected).toBe(true);
     expect(el.shadowRoot.childElementCount).toBeGreaterThan(0);
   });

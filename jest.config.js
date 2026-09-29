@@ -94,6 +94,7 @@ module.exports = {
     coverageReporters: ['text-summary', 'lcov', 'json-summary'],
     moduleNameMapper: {
         ...jestConfig.moduleNameMapper,
+        '^@rlm/lwc-test-utils$': '<rootDir>/jest/lwc-test-utils.js',
         ...outOfPackageMappings
     }
 };

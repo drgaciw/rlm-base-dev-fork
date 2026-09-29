@@ -1,5 +1,9 @@
-import { createElement } from "lwc";
 import RlmLearningSectionDetailModal from "c/rlmLearningSectionDetailModal";
+import {
+  clearDocument,
+  flushPromises,
+  mountComponent
+} from "@rlm/lwc-test-utils";
 
 jest.mock(
   "lightning/modal",
@@ -14,32 +18,18 @@ jest.mock(
 
 const TAG = "c-rlm-learning-section-detail-modal";
 
-function mount(props = {}) {
-  const el = createElement(TAG, { is: RlmLearningSectionDetailModal });
-  Object.assign(
-    el,
-    { header: "Header", subHeader: "Sub", description: "<p>Body</p>" },
-    props
-  );
-  document.body.appendChild(el);
-  return el;
-}
-
-async function flush() {
-  await Promise.resolve();
-  await Promise.resolve();
-}
+const mount = (props = {}) =>
+  mountComponent(TAG, RlmLearningSectionDetailModal, {
+    ...{ header: "Header", subHeader: "Sub", description: "<p>Body</p>" },
+    ...props
+  });
 
 describe("c-rlm-learning-section-detail-modal", () => {
-  afterEach(() => {
-    while (document.body.firstChild) {
-      document.body.removeChild(document.body.firstChild);
-    }
-  });
+  afterEach(clearDocument);
 
   it("renders without throwing", async () => {
     const el = mount();
-    await flush();
+    await flushPromises();
     expect(el.isConnected).toBe(true);
     expect(el.shadowRoot).not.toBeNull();
   });

@@ -1,5 +1,9 @@
-import { createElement } from "lwc";
 import RlmCollectionsDashboard from "c/rlmCollectionsDashboard";
+import {
+  clearDocument,
+  flushPromises,
+  mountComponent
+} from "@rlm/lwc-test-utils";
 import getDashboardCards from "@salesforce/apex/RLM_CollectionsDashboardController.getDashboardCards";
 import getWorklist from "@salesforce/apex/RLM_CollectionsDashboardController.getWorklist";
 import getCollectionPlanTasks from "@salesforce/apex/RLM_CollectionsDashboardController.getCollectionPlanTasks";
@@ -87,28 +91,18 @@ jest.mock(
 
 const TAG = "c-rlm-collections-dashboard";
 
-function mount(props = {}) {
-  const el = createElement(TAG, { is: RlmCollectionsDashboard });
-  Object.assign(el, { recordId: "001000000000001AAA" }, props);
-  document.body.appendChild(el);
-  return el;
-}
-
-async function flush() {
-  await Promise.resolve();
-  await Promise.resolve();
-}
+const mount = (props = {}) =>
+  mountComponent(TAG, RlmCollectionsDashboard, {
+    ...{ recordId: "001000000000001AAA" },
+    ...props
+  });
 
 describe("c-rlm-collections-dashboard", () => {
-  afterEach(() => {
-    while (document.body.firstChild) {
-      document.body.removeChild(document.body.firstChild);
-    }
-  });
+  afterEach(clearDocument);
 
   it("renders without throwing", async () => {
     const el = mount();
-    await flush();
+    await flushPromises();
     expect(el.isConnected).toBe(true);
     expect(el.shadowRoot).not.toBeNull();
   });
@@ -121,7 +115,7 @@ describe("c-rlm-collections-dashboard", () => {
     getMyCollectionPlans.emit([]);
     getCollectionsProgress.emit([]);
     getWorklist.emit([]);
-    await flush();
+    await flushPromises();
     expect(el.isConnected).toBe(true);
     expect(el.shadowRoot.childElementCount).toBeGreaterThan(0);
   });
@@ -143,7 +137,7 @@ describe("c-rlm-collections-dashboard", () => {
       status: 500
     });
     getWorklist.emitError({ body: { message: "boom" }, status: 500 });
-    await flush();
+    await flushPromises();
     expect(el.isConnected).toBe(true);
     expect(el.shadowRoot.childElementCount).toBeGreaterThan(0);
   });

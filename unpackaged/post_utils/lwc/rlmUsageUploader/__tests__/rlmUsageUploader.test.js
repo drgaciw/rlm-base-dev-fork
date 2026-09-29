@@ -1,5 +1,9 @@
-import { createElement } from "lwc";
 import RlmUsageUploader from "c/rlmUsageUploader";
+import {
+  clearDocument,
+  flushPromises,
+  mountComponent
+} from "@rlm/lwc-test-utils";
 import getAssetsForAccount from "@salesforce/apex/RLM_UsageUploaderController.getAssetsForAccount";
 import getUsageResourcesForAsset from "@salesforce/apex/RLM_UsageUploaderController.getUsageResourcesForAsset";
 
@@ -31,28 +35,18 @@ jest.mock(
 
 const TAG = "c-rlm-usage-uploader";
 
-function mount(props = {}) {
-  const el = createElement(TAG, { is: RlmUsageUploader });
-  Object.assign(el, { recordId: "001000000000001AAA" }, props);
-  document.body.appendChild(el);
-  return el;
-}
-
-async function flush() {
-  await Promise.resolve();
-  await Promise.resolve();
-}
+const mount = (props = {}) =>
+  mountComponent(TAG, RlmUsageUploader, {
+    ...{ recordId: "001000000000001AAA" },
+    ...props
+  });
 
 describe("c-rlm-usage-uploader", () => {
-  afterEach(() => {
-    while (document.body.firstChild) {
-      document.body.removeChild(document.body.firstChild);
-    }
-  });
+  afterEach(clearDocument);
 
   it("renders without throwing", async () => {
     const el = mount();
-    await flush();
+    await flushPromises();
     expect(el.isConnected).toBe(true);
     expect(el.shadowRoot).not.toBeNull();
   });
@@ -61,7 +55,7 @@ describe("c-rlm-usage-uploader", () => {
     const el = mount();
     getAssetsForAccount.emit([]);
     getUsageResourcesForAsset.emit([]);
-    await flush();
+    await flushPromises();
     expect(el.isConnected).toBe(true);
     expect(el.shadowRoot.childElementCount).toBeGreaterThan(0);
   });
@@ -73,7 +67,7 @@ describe("c-rlm-usage-uploader", () => {
       body: { message: "boom" },
       status: 500
     });
-    await flush();
+    await flushPromises();
     expect(el.isConnected).toBe(true);
     expect(el.shadowRoot.childElementCount).toBeGreaterThan(0);
   });

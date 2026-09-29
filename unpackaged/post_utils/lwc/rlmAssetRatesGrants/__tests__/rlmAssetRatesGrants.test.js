@@ -1,5 +1,9 @@
-import { createElement } from "lwc";
 import RlmAssetRatesGrants from "c/rlmAssetRatesGrants";
+import {
+  clearDocument,
+  flushPromises,
+  mountComponent
+} from "@rlm/lwc-test-utils";
 import getRatesForAsset from "@salesforce/apex/RLM_UsageUploaderController.getRatesForAsset";
 import getGrantsForAsset from "@salesforce/apex/RLM_UsageUploaderController.getGrantsForAsset";
 
@@ -31,28 +35,18 @@ jest.mock(
 
 const TAG = "c-rlm-asset-rates-grants";
 
-function mount(props = {}) {
-  const el = createElement(TAG, { is: RlmAssetRatesGrants });
-  Object.assign(el, { recordId: "001000000000001AAA" }, props);
-  document.body.appendChild(el);
-  return el;
-}
-
-async function flush() {
-  await Promise.resolve();
-  await Promise.resolve();
-}
+const mount = (props = {}) =>
+  mountComponent(TAG, RlmAssetRatesGrants, {
+    ...{ recordId: "001000000000001AAA" },
+    ...props
+  });
 
 describe("c-rlm-asset-rates-grants", () => {
-  afterEach(() => {
-    while (document.body.firstChild) {
-      document.body.removeChild(document.body.firstChild);
-    }
-  });
+  afterEach(clearDocument);
 
   it("renders without throwing", async () => {
     const el = mount();
-    await flush();
+    await flushPromises();
     expect(el.isConnected).toBe(true);
     expect(el.shadowRoot).not.toBeNull();
   });
@@ -61,7 +55,7 @@ describe("c-rlm-asset-rates-grants", () => {
     const el = mount();
     getRatesForAsset.emit([]);
     getGrantsForAsset.emit([]);
-    await flush();
+    await flushPromises();
     expect(el.isConnected).toBe(true);
     expect(el.shadowRoot.childElementCount).toBeGreaterThan(0);
   });
@@ -70,7 +64,7 @@ describe("c-rlm-asset-rates-grants", () => {
     const el = mount();
     getRatesForAsset.emitError({ body: { message: "boom" }, status: 500 });
     getGrantsForAsset.emitError({ body: { message: "boom" }, status: 500 });
-    await flush();
+    await flushPromises();
     expect(el.isConnected).toBe(true);
     expect(el.shadowRoot.childElementCount).toBeGreaterThan(0);
   });

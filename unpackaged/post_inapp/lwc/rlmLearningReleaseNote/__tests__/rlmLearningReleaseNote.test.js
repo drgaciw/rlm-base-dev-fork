@@ -1,5 +1,9 @@
-import { createElement } from "lwc";
 import RlmLearningReleaseNote from "c/rlmLearningReleaseNote";
+import {
+  clearDocument,
+  flushPromises,
+  mountComponent
+} from "@rlm/lwc-test-utils";
 import getSectionsWithBlocksByType from "@salesforce/apex/RLM_Learning_SectionBlockController.getSectionsWithBlocksByType";
 
 jest.mock(
@@ -17,28 +21,15 @@ jest.mock(
 
 const TAG = "c-rlm-learning-release-note";
 
-function mount(props = {}) {
-  const el = createElement(TAG, { is: RlmLearningReleaseNote });
-  Object.assign(el, {}, props);
-  document.body.appendChild(el);
-  return el;
-}
-
-async function flush() {
-  await Promise.resolve();
-  await Promise.resolve();
-}
+const mount = (props = {}) =>
+  mountComponent(TAG, RlmLearningReleaseNote, { ...{}, ...props });
 
 describe("c-rlm-learning-release-note", () => {
-  afterEach(() => {
-    while (document.body.firstChild) {
-      document.body.removeChild(document.body.firstChild);
-    }
-  });
+  afterEach(clearDocument);
 
   it("renders without throwing", async () => {
     const el = mount();
-    await flush();
+    await flushPromises();
     expect(el.isConnected).toBe(true);
     expect(el.shadowRoot).not.toBeNull();
   });
@@ -51,7 +42,7 @@ describe("c-rlm-learning-release-note", () => {
         blocks: []
       }
     ]);
-    await flush();
+    await flushPromises();
     expect(el.shadowRoot.textContent).toContain("Release notes");
   });
 
@@ -61,7 +52,7 @@ describe("c-rlm-learning-release-note", () => {
       body: { message: "boom" },
       status: 500
     });
-    await flush();
+    await flushPromises();
     expect(el.shadowRoot.querySelector('[role="alert"]').textContent).toContain(
       "boom"
     );

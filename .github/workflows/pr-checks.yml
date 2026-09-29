@@ -227,10 +227,9 @@ jobs:
         uses: actions/setup-node@v7
         with:
           node-version-file: "package.json" # resolves engines.node (>=22)
-          # No `cache: npm`: setup-node's npm cache keys off package-lock.json,
-          # which is gitignored here (C7 — tracked as a follow-up, out of
-          # scope for this PR). `npm install` below is used instead of
-          # `npm ci` for the same reason.
+          # setup-node's npm cache keys off the committed package-lock.json,
+          # and `npm ci` below installs exactly that lockfile.
+          cache: "npm"
 
       - name: List changed files
         id: diff
@@ -274,9 +273,9 @@ jobs:
           # instead of being split into two bogus paths.
           echo "${PY_FILES}" | xargs -r -d '\n' python -m ruff check
 
-      - name: npm install
+      - name: npm ci
         if: steps.diff.outputs.js_files != '' || steps.diff.outputs.prettier_files != ''
-        run: npm install
+        run: npm ci
 
       - name: eslint
         if: steps.diff.outputs.js_files != ''

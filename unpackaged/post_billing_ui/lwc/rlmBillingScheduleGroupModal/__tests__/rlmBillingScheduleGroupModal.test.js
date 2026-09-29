@@ -1,5 +1,9 @@
-import { createElement } from "lwc";
 import RlmBillingScheduleGroupModal from "c/rlmBillingScheduleGroupModal";
+import {
+  clearDocument,
+  flushPromises,
+  mountComponent
+} from "@rlm/lwc-test-utils";
 import getAccountBillingInfo from "@salesforce/apex/RLM_BillingScheduleGroupService.getAccountBillingInfo";
 import getLegalEntities from "@salesforce/apex/RLM_BillingScheduleGroupService.getLegalEntities";
 import getTaxTreatments from "@salesforce/apex/RLM_BillingScheduleGroupService.getTaxTreatments";
@@ -71,28 +75,18 @@ jest.mock(
 
 const TAG = "c-rlm-billing-schedule-group-modal";
 
-function mount(props = {}) {
-  const el = createElement(TAG, { is: RlmBillingScheduleGroupModal });
-  Object.assign(el, { recordId: "001000000000001AAA" }, props);
-  document.body.appendChild(el);
-  return el;
-}
-
-async function flush() {
-  await Promise.resolve();
-  await Promise.resolve();
-}
+const mount = (props = {}) =>
+  mountComponent(TAG, RlmBillingScheduleGroupModal, {
+    ...{ recordId: "001000000000001AAA" },
+    ...props
+  });
 
 describe("c-rlm-billing-schedule-group-modal", () => {
-  afterEach(() => {
-    while (document.body.firstChild) {
-      document.body.removeChild(document.body.firstChild);
-    }
-  });
+  afterEach(clearDocument);
 
   it("renders without throwing", async () => {
     const el = mount();
-    await flush();
+    await flushPromises();
     expect(el.isConnected).toBe(true);
     expect(el.shadowRoot).not.toBeNull();
   });
@@ -103,7 +97,7 @@ describe("c-rlm-billing-schedule-group-modal", () => {
     getLegalEntities.emit([]);
     getTaxTreatments.emit([]);
     getProducts.emit([]);
-    await flush();
+    await flushPromises();
     expect(el.isConnected).toBe(true);
     expect(el.shadowRoot.childElementCount).toBeGreaterThan(0);
   });
@@ -114,7 +108,7 @@ describe("c-rlm-billing-schedule-group-modal", () => {
     getLegalEntities.emitError({ body: { message: "boom" }, status: 500 });
     getTaxTreatments.emitError({ body: { message: "boom" }, status: 500 });
     getProducts.emitError({ body: { message: "boom" }, status: 500 });
-    await flush();
+    await flushPromises();
     expect(el.isConnected).toBe(true);
     expect(el.shadowRoot.childElementCount).toBeGreaterThan(0);
   });

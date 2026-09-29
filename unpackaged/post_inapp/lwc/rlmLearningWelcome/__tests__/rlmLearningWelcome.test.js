@@ -1,5 +1,9 @@
-import { createElement } from "lwc";
 import RlmLearningWelcome from "c/rlmLearningWelcome";
+import {
+  clearDocument,
+  flushPromises,
+  mountComponent
+} from "@rlm/lwc-test-utils";
 import getSectionsWithBlocksByType from "@salesforce/apex/RLM_Learning_SectionBlockController.getSectionsWithBlocksByType";
 import getName from "@salesforce/apex/RLM_Learning_UserInformation.getName";
 import getExpiryDays from "@salesforce/apex/RLM_Learning_UserInformation.getExpiryDays";
@@ -45,28 +49,15 @@ jest.mock(
 
 const TAG = "c-rlm-learning-welcome";
 
-function mount(props = {}) {
-  const el = createElement(TAG, { is: RlmLearningWelcome });
-  Object.assign(el, {}, props);
-  document.body.appendChild(el);
-  return el;
-}
-
-async function flush() {
-  await Promise.resolve();
-  await Promise.resolve();
-}
+const mount = (props = {}) =>
+  mountComponent(TAG, RlmLearningWelcome, { ...{}, ...props });
 
 describe("c-rlm-learning-welcome", () => {
-  afterEach(() => {
-    while (document.body.firstChild) {
-      document.body.removeChild(document.body.firstChild);
-    }
-  });
+  afterEach(clearDocument);
 
   it("renders without throwing", async () => {
     const el = mount();
-    await flush();
+    await flushPromises();
     expect(el.isConnected).toBe(true);
     expect(el.shadowRoot).not.toBeNull();
   });
@@ -76,7 +67,7 @@ describe("c-rlm-learning-welcome", () => {
     getName.emit([]);
     getExpiryDays.emit([]);
     getSectionsWithBlocksByType.emit([]);
-    await flush();
+    await flushPromises();
     expect(el.isConnected).toBe(true);
     expect(el.shadowRoot.childElementCount).toBeGreaterThan(0);
   });
@@ -89,7 +80,7 @@ describe("c-rlm-learning-welcome", () => {
       body: { message: "boom" },
       status: 500
     });
-    await flush();
+    await flushPromises();
     expect(el.isConnected).toBe(true);
     expect(el.shadowRoot.childElementCount).toBeGreaterThan(0);
   });

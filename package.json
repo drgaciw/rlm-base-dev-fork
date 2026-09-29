@@ -7,7 +7,7 @@
   "scripts": {
     "test": "sfdx-lwc-jest",
     "test:watch": "sfdx-lwc-jest --watch",
-    "test:coverage": "sfdx-lwc-jest --coverage",
+    "test:coverage": "sfdx-lwc-jest --coverage -- --no-cache",
     "prettier": "prettier --write \"**/*.{cls,cmp,component,css,html,js,json,md,page,trigger,yaml,yml}\"",
     "prettier:verify": "prettier --check \"**/*.{cls,cmp,component,css,html,js,json,md,page,trigger,yaml,yml}\"",
     "lint": "eslint \"force-app/**/lwc/**/*.js\" \"unpackaged/**/lwc/**/*.js\"",

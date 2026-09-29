@@ -1,7 +1,11 @@
 // Test wire adapters are emitted directly, which the LWC lint rule flags.
 /* eslint-disable @lwc/lwc/no-unexpected-wire-adapter-usages */
-import { createElement } from "lwc";
 import RlmLearningAppDetailParent from "c/rlmLearningAppDetailParent";
+import {
+  clearDocument,
+  flushPromises,
+  mountComponent
+} from "@rlm/lwc-test-utils";
 import { CurrentPageReference } from "lightning/navigation";
 
 jest.mock(
@@ -17,28 +21,15 @@ jest.mock(
 
 const TAG = "c-rlm-learning-app-detail-parent";
 
-function mount(props = {}) {
-  const el = createElement(TAG, { is: RlmLearningAppDetailParent });
-  Object.assign(el, {}, props);
-  document.body.appendChild(el);
-  return el;
-}
-
-async function flush() {
-  await Promise.resolve();
-  await Promise.resolve();
-}
+const mount = (props = {}) =>
+  mountComponent(TAG, RlmLearningAppDetailParent, { ...{}, ...props });
 
 describe("c-rlm-learning-app-detail-parent", () => {
-  afterEach(() => {
-    while (document.body.firstChild) {
-      document.body.removeChild(document.body.firstChild);
-    }
-  });
+  afterEach(clearDocument);
 
   it("renders without throwing", async () => {
     const el = mount();
-    await flush();
+    await flushPromises();
     expect(el.isConnected).toBe(true);
     expect(el.shadowRoot).not.toBeNull();
   });
@@ -46,7 +37,7 @@ describe("c-rlm-learning-app-detail-parent", () => {
   it("renders after every wire emits data", async () => {
     const el = mount();
     CurrentPageReference.emit({ state: {} });
-    await flush();
+    await flushPromises();
     expect(el.isConnected).toBe(true);
     expect(el.shadowRoot.childElementCount).toBeGreaterThan(0);
   });

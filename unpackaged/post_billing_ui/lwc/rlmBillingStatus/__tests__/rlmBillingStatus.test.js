@@ -1,31 +1,25 @@
-import { createElement } from "lwc";
 import RlmBillingStatus from "c/rlmBillingStatus";
+import {
+  clearDocument,
+  flushPromises,
+  mountComponent
+} from "@rlm/lwc-test-utils";
 import { graphql } from "lightning/graphql";
 
 const TAG = "c-rlm-billing-status";
 
-function mount(props = {}) {
-  const el = createElement(TAG, { is: RlmBillingStatus });
-  Object.assign(el, { recordId: "001000000000001AAA" }, props);
-  document.body.appendChild(el);
-  return el;
-}
-
-async function flush() {
-  await Promise.resolve();
-  await Promise.resolve();
-}
+const mount = (props = {}) =>
+  mountComponent(TAG, RlmBillingStatus, {
+    ...{ recordId: "001000000000001AAA" },
+    ...props
+  });
 
 describe("c-rlm-billing-status", () => {
-  afterEach(() => {
-    while (document.body.firstChild) {
-      document.body.removeChild(document.body.firstChild);
-    }
-  });
+  afterEach(clearDocument);
 
   it("renders without throwing", async () => {
     const el = mount();
-    await flush();
+    await flushPromises();
     expect(el.isConnected).toBe(true);
     expect(el.shadowRoot).not.toBeNull();
   });
@@ -49,7 +43,7 @@ describe("c-rlm-billing-status", () => {
         }
       }
     });
-    await flush();
+    await flushPromises();
     expect(el.shadowRoot.querySelector(".pill-text").textContent).toBe(
       "Billing Suspended"
     );
@@ -58,7 +52,7 @@ describe("c-rlm-billing-status", () => {
   it("survives every wire reporting an error", async () => {
     const el = mount();
     graphql.emitErrors([{ message: "boom" }]);
-    await flush();
+    await flushPromises();
     expect(el.isConnected).toBe(true);
     expect(el.shadowRoot.querySelector(".status-pill")).toBeNull();
   });

@@ -1,31 +1,25 @@
-import { createElement } from "lwc";
 import RlmSplitInvoicesView from "c/rlmSplitInvoicesView";
+import {
+  clearDocument,
+  flushPromises,
+  mountComponent
+} from "@rlm/lwc-test-utils";
 import { graphql } from "lightning/graphql";
 
 const TAG = "c-rlm-split-invoices-view";
 
-function mount(props = {}) {
-  const el = createElement(TAG, { is: RlmSplitInvoicesView });
-  Object.assign(el, { recordId: "001000000000001AAA" }, props);
-  document.body.appendChild(el);
-  return el;
-}
-
-async function flush() {
-  await Promise.resolve();
-  await Promise.resolve();
-}
+const mount = (props = {}) =>
+  mountComponent(TAG, RlmSplitInvoicesView, {
+    ...{ recordId: "001000000000001AAA" },
+    ...props
+  });
 
 describe("c-rlm-split-invoices-view", () => {
-  afterEach(() => {
-    while (document.body.firstChild) {
-      document.body.removeChild(document.body.firstChild);
-    }
-  });
+  afterEach(clearDocument);
 
   it("renders without throwing", async () => {
     const el = mount();
-    await flush();
+    await flushPromises();
     expect(el.isConnected).toBe(true);
     expect(el.shadowRoot).not.toBeNull();
   });
@@ -33,7 +27,7 @@ describe("c-rlm-split-invoices-view", () => {
   it("renders after every wire emits data", async () => {
     const el = mount();
     graphql.emit({});
-    await flush();
+    await flushPromises();
     expect(el.isConnected).toBe(true);
     expect(el.shadowRoot.childElementCount).toBeGreaterThan(0);
   });
@@ -41,7 +35,7 @@ describe("c-rlm-split-invoices-view", () => {
   it("survives every wire reporting an error", async () => {
     const el = mount();
     graphql.emitErrors([{ message: "boom" }]);
-    await flush();
+    await flushPromises();
     expect(el.isConnected).toBe(true);
     expect(el.shadowRoot.childElementCount).toBeGreaterThan(0);
   });

@@ -1,5 +1,9 @@
-import { createElement } from "lwc";
 import RlmBsgOverview from "c/rlmBsgOverview";
+import {
+  clearDocument,
+  flushPromises,
+  mountComponent
+} from "@rlm/lwc-test-utils";
 import getBillingScheduleGroupData from "@salesforce/apex/RLM_BSGTimelineController.getBillingScheduleGroupData";
 import getConsolidatedTimeline from "@salesforce/apex/RLM_BSGTimelineController.getConsolidatedTimeline";
 
@@ -31,28 +35,18 @@ jest.mock(
 
 const TAG = "c-rlm-bsg-overview";
 
-function mount(props = {}) {
-  const el = createElement(TAG, { is: RlmBsgOverview });
-  Object.assign(el, { recordId: "001000000000001AAA" }, props);
-  document.body.appendChild(el);
-  return el;
-}
-
-async function flush() {
-  await Promise.resolve();
-  await Promise.resolve();
-}
+const mount = (props = {}) =>
+  mountComponent(TAG, RlmBsgOverview, {
+    ...{ recordId: "001000000000001AAA" },
+    ...props
+  });
 
 describe("c-rlm-bsg-overview", () => {
-  afterEach(() => {
-    while (document.body.firstChild) {
-      document.body.removeChild(document.body.firstChild);
-    }
-  });
+  afterEach(clearDocument);
 
   it("renders without throwing", async () => {
     const el = mount();
-    await flush();
+    await flushPromises();
     expect(el.isConnected).toBe(true);
     expect(el.shadowRoot).not.toBeNull();
   });
@@ -61,7 +55,7 @@ describe("c-rlm-bsg-overview", () => {
     const el = mount();
     getBillingScheduleGroupData.emit([]);
     getConsolidatedTimeline.emit([]);
-    await flush();
+    await flushPromises();
     expect(el.isConnected).toBe(true);
     expect(el.shadowRoot.childElementCount).toBeGreaterThan(0);
   });
@@ -76,7 +70,7 @@ describe("c-rlm-bsg-overview", () => {
       body: { message: "boom" },
       status: 500
     });
-    await flush();
+    await flushPromises();
     expect(el.isConnected).toBe(true);
     expect(el.shadowRoot.childElementCount).toBeGreaterThan(0);
   });
