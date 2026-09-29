@@ -1279,8 +1279,12 @@ if os.path.exists(workflow):
     # defaults can drift from config/tool-versions.env, the single source WP-09/WP-10 already
     # made everything else read from) — same review, same reasoning: its own published name,
     # satisfies no branch-ruleset context this repo relies on.
+    # "LWC Jest tests" (TP-07: `npm ci` + jest --coverage over the LWC bundles, steps gated on a
+    # diff of LWC/jest/npm paths so the check name is always published) — added by editing this
+    # list, same review; its own published name, satisfies no branch-ruleset context this repo
+    # relies on, and it holds no steps of the gate job.
     PUBLISHED = ["Mechanical checks", "Lint (changed files)",
-                "Docker ARG defaults match tool-versions.env"]
+                "Docker ARG defaults match tool-versions.env", "LWC Jest tests"]
     published = [(j.get("name") or key) for key, j in (doc.get("jobs") or {}).items()]
     check("the workflow publishes exactly the check-run names it was reviewed with (PUBLISHED) — the "
           "job *key* is free to be renamed, since a branch ruleset matches the `name:`; add a job by "
