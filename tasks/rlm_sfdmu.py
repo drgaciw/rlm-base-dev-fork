@@ -21,6 +21,7 @@ import sfdmu_export  # noqa: E402  (after the path bootstrap above)
 # `from tasks import ...` done afterward. rlm_rest_base has no CCI dependency, so
 # resolving it up front sidesteps that ordering hazard entirely.
 from tasks import rlm_rest_base  # noqa: E402
+from tasks.rlm_sf_cli import sf_executable  # noqa: E402
 
 # ANSI escape code pattern for stripping color codes from subprocess output.
 # SFDMU and other CLI tools emit color codes; stripping them improves log readability.
@@ -57,17 +58,9 @@ def strip_ansi_codes(text: str) -> str:
     return ANSI_ESCAPE_PATTERN.sub('', text)
 
 
-def _sf_executable() -> str:
-    """Resolve the `sf` CLI executable path (A-C2, docs/ARCHITECT_REVIEW.md WP-11).
-
-    On native Windows, `sf` is installed as `sf.cmd`; `subprocess.run(["sf", ...])`
-    with list argv and shell=False does not consult PATHEXT the way a shell would,
-    so the bare name raises FileNotFoundError there. `shutil.which("sf")` performs
-    that PATHEXT-aware resolution and returns the actual executable path; falling
-    back to the bare name keeps this working unchanged on macOS/Linux (and in tests
-    that monkeypatch `shutil.which`) where no such resolution is needed.
-    """
-    return shutil.which("sf") or "sf"
+# The one `sf` resolver lives in tasks/rlm_sf_cli.py (TP-13); this alias keeps the
+# module-local name that call sites and tests already use.
+_sf_executable = sf_executable
 
 
 def _load_command_args(targetusername: str, pathtoexportjson: str, instanceurl: str) -> List[str]:

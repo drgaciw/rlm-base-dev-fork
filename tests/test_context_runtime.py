@@ -1107,6 +1107,11 @@ def test_lci_count_interface_tags_recurses():
 # --------------------------------------------------------------------------- #
 
 def main():
+    # A Windows console decodes with cp1252, which cannot encode the arrows/emoji printed below;
+    # degrade the character rather than crash the run. Only the error policy changes.
+    for _s in (sys.stdout, sys.stderr):
+        if hasattr(_s, "reconfigure"):
+            _s.reconfigure(errors="replace")
     tests = [v for k, v in sorted(globals().items())
              if k.startswith("test_") and callable(v)]
     print(f"Running {len(tests)} runtime test groups...\n")

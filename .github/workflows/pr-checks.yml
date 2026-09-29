@@ -189,6 +189,55 @@ jobs:
             attempt=$((attempt + 1))
           done
 
+  # TP-05: the gate's stdlib tier on Windows. `gate` above runs on ubuntu only, so everything that
+  # is specific to a native Windows checkout — junction/symlink repair, the hook launcher, cp1252
+  # console output, `.cmd` shims, path separators — is exercised nowhere before merge. Each of those
+  # has already regressed once and was found by hand on a developer's Windows machine.
+  #
+  # A separate job, not a `strategy.matrix` on `gate`: a matrix key would widen the primary gate's
+  # pinned job keys, and `Mechanical checks` is the one name a branch ruleset matches. This job
+  # publishes its own name and cannot satisfy that context. Requiring it is a repo-settings change
+  # for the maintainer (Settings > Rules), not something a workflow file can do.
+  #
+  # Nothing is installed: `--tier stdlib` selects only checks that declare no package dependency, so
+  # a green run also proves those suites need nothing beyond the interpreter. `--all` rather than
+  # `--base`, because the point is to run the portable suites on every PR, not the ones a diff
+  # selected. PYTHONUTF8 and PYTHONIOENCODING must stay unset — Python's default Windows encoding
+  # is the locale's (cp1252), and forcing UTF-8 would hide exactly the bugs this leg exists to
+  # find. The assert step fails the job if either is present, and tests/test_pr_gate.py fails the
+  # workflow if any step or job sets one.
+  #
+  # Owner: whoever owns scripts/ai (agent-layer tooling). A flaky suite here is fixed or moved out
+  # of the tier via `WINDOWS_WAIVERS` within 2 working days (test plan section 7); never retried.
+  gate-windows:
+    name: Mechanical checks (Windows stdlib)
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          # The same version as `gate`, so the two legs differ by operating system only.
+          python-version: "3.13"
+
+      # A Windows checkout cannot create the repo's symlinked skill directories (`core.symlinks` is
+      # off), so `.claude/skills/` and `.agents/skills/` arrive as stub files and `agent_tooling`
+      # fails on "native skill links". CLAUDE.md documents this repair for developers; the step runs
+      # it, which also exercises the junction code path on the OS where it matters. No admin rights.
+      - name: Repair skill links
+        run: python scripts/ai/link_skills.py --fix
+
+      - name: Assert the locale encoding is in effect
+        run: python -c "import locale, os, sys; assert 'PYTHONUTF8' not in os.environ and 'PYTHONIOENCODING' not in os.environ and not sys.flags.utf8_mode, 'UTF-8 mode is on, so this leg would not exercise the locale encoding'; print('utf8_mode', sys.flags.utf8_mode, 'locale', locale.getpreferredencoding(False))"
+
+      - name: Run the stdlib gate
+        run: python scripts/ai/pr_gate.py --all --tier stdlib
+
   # Diff-only lint: ruff (Python), ESLint (LWC JS) and prettier --check, each
   # scoped to files the PR actually touches. Independent of `gate` (no
   # `needs:`) so it runs in parallel — it is a code-quality signal, not part
@@ -227,10 +276,9 @@ jobs:
         uses: actions/setup-node@v7
         with:
           node-version-file: "package.json" # resolves engines.node (>=22)
-          # No `cache: npm`: setup-node's npm cache keys off package-lock.json,
-          # which is gitignored here (C7 — tracked as a follow-up, out of
-          # scope for this PR). `npm install` below is used instead of
-          # `npm ci` for the same reason.
+          # setup-node's npm cache keys off the committed package-lock.json,
+          # and `npm ci` below installs exactly that lockfile.
+          cache: "npm"
 
       - name: List changed files
         id: diff
@@ -259,6 +307,74 @@ jobs:
             echo "prettier_files<<PRETTIER_EOF"; echo "${prettier_files}"; echo "PRETTIER_EOF"
           } >> "$GITHUB_OUTPUT"
 
+      # Workflow self-tests (TP-11, docs/references/test-plan-2026-09.md §4.6). These are steps of
+      # this job rather than a new job on purpose: tests/test_pr_gate.py pins the set of check-run
+      # names this workflow publishes, and a new job would rename what a branch ruleset can match.
+      # Runs whenever a workflow, the zizmor config or baseline, or the baseline comparer changes;
+      # a PR that touches none of them skips all four steps. Procedure, version bumps and
+      # baseline upkeep: docs/guides/ci-runbook.md.
+      - name: Detect workflow changes
+        id: workflows
+        run: |
+          set -euo pipefail
+          if grep -qE '^(\.github/workflows/.+\.ya?ml|\.zizmor\.yml|\.github/zizmor-baseline\.json|scripts/lint/finding_baseline\.py)$' changed_files.txt; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Pinned, no `latest`, no `@main`: actionlint is a release tarball checked against the
+      # sha256 from that release's checksums.txt; zizmor and the shellcheck that actionlint shells
+      # out to are PyPI wheels at exact versions. shellcheck is pinned because ubuntu-latest ships
+      # its own, which would let the findings change with the runner image and not with a commit.
+      - name: Install actionlint, shellcheck and zizmor (pinned)
+        if: steps.workflows.outputs.changed == 'true'
+        env:
+          ACTIONLINT_VERSION: "1.7.12"
+          ACTIONLINT_LINUX_AMD64_SHA256: "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8"
+          SHELLCHECK_PY_VERSION: "0.11.0.1"
+          ZIZMOR_VERSION: "1.30.1"
+        run: |
+          set -euo pipefail
+          tarball="${RUNNER_TEMP}/actionlint.tar.gz"
+          curl -fsSL --retry 3 -o "${tarball}" \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          echo "${ACTIONLINT_LINUX_AMD64_SHA256}  ${tarball}" | sha256sum --check --strict -
+          mkdir -p "${RUNNER_TEMP}/bin"
+          tar -xzf "${tarball}" -C "${RUNNER_TEMP}/bin" actionlint
+          echo "${RUNNER_TEMP}/bin" >> "$GITHUB_PATH"
+          python -m pip install "zizmor==${ZIZMOR_VERSION}" "shellcheck-py==${SHELLCHECK_PY_VERSION}"
+
+      # shellcheck at warning severity: a warning or error in any workflow's `run:` fails the PR.
+      # The info/style findings it would also print (SC2086 unquoted expansion, SC2016 single
+      # quotes, SC2129 chained redirects) are deliberate in several scripts here and are not
+      # baselined file by file, so they are cut by severity rather than by regex or path.
+      - name: actionlint
+        if: steps.workflows.outputs.changed == 'true'
+        env:
+          SHELLCHECK_OPTS: --severity=warning
+        run: |
+          set -euo pipefail
+          actionlint -version
+          shellcheck --version
+          actionlint -color
+
+      # --offline: the audits that need the GitHub API (known-vulnerable actions, impostor
+      # commits) depend on live advisory data and the network, so they would make an unrelated PR
+      # red for a reason no commit caused. Findings that predate this step are counted per
+      # (rule, file, message) in .github/zizmor-baseline.json: a new finding of an already-listed rule
+      # raises a count and fails, a fixed one only warns that the baseline can shrink. No line
+      # numbers, so a parallel PR that shifts lines cannot make the baseline stale.
+      - name: zizmor
+        if: steps.workflows.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+          zizmor --version
+          zizmor --pedantic --offline --config .zizmor.yml --no-exit-codes --format json \
+            .github/workflows/ > "${RUNNER_TEMP}/zizmor.json"
+          python scripts/lint/finding_baseline.py --name zizmor-finding \
+            --baseline .github/zizmor-baseline.json --format zizmor "${RUNNER_TEMP}/zizmor.json"
+
       - name: ruff
         if: steps.diff.outputs.py_files != ''
         env:
@@ -274,9 +390,9 @@ jobs:
           # instead of being split into two bogus paths.
           echo "${PY_FILES}" | xargs -r -d '\n' python -m ruff check
 
-      - name: npm install
+      - name: npm ci
         if: steps.diff.outputs.js_files != '' || steps.diff.outputs.prettier_files != ''
-        run: npm install
+        run: npm ci
 
       - name: eslint
         if: steps.diff.outputs.js_files != ''
@@ -293,6 +409,84 @@ jobs:
         run: |
           set -euo pipefail
           echo "${PRETTIER_FILES}" | xargs -r -d '\n' npx prettier --check
+
+      # ---- Apex static analysis (TP-06, docs/references/test-plan-2026-09.md §4.2) -------------
+      # Runs only when a PR changes Apex. Salesforce Code Analyzer's PMD engine, Security and
+      # ErrorProne tags, compared with the committed count baseline (config/code-analyzer-
+      # baseline.json) by scripts/lint/finding_baseline.py: a new finding, or one more of an old one,
+      # fails; a fixed one only warns. The scan covers ALL Apex, not just the changed files, so the
+      # comparison is always against the whole baseline; a PR can only add findings by changing Apex.
+      # No Apex test runs here — that needs an org (nightly job, TP-04).
+      - name: Detect changed Apex
+        id: apex
+        run: |
+          set -euo pipefail
+          if grep -qE '\.(cls|trigger)$' changed_files.txt; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install Salesforce Code Analyzer
+        if: steps.apex.outputs.changed == 'true'
+        env:
+          # Exact pin. A new version can change rules and messages: bump it in its own PR and
+          # regenerate config/code-analyzer-baseline.json (procedure: the "Apex findings vs
+          # baseline" step below).
+          CODE_ANALYZER_VERSION: "5.16.0"
+        run: |
+          set -euo pipefail
+          # The sf CLI version is the repo-wide pin; Java comes from the runner image (17+ needed).
+          sf_version="$(grep -E '^SF_CLI_VERSION=' config/tool-versions.env | cut -d= -f2)"
+          npm install --global "@salesforce/cli@${sf_version}"
+          sf plugins install "code-analyzer@${CODE_ANALYZER_VERSION}"
+          sf --version
+          sf plugins | grep -E 'code-analyzer'
+
+      - name: Apex Security/ErrorProne findings
+        if: steps.apex.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+          # code-analyzer.yml (repo root) limits PMD to .cls/.trigger. --workspace . with two target
+          # directories = every Apex file in the repo. Exit code 1 only means "violations were
+          # found" (the comparer below decides whether that matters); anything else is a real error.
+          set +e
+          sf code-analyzer run --workspace . --target force-app --target unpackaged \
+            --rule-selector pmd:Security --rule-selector pmd:ErrorProne \
+            --output-file code-analyzer-results.json
+          code=$?
+          set -e
+          if [ ! -s code-analyzer-results.json ]; then
+            echo "::error::Code Analyzer wrote no results (exit ${code})"
+            exit 2
+          fi
+
+      - name: Upload Apex analysis results
+        if: always() && steps.apex.outputs.changed == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: code-analyzer-results
+          path: code-analyzer-results.json
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Apex findings vs baseline
+        if: steps.apex.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+          # Blocking. Exit 1 = a finding the baseline does not allow (a new rule, file or message, or
+          # one more of an old one); exit 2 = the analysis itself failed (e.g. an engine crashed),
+          # which is never read as a clean run. Fixed findings only warn.
+          #
+          # To regenerate the baseline (Code Analyzer bump, or after fixing findings): download the
+          # `code-analyzer-results` artifact of a green run of THIS job (Linux paths, so the file
+          # matches what CI will compare) and run
+          #   python scripts/lint/finding_baseline.py --format code-analyzer --name "Apex finding" \
+          #     --baseline config/code-analyzer-baseline.json --write code-analyzer-results.json
+          # `--write` keeps each entry's `reason`; give new entries one. A renamed or moved .cls
+          # re-surfaces its entries as new findings — regenerate in the same PR.
+          python scripts/lint/finding_baseline.py --format code-analyzer --name "Apex finding" \
+            --baseline config/code-analyzer-baseline.json code-analyzer-results.json
 
   # config/tool-versions.env is the single source of truth for pinned tool
   # versions; docker/Dockerfile's ARG defaults are a plain-`docker build`
@@ -329,6 +523,64 @@ jobs:
             fi
           done < <(grep -E '^[A-Za-z_][A-Za-z0-9_]*=' config/tool-versions.env)
           exit "${fail}"
+
+  # Owner: TP-07 (LWC Jest baseline; test plan docs/references/test-plan-2026-09.md 4.3).
+  # The job always runs on a pull request so its check name is always published, but every
+  # step after the diff is skipped unless the PR touches LWC sources, the jest/npm config or
+  # the lockfile. `npm ci` (not `npm install`) — package-lock.json is committed for this job.
+  lwc-tests:
+    name: LWC Jest tests
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Detect LWC or jest changes
+        id: diff
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          if git diff --name-only "${BASE_SHA}" "${HEAD_SHA}" \
+              | grep -E '^((force-app|unpackaged)/.*/lwc/|jest\.config\.js$|package(-lock)?\.json$|sfdx-project\.json$|\.github/workflows/pr-checks\.yml$)' \
+              > /dev/null; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "No LWC, jest or npm changes in this PR; skipping LWC Jest tests." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Set up Node.js
+        if: steps.diff.outputs.run == 'true'
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: "package.json" # resolves engines.node (>=22)
+          cache: "npm"
+
+      - name: Install dependencies
+        if: steps.diff.outputs.run == 'true'
+        run: npm ci
+
+      - name: Run LWC Jest tests with coverage
+        if: steps.diff.outputs.run == 'true'
+        run: npm run test:coverage
+
+      - name: Upload coverage
+        if: always() && steps.diff.outputs.run == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: lwc-coverage
+          path: coverage/
+          retention-days: 14
+          if-no-files-found: ignore
 
   # TP-10 (docs/references/test-plan-2026-09.md 4.1): branch coverage of the T1+T2 Python suites,
   # ratcheted per package through coverage-floor.json. Its own job and its own published name, not

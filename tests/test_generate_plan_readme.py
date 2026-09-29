@@ -117,7 +117,32 @@ def _case_duplicate_markers_skipped():
         return wrote, "skip" in message
 
 
+
+def _case_cross_drive_relpath():
+    """A cross-drive `os.path.relpath` ValueError (Windows CI: workspace on D:, temp on C:) must not
+    crash the writer: the path is only displayed in the message, so the absolute path is used."""
+    real = G.os.path.relpath
+
+    def cross_drive(path, start=None):
+        # Only the REPO_ROOT-relative calls (message labels) are on another drive; the relpath
+        # against the plan directory stays on one drive and must keep working.
+        if start is not None and G.os.path.abspath(start) == G.os.path.abspath(str(REPO)):
+            raise ValueError("path is on mount 'C:', start on mount 'D:'")
+        return real(path, start) if start is not None else real(path)
+
+    G.os.path.relpath = cross_drive
+    try:
+        with tempfile.TemporaryDirectory() as td:
+            plan = _plan(td, {"objectSets": [{"objects": [UPSERT_WIDGET]}]}, {"Widget__c.csv": _csv(3)})
+            wrote, message = G.write_readme(str(plan))
+            return wrote, str(plan / "README.md") in message, "(new)" in message
+    finally:
+        G.os.path.relpath = real
+
+
 WRITE_README = [
+    ("a cross-drive relpath ValueError falls back to the absolute path in the message, not a crash",
+     (True, True, True), _case_cross_drive_relpath()),
     ("a fresh README is written with markers and the object row",
      (True, True, True, True, True, True), _case_fresh_write()),
     ("regenerating preserves hand-written narrative outside the markers, updates the block",

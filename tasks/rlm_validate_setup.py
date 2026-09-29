@@ -25,6 +25,7 @@ import shutil
 import subprocess
 import sys
 from typing import Any, Dict, List, Optional, Tuple
+from tasks.rlm_sf_cli import sf_executable
 
 try:
     from cumulusci.core.exceptions import TaskOptionsError
@@ -215,7 +216,7 @@ class ValidateSetup(BaseTask):
         label = "Salesforce CLI (sf)"
         try:
             result = subprocess.run(
-                ["sf", "--version"], capture_output=True, text=True, encoding="utf-8", timeout=20
+                [sf_executable(), "--version"], capture_output=True, text=True, encoding="utf-8", timeout=20
             )
             if result.returncode != 0:
                 detail = (result.stderr or result.stdout or "").strip()
@@ -577,7 +578,7 @@ class ValidateSetup(BaseTask):
         # Try JSON output first (structured, reliable)
         try:
             result = subprocess.run(
-                ["sf", "plugins", "--json"],
+                [sf_executable(), "plugins", "--json"],
                 capture_output=True,
                 text=True,
                 encoding="utf-8",
@@ -597,7 +598,7 @@ class ValidateSetup(BaseTask):
         # Fall back to plain text output
         try:
             result = subprocess.run(
-                ["sf", "plugins"],
+                [sf_executable(), "plugins"],
                 capture_output=True,
                 text=True,
                 encoding="utf-8",
@@ -619,7 +620,7 @@ class ValidateSetup(BaseTask):
     ) -> Dict[str, str]:
         try:
             result = subprocess.run(
-                ["sf", "plugins", "install", "sfdmu"],
+                [sf_executable(), "plugins", "install", "sfdmu"],
                 capture_output=True,
                 text=True,
                 encoding="utf-8",

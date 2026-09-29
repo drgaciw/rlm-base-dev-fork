@@ -54,6 +54,21 @@ import sys
 from collections import Counter
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+
+
+def display_rel(path):
+    """`path` relative to REPO_ROOT for *messages*; the path itself when there is no relative form.
+
+    `os.path.relpath` raises ValueError on Windows when the two are on different drives (a CI
+    runner's workspace is on D: while its temp directory is on C:). Every caller uses the result
+    only inside a printed message or a report label, never to match, key or write anything, so
+    the absolute path loses nothing there. Do not use this where the value feeds a comparison:
+    those sites must fail loudly rather than degrade.
+    """
+    try:
+        return os.path.relpath(path, REPO_ROOT)
+    except ValueError:
+        return path
 SFDMU_ROOT = os.path.join(REPO_ROOT, "datasets", "sfdmu")
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -441,7 +456,7 @@ def check_plan(plan_dir: str):
     with open(readme, encoding="utf-8") as fh:
         text = fh.read()
     lines = text.splitlines()
-    rel = os.path.relpath(readme, REPO_ROOT)
+    rel = display_rel(readme)
 
     parsed_anything = False
     object_table_found = False
@@ -735,7 +750,7 @@ def find_plan_dirs(targets: list[str]) -> tuple[list[str], list[str]]:
             if _repo_relpath(t).startswith(".."):
                 print(f"skip {t} — outside the repo", file=sys.stderr)
             elif not os.path.isfile(os.path.join(t, "export.json")):
-                print(f"skip {os.path.relpath(t, REPO_ROOT)} — no export.json", file=sys.stderr)
+                print(f"skip {display_rel(t)} — no export.json", file=sys.stderr)
             elif os.path.isfile(os.path.join(t, "README.md")):
                 dirs.append(t)
             else:
@@ -829,7 +844,7 @@ def main() -> int:
     skipped = []
     for d in plan_dirs:
         errors, warns, parsed = check_plan(d)
-        rel = os.path.relpath(d, REPO_ROOT)
+        rel = display_rel(d)
         if not parsed:
             skipped.append(rel)
             continue
@@ -853,11 +868,11 @@ def main() -> int:
     tracked_no_readme_set = set(tracked_no_readme)
     untracked_no_readme = [d for d in no_readme if d not in tracked_no_readme_set]
     if tracked_no_readme:
-        rels = ", ".join(os.path.relpath(d, REPO_ROOT) for d in tracked_no_readme)
+        rels = ", ".join(display_rel(d) for d in tracked_no_readme)
         print(f"\nERROR  {len(tracked_no_readme)} tracked plan(s) have no README — not audited: {rels}")
         total_err += len(tracked_no_readme)
     if untracked_no_readme:
-        rels = ", ".join(os.path.relpath(d, REPO_ROOT) for d in untracked_no_readme)
+        rels = ", ".join(display_rel(d) for d in untracked_no_readme)
         print(f"\n(untracked, no README, not required: {rels})")
 
     print(f"\n{'='*60}")

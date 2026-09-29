@@ -32,6 +32,10 @@ import re
 import subprocess
 from pathlib import Path
 
+# Before the CCI try/except: see the same-package import note in tasks/rlm_sfdmu.py.
+from tasks.rlm_agents_common import run_sf_json
+from tasks.rlm_sf_cli import sf_executable
+
 try:
     from cumulusci.core.exceptions import CommandException, TaskOptionsError
     from cumulusci.tasks.salesforce import BaseSalesforceTask
@@ -40,7 +44,6 @@ except ImportError:  # pragma: no cover - allows bare import in unit context
     CommandException = Exception
     TaskOptionsError = Exception
 
-from tasks.rlm_agents_common import run_sf_json
 
 DEFAULT_AGENT = "quoting-assistant"
 AGENT_TEST_SUITES = {
@@ -327,7 +330,7 @@ class TestAgents(BaseSalesforceTask):
         """Run one spec and return a list of human-readable failure strings."""
         self.logger.info(f"  → sf agent test run --api-name {api_name}")
         cmd = [
-            "sf", "agent", "test", "run",
+            sf_executable(), "agent", "test", "run",
             "--api-name", api_name,
             "--wait", str(self.RUN_WAIT_MINUTES),
             "--result-format", "json",
