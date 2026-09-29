@@ -355,6 +355,7 @@ python scripts/ai/pr_gate.py --base origin/main   # select from the diff vs a ba
 python scripts/ai/pr_gate.py --all               # run everything
 python scripts/ai/pr_gate.py --list              # the matrix: check, gating, deps, triggers
 python scripts/ai/pr_gate.py --requirements --base origin/main   # pip deps the selection needs
+python scripts/ai/pr_gate.py --all --tier stdlib # only the checks with no package dependency
 ```
 
 Selection lives here rather than in a workflow's `paths:` filter because the two ways of not
@@ -362,14 +363,28 @@ running fail in opposite directions. A workflow skipped by path filtering report
 check required on it stays **Pending** and blocks the merge indefinitely; a job or step skipped
 by an `if:` condition reports **success**, so it reads like a pass. (This paragraph said the
 first behaved like the second until round 12 of review; the conclusion held, the reason did
-not.) The same care drives four statuses that are easy to conflate:
+not.) The same care drives five statuses that are easy to conflate:
 
 | status | meaning | fails? |
 |--------|---------|--------|
 | `SKIPPED` | not selected — nothing it covers changed | no, and it says so on its own line |
 | `MISSING-DEP` | selected, but a package or the interpreter floor is absent | **yes** — otherwise a broken install silently turns a gate green |
+| `NOT-IN-TIER` | excluded by `--tier`, whatever the diff says — labelled apart from `SKIPPED` so "nothing it covers changed" is never confused with "this run was never going to run it"; counted on the summary line | no, and it never counts as a pass |
 | `ADVISORY` | runs and reports, never fails | no, and the reason is printed inline |
 | `ADVISORY-DEP` | advisory, and its dependency is absent too | no — an advisory check cannot fail for a missing dep either |
+
+**`--tier stdlib` and the Windows leg (TP-05).** `--tier` narrows a run to a tier of checks and
+composes with `--all`, `--base` and `--changed-files-from`: it restricts *after* selection, so a
+check the diff selected but the tier excludes is `NOT-IN-TIER`, not run and not `SKIPPED`. `stdlib`
+is every check that declares no package dependency (`deps == []`) minus `WINDOWS_WAIVERS` (a
+`{name: reason}` map, empty today) — the set the `Mechanical checks (Windows stdlib)` job in
+`pr-checks.yml` runs on `windows-latest` with nothing installed and `PYTHONUTF8` unset, so the
+locale-encoding, junction and path-separator behaviour that only a native Windows checkout
+exercises is tested before merge. Its membership is pinned as `IN_TIER_STDLIB` in
+`tests/test_pr_gate.py`: adding a dependency-free check or changing a check's `deps` fails that
+comparison until the list is edited on purpose. A tier with no members exits 2 rather than
+passing having run nothing. The check is a separate published job and does not satisfy
+`Mechanical checks`; requiring it is a repository-settings change for the maintainer.
 
 No check is currently advisory. `validate_sfdmu_v5_datasets.py` (`sfdmu_datasets`) was the one
 exception, exiting non-zero on a clean tree because of two false-positive Criticals plus High
@@ -593,7 +608,7 @@ machine where five of the thirty-three (`doc_build_steps`, `extend_stdctx_recove
 blocked on optional dependencies and so contribute nothing, which is worth naming rather than
 leaving the reader to assume all thirty-three ran: with those installed the number is higher.
 
-Verified by `tests/test_pr_gate.py` (736 checks, throwaway repos, no network — hermetic for all but
+Verified by `tests/test_pr_gate.py` (776 checks, throwaway repos, no network — hermetic for all but
 one, the fixture that runs the real gate and so selects the real `skill_manifest` check, which
 resolves sibling repos by absolute path and therefore fails in a detached worktree), which
 drives the verdict rather than the helpers. Every mutation below is confirmed to fail the
