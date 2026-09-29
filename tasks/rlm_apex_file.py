@@ -47,6 +47,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 from typing import Dict, Any, List, Optional
+from tasks.rlm_sf_cli import sf_executable
 
 # Constants
 APEX_EXECUTION_TIMEOUT_SECONDS = 300  # 5 minutes - sufficient for most scripts
@@ -391,7 +392,7 @@ class FileBasedAnonymousApexTask(SFDXBaseTask):
 
         # Build the command (using list to prevent shell injection)
         command = [
-            "sf",
+            sf_executable(),
             "apex",
             "run",
             "--target-org",

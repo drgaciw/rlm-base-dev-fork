@@ -10,6 +10,13 @@
     },
     {
       "rule": "adhoc-packages",
+      "file": ".github/workflows/pr-checks.yml",
+      "message": "ad-hoc installation of packages",
+      "count": 1,
+      "reason": "SECURITY-ADJACENT: TP-06's `Install Salesforce Code Analyzer` step runs `npm install --global @salesforce/cli@<SF_CLI_VERSION from config/tool-versions.env>` (version-pinned, no lockfile), the same pattern as prepare-rlm-org.yml and flow-matrix.yml. Not changed here."
+    },
+    {
+      "rule": "adhoc-packages",
       "file": ".github/workflows/prepare-rlm-org.yml",
       "message": "ad-hoc installation of packages",
       "count": 1,

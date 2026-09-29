@@ -18,6 +18,7 @@ import string
 import subprocess
 import uuid
 from pathlib import Path
+from tasks.rlm_sf_cli import sf_executable
 
 try:
     import requests
@@ -158,7 +159,7 @@ class CreatePersonaUser(BaseTask):
     def _create_scratch_user(self, definition_file, alias, set_unique):
         """Create a user on a scratch org via `sf org create user`."""
         cmd = [
-            "sf", "org", "create", "user",
+            sf_executable(), "org", "create", "user",
             "--definition-file", definition_file,
             "--set-alias", alias,
             "--target-org", self.org_config.username,
@@ -310,7 +311,7 @@ class CreatePersonaUser(BaseTask):
         escaped = self._soql_escape(profile_name)
         soql = f"SELECT Id FROM Profile WHERE Name = '{escaped}' LIMIT 1"
         cmd = [
-            "sf", "data", "query",
+            sf_executable(), "data", "query",
             "--query", soql,
             "--json",
             "--target-org", self.org_config.username,
@@ -455,7 +456,7 @@ class CreatePersonaUser(BaseTask):
         )
 
         cmd = [
-            "sf",
+            sf_executable(),
             "data",
             "query",
             "--query",

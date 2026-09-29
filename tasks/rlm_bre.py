@@ -34,6 +34,7 @@ from typing import Any, Dict, List, Optional
 import requests
 
 from tasks import rlm_rest_base
+from tasks.rlm_sf_cli import sf_executable
 
 try:
     from cumulusci.tasks.salesforce import BaseSalesforceTask
@@ -251,7 +252,7 @@ class ExportBRE(BaseSalesforceTask):
 
         # 2. Retrieve into the mdapi temp dir
         cmd = [
-            "sf", "project", "retrieve", "start",
+            sf_executable(), "project", "retrieve", "start",
             "--manifest", manifest_path,
             "--target-org", username,
             "--target-metadata-dir", mdapi_dir,
@@ -297,7 +298,7 @@ class ExportBRE(BaseSalesforceTask):
         source_dir = os.path.join(work_dir, "source")
         os.makedirs(source_dir)
         convert_cmd = [
-            "sf", "project", "convert", "mdapi",
+            sf_executable(), "project", "convert", "mdapi",
             "--root-dir", mdapi_dir,
             "--output-dir", source_dir,
         ]

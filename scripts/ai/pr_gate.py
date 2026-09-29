@@ -18,7 +18,7 @@ condition is the reverse: it reports **success**, so it reads exactly like a pas
 therefore happens here, in one job that always runs, with every check reported under an
 explicit status. A check that did not run says so on its own line.
 
-Four statuses that are easy to conflate and must not be:
+Five statuses that are easy to conflate and must not be:
 
 * `SKIPPED` — not selected, because nothing the check covers changed. Benign, but printed.
 * `MISSING-DEP` — selected, but its interpreter or a package is absent. **This fails the
@@ -27,6 +27,10 @@ Four statuses that are easy to conflate and must not be:
 * `ADVISORY-DEP` — the same absence on an advisory check, which does *not* fail the gate.
   A separate label because the two differ only in consequence, and reading one as the
   other is the mistake this list exists to prevent.
+* `NOT-IN-TIER` — excluded by `--tier`, whatever the diff says. Counted with the skips but
+  labelled apart from `SKIPPED`: "nothing it covers changed" and "this run was never going to
+  run it" are different statements, and a `--tier` leg that reported the second as the first
+  would read as a diff-driven skip. The full tier-`all` gate on ubuntu still runs it.
 * `ADVISORY` — runs, reports, and never fails the gate. No check currently uses it.
   `validate_sfdmu_v5_datasets.py` was the one exception, exiting non-zero on a clean tree:
   two Criticals that were the validator's own false positives (pack 123 fixed them — a
@@ -46,6 +50,7 @@ Usage:
     python scripts/ai/pr_gate.py --changed-files-from f   # one path per line (tests, CI)
     python scripts/ai/pr_gate.py --all                    # ignore selection, run everything
     python scripts/ai/pr_gate.py --list                   # print the matrix, run nothing
+    python scripts/ai/pr_gate.py --all --tier stdlib      # only the stdlib-only checks (Windows leg)
     python scripts/ai/pr_gate.py --requirements --base X  # extra pip deps the selection needs
 """
 
@@ -122,6 +127,31 @@ ADVISORY_HEAD = 20
 
 # Per-check wall-clock ceiling. Generous: the slowest real check is ~8s.
 CHECK_TIMEOUT = 900
+
+# `--tier` selects a subset of CHECKS by what they need, not by what changed (TP-05). `stdlib` is
+# every check that declares no package dependency: it needs nothing but the interpreter, so it is the
+# set the Windows leg can run without an install step — which is the point, since a suite that only
+# passes because an earlier install happened to pull its import in is not stdlib-only. Derived from
+# `deps == []` rather than tagged per check so a new dependency-free check joins the Windows leg by
+# default; `tests/test_pr_gate.py` pins the resulting name set (IN_TIER_STDLIB), so that join is a
+# reviewed edit and not a silent one. `min_python` is not part of the definition: the Windows job runs
+# a Python at or above every floor, and a check below its floor already reports MISSING-DEP.
+TIERS = ("all", "stdlib")
+
+# check name -> why it cannot run on the Windows leg. Empty today: every dependency-free check passes
+# natively on Windows. A waiver is the only way out of the stdlib tier for a `deps == []` check, and it
+# has to carry its reason, so "it is flaky on Windows" cannot be a silent deletion from the tier.
+WINDOWS_WAIVERS = {}
+
+
+def in_tier(check, tier):
+    """True when `check` belongs to `tier`. `all` is every check."""
+    if tier == "all":
+        return True
+    if tier == "stdlib":
+        return not check["deps"] and check["name"] not in WINDOWS_WAIVERS
+    raise ValueError(f"unknown tier {tier!r}")
+
 
 # name, command, path prefixes that select it, extra pip deps, gating, note.
 # `suffixes` is for a check that reads the whole repo rather than a subtree: prefixes cannot
@@ -396,15 +426,20 @@ CHECKS = [
         cmd=None,  # expanded at runtime — see STDLIB_SUITES
         # `docs/references/` is a non-code input one of these suites reads and asserts against (the
         # usage-consumption skill's stated check count), so editing it could invalidate a suite that
-        # was not selected to notice.
+        # was not selected to notice. `robot/` is read the same way: tests/test_robot_sleep_ratchet.py
+        # counts Sleep waits in it and tests/test_rlm_robot_e2e.py checks robot/QUARANTINE.md against
+        # the `flaky` tags in it.
         triggers=["tasks/", "scripts/", "tests/", "datasets/", "cumulusci.yml",
-                  "force-app/", "unpackaged/",
+                  "force-app/", "unpackaged/", "robot/",
                   ".agents/", ".claude/", ".cursor/", "docs/references/",
-                  "AGENTS.md", "CLAUDE.md", "README.md", ".gitnexusrc",
+                  # tests/test_finding_baseline.py pins the Apex gate (TP-06): the Lint step, its
+                  # Code Analyzer config and the committed baseline it compares against.
+                  ".github/workflows/pr-checks.yml", "code-analyzer.yml", "config/code-analyzer-baseline.json",
                   # tests/test_workflow_lint.py (TP-11) reads the Lint job's pins, the zizmor
                   # config and baseline, and the runbook that documents them.
                   ".github/workflows/", ".github/zizmor-baseline.json",
-                  ".zizmor.yml", "docs/guides/ci-runbook.md"],
+                  ".zizmor.yml", "docs/guides/ci-runbook.md",
+                  "AGENTS.md", "CLAUDE.md", "README.md", ".gitnexusrc"],
         deps=[], gating=True,
     ),
     dict(
@@ -658,6 +693,9 @@ STDLIB_SUITES = [
     "tests/test_qb_multicurrency_data.py",
     "tests/test_renewal_bucket_planner.py",
     "tests/test_rlm_apex_file.py",
+    "tests/test_rlm_robot_e2e.py",
+    "tests/test_rlm_sf_cli.py",
+    "tests/test_robot_sleep_ratchet.py",
     "tests/test_snapshot_dev_guide.py",
     "tests/test_snapshot_help.py",
     "tests/test_validate_keys_targets.py",
@@ -985,6 +1023,10 @@ def main():
     ap.add_argument("--list", action="store_true", help="print the matrix and exit")
     ap.add_argument("--requirements", action="store_true",
                     help="print pip deps the selection needs, one per line, then exit")
+    ap.add_argument("--tier", choices=TIERS, default="all",
+                    help="restrict the run to a tier of checks: `stdlib` = checks with no package "
+                         "dependency (default: all). Composes with --all/--base/--changed-files-from; "
+                         "checks outside the tier report NOT-IN-TIER")
     args = ap.parse_args()
 
     if args.list:
@@ -993,6 +1035,8 @@ def main():
             selectors = list(c["triggers"]) + [f"*{s}" for s in c.get("suffixes", ())]
             print(f"{c['name']:26} {str(c['gating']):7} "
                   f"{','.join(c['deps']) or '-':34} {', '.join(selectors)}")
+        for tier in TIERS[1:]:
+            print(f"\ntier {tier}: {', '.join(c['name'] for c in CHECKS if in_tier(c, tier))}")
         print("\nexcluded from the gate, deliberately:")
         for path, reason in sorted(EXCLUDED_SUITES.items()):
             print(f"  {path:40} {reason}")
@@ -1002,6 +1046,12 @@ def main():
 
     if sum(bool(x) for x in (args.base, args.changed_files_from, args.all)) != 1:
         die("pass exactly one of --base, --changed-files-from, --all")
+    # A tier with no members would run nothing and print "All selected gating checks passed." — a
+    # vacuous pass. That is a usage/tool error (exit 2), not a verdict. Checked against the tier's
+    # membership rather than the diff's selection: a `--base` run whose diff selects no in-tier check
+    # is an ordinary no-op, exactly as it is without `--tier`.
+    if not any(in_tier(c, args.tier) for c in CHECKS):
+        die(f"--tier {args.tier} selects no check at all, which would pass vacuously")
 
     if args.all:
         files, selected = None, list(CHECKS)
@@ -1015,6 +1065,9 @@ def main():
         else:
             files = changed_files(args.base)
         selected = [c for c in CHECKS if selects(c, files)]
+    # Applied after selection and before `--requirements`, so the pip deps a tier run needs are
+    # those of the checks it will actually run (none, for `stdlib`).
+    selected = [c for c in selected if in_tier(c, args.tier)]
 
     if args.requirements:
         needed = sorted({d for c in selected for d in c["deps"]})
@@ -1045,6 +1098,9 @@ def main():
     # purpose, and the comment claimed both.
     results, failures, advisory_failures, tool_errors = [], [], [], []
     for check in CHECKS:
+        if not in_tier(check, args.tier):
+            results.append((check, "NOT-IN-TIER", "", 0.0))
+            continue
         if check not in selected:
             results.append((check, "SKIPPED", "", 0.0))
             continue
@@ -1080,7 +1136,8 @@ def main():
     print("=" * 78)
     for check, status, _, secs in results:
         timing = f"{secs:5.1f}s" if secs else "      "
-        note = "" if status != "SKIPPED" else "  (nothing it covers changed)"
+        note = {"SKIPPED": "  (nothing it covers changed)",
+                "NOT-IN-TIER": f"  (outside --tier {args.tier})"}.get(status, "")
         if status in ("ADVISORY", "ADVISORY-DEP"):
             note = f"  ({check['note']})"
         print(f"[{status:11}] {check['name']:{width}} {timing}{note}")
@@ -1122,7 +1179,8 @@ def main():
                    if s in ("PASS", "FAIL", "ERROR", "ADVISORY", "ADVISORY-ERROR"))
     skipped = sum(1 for _, s, _, _ in results if s == "SKIPPED")
     blocked = sum(1 for _, s, _, _ in results if s in ("MISSING-DEP", "ADVISORY-DEP"))
-    assert executed + skipped + blocked == len(CHECKS), "a check fell out of the summary"
+    out_of_tier = sum(1 for _, s, _, _ in results if s == "NOT-IN-TIER")
+    assert executed + skipped + blocked + out_of_tier == len(CHECKS),         "a check fell out of the summary"
     # Three disjoint buckets that sum to the total, then failures in their own sentence. `failed` is
     # not a bucket: it overlaps all three (a gating check blocked on a missing dependency is both), and
     # `unlisted_suites` is in it without being a check at all. Listed as a fourth peer it read as a
@@ -1132,6 +1190,7 @@ def main():
     # second sentence; the second sentence is the fix.
     print(f"\n{len(CHECKS)} checks: {executed} executed, {skipped} skipped, "
           f"{blocked} blocked on a missing dependency."
+          + (f" {out_of_tier} outside --tier {args.tier}." if out_of_tier else "")
           + (f" {len(failures)} failed (a count across those buckets, not a fourth one)"
              if failures else " Nothing failed.")
           + (f" {len(advisory_failures)} advisory failure(s): "
