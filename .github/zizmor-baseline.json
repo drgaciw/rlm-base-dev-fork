@@ -3,6 +3,13 @@
   "entries": [
     {
       "rule": "adhoc-packages",
+      "file": ".github/workflows/flow-matrix.yml",
+      "message": "ad-hoc installation of packages",
+      "count": 1,
+      "reason": "SECURITY-ADJACENT: `npm install -g @salesforce/cli@${SF_CLI_VERSION}` and the sfdmu plugin are version-pinned but have no lockfile (same pattern as prepare-rlm-org.yml); flow-matrix.yml is TP-09's file, not changed here."
+    },
+    {
+      "rule": "adhoc-packages",
       "file": ".github/workflows/prepare-rlm-org.yml",
       "message": "ad-hoc installation of packages",
       "count": 1,
@@ -35,6 +42,13 @@
       "message": "workflow or action definition without a name",
       "count": 1,
       "reason": "Pedantic style: workflow/job has no `name:`. Baselined."
+    },
+    {
+      "rule": "anonymous-definition",
+      "file": ".github/workflows/flow-matrix.yml",
+      "message": "workflow or action definition without a name",
+      "count": 2,
+      "reason": "Pedantic style: workflow/job has no `name:`. Baselined (TP-09's file, not changed here)."
     },
     {
       "rule": "anonymous-definition",
@@ -105,6 +119,13 @@
       "message": "permissions without explanatory comments",
       "count": 1,
       "reason": "Pedantic style: permission scope has no explanatory comment. Baselined; add a comment when touching the file."
+    },
+    {
+      "rule": "undocumented-permissions",
+      "file": ".github/workflows/flow-matrix.yml",
+      "message": "permissions without explanatory comments",
+      "count": 1,
+      "reason": "Pedantic style: permission scope has no explanatory comment. Baselined (TP-09's file, not changed here)."
     },
     {
       "rule": "undocumented-permissions",
