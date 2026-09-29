@@ -690,6 +690,7 @@ STDLIB_SUITES = [
     "tests/test_renewal_bucket_planner.py",
     "tests/test_rlm_apex_file.py",
     "tests/test_rlm_robot_e2e.py",
+    "tests/test_rlm_sf_cli.py",
     "tests/test_robot_sleep_ratchet.py",
     "tests/test_snapshot_dev_guide.py",
     "tests/test_snapshot_help.py",
