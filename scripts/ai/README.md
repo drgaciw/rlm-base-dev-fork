@@ -593,7 +593,7 @@ machine where five of the thirty-one (`doc_build_steps`, `extend_stdctx_recovery
 blocked on optional dependencies and so contribute nothing, which is worth naming rather than
 leaving the reader to assume all thirty-one ran: with those installed the number is higher.
 
-Verified by `tests/test_pr_gate.py` (729 checks, throwaway repos, no network — hermetic for all but
+Verified by `tests/test_pr_gate.py` (730 checks, throwaway repos, no network — hermetic for all but
 one, the fixture that runs the real gate and so selects the real `skill_manifest` check, which
 resolves sibling repos by absolute path and therefore fails in a detached worktree), which
 drives the verdict rather than the helpers. Every mutation below is confirmed to fail the

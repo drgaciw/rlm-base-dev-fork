@@ -302,6 +302,9 @@ check("no suite in tests/ is left unclaimed", pr_gate.unlisted_suites() == [],
       pr_gate.unlisted_suites())
 missing = [s for s in pr_gate.STDLIB_SUITES if not os.path.exists(os.path.join(REPO, s))]
 check("every stdlib suite the gate names exists on disk", missing == [], missing)
+check("the Robot e2e wrapper and Sleep-ratchet suites (TP-08) run in the stdlib check",
+      all(s in pr_gate.STDLIB_SUITES
+          for s in ("tests/test_rlm_robot_e2e.py", "tests/test_robot_sleep_ratchet.py")))
 missing = [s for s in pr_gate.CLAIMED_SUITES if not os.path.exists(os.path.join(REPO, s))]
 check("every claimed suite or directory exists on disk", missing == [], missing)
 missing = [s for s in pr_gate.EXCLUDED_SUITES if not os.path.exists(os.path.join(REPO, s))]
@@ -5215,7 +5218,7 @@ README_COUNT = re.compile(r"Verified by `tests/test_pr_gate\.py` \((\d+) checks"
 # describes, not a drift.
 # Raised again for wave 2 (I2/A-M1): check_text_encoding_suite and text_encoding_gate were
 # added to CHECKS, and the same per-check loops add checks proportional to len(CHECKS).
-EXPECTED = 729
+EXPECTED = 730
 _readme_text = pathlib.Path(os.path.join(REPO, "scripts/ai/README.md")).read_text(encoding="utf-8")
 cited = README_COUNT.search(_readme_text)
 check("the check count quoted in scripts/ai/README.md matches EXPECTED, so the prose cannot drift "
