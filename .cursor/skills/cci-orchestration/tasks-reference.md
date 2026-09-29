@@ -3,7 +3,7 @@
 > **Auto-generated** by `scripts/ai/generate_cci_reference.py` from `cumulusci.yml`.  
 > Do not edit manually — re-run the script after changing `cumulusci.yml`.
 
-**286 tasks** across **10 groups**.
+**287 tasks** across **10 groups**.
 
 **Groups:**
 
@@ -14,7 +14,7 @@
 - [Documentation](#documentation) (29)
 - [E2E Testing](#e2e-testing) (5)
 - [Partner Relationship Management](#partner-relationship-management) (2)
-- [Revenue Lifecycle Management](#revenue-lifecycle-management) (164)
+- [Revenue Lifecycle Management](#revenue-lifecycle-management) (165)
 - [UX Personalization](#ux-personalization) (5)
 - [Uncategorized](#uncategorized) (26)
 
@@ -1294,7 +1294,7 @@
 
 ## Revenue Lifecycle Management
 
-*164 task(s)*
+*165 task(s)*
 
 ### `activate_agents`
 
@@ -3420,6 +3420,18 @@
 - `auto_fix`: `True`
 - `required_sfdmu_version`: `5.6.4`
 - `fail_on_error`: `True`
+
+---
+
+### `verify_agent_permset_grants`
+
+**Description:** Post-build assertion that the RLM_QuotingAssistant permission set grants Quote edit plus edit on Quote.Description/ExpirationDate/Status and QuoteLineItem.StartDate/EndDate/Description (what RLM_AI_UpdateRecordFieldsService needs under USER_MODE). Fails listing every mismatch. Must run after prepare_agents (the permission sets deploy after publish_agents, so an Apex test cannot see them). See scripts/apex/verify_agent_permset_grants.apex.
+
+**Class:** `cumulusci.tasks.apex.anon.AnonymousApexTask`
+
+**Options:**
+
+- `path`: `scripts/apex/verify_agent_permset_grants.apex`
 
 ---
 

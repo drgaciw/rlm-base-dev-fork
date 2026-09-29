@@ -3,7 +3,7 @@
 > **Auto-generated** by `scripts/ai/generate_cci_reference.py` from `cumulusci.yml`.  
 > Do not edit manually — re-run the script after changing `cumulusci.yml`.
 
-**46 flows** across **5 groups**.
+**50 flows** across **6 groups**.
 
 ---
 
@@ -67,6 +67,37 @@ Run all QB data idempotency tests (load twice, assert no new records). Use --org
 
 ---
 
+## E2E Testing
+
+### `ci_verify_robot_setup`
+
+Nightly stage - re-run the Robot setup-automation suites (tests/setup/*) headless through their existing per-suite wrapper tasks, which pass the org username so the browser session is authenticated. Steps and when: guards mirror where prepare_rlm_org runs each wrapper. The suites are idempotent by contract, so a re-run on a built org is a valid check. Each step writes to its own robot/rlm-base/results/verify/<task> directory so the nightly summary and artifacts reflect only this stage, never the build-time results prepare_rlm_org left in robot/rlm-base/results. Behavioral evidence requires a live org (robot --dryrun is not).
+
+**Steps:**
+
+1. **task** `enable_document_builder_toggle`  `when: project_config.project__custom__docgen`
+   - `outputdir`: `robot/rlm-base/results/verify/enable_document_builder_toggle`
+2. **task** `enable_timeline`  `when: project_config.project__custom__billing_ui and not project_config.project__custom__tso`
+   - `outputdir`: `robot/rlm-base/results/verify/enable_timeline`
+3. **task** `enable_constraints_settings`  `when: project_config.project__custom__constraints_data`
+   - `outputdir`: `robot/rlm-base/results/verify/enable_constraints_settings`
+4. **task** `configure_revenue_settings`  `when: not (project_config.project__custom__quantumbit or project_config.project__custom__tso)`
+   - `outputdir`: `robot/rlm-base/results/verify/configure_revenue_settings`
+5. **task** `configure_revenue_settings`  `when: project_config.project__custom__quantumbit or project_config.project__custom__tso`
+   - `outputdir`: `robot/rlm-base/results/verify/configure_revenue_settings`
+   - `create_contracts_flow`: `RLM_CreateContractFromQuote`
+   - `manage_assets_flow`: `RLM_ARC_Assets`
+6. **task** `configure_core_pricing_setup`
+   - `outputdir`: `robot/rlm-base/results/verify/configure_core_pricing_setup`
+7. **task** `configure_product_discovery_settings`  `when: project_config.project__custom__qb`
+   - `outputdir`: `robot/rlm-base/results/verify/configure_product_discovery_settings`
+8. **task** `enable_analytics_replication`  `when: project_config.project__custom__analytics`
+   - `outputdir`: `robot/rlm-base/results/verify/enable_analytics_replication`
+9. **task** `reorder_app_launcher`  `when: project_config.project__custom__ux`
+   - `outputdir`: `robot/rlm-base/results/verify/reorder_app_launcher`
+
+---
+
 ## RLM Administration
 
 ### `stamp_git_commit`
@@ -109,6 +140,41 @@ Assign feature-gated permission set licenses after pre-deploy metadata is in pla
    - `api_names`: `['EinsteinAnalyticsPlusPsl']`
 4. **task** `assign_permission_set_licenses`  `when: project_config.project__custom__tso`
    - `api_names`: `['AutomatedActionsPsl', 'EinsteinAgentCWUPsl', 'EinsteinAgentPsl', 'EinsteinCopilotReviewMyDayPsl...`
+
+---
+
+### `ci_nightly_verify`
+
+Nightly verification chain for an org already built by prepare_rlm_org: agent permission-set grants, Apex tests, QB data idempotency, Robot setup suites. Stops at the first failing stage (the nightly workflow runs the stage flows individually instead).
+
+**Steps:**
+
+1. **flow** `ci_verify_agent_permsets`
+2. **flow** `ci_verify_apex`
+3. **flow** `run_qb_idempotency_tests`
+4. **flow** `ci_verify_robot_setup`
+
+---
+
+### `ci_verify_agent_permsets`
+
+Nightly stage - assert the RLM_QuotingAssistant permission set grants (after prepare_agents). Skipped when the agents flag is off.
+
+**Steps:**
+
+1. **task** `verify_agent_permset_grants`  `when: project_config.project__custom__agents`
+
+---
+
+### `ci_verify_apex`
+
+Nightly stage - run Apex tests (run_tests, org-wide coverage floor from the run_tests task) and write JUnit + JSON results under test-results/apex/.
+
+**Steps:**
+
+1. **task** `run_tests`
+   - `junit_output`: `test-results/apex/test_results.xml`
+   - `json_output`: `test-results/apex/test_results.json`
 
 ---
 
