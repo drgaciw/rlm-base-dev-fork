@@ -12,11 +12,14 @@ Three things are pinned here, offline and without CumulusCI or a Salesforce org:
    `shutil.which` patched to a `.cmd` shim path and `subprocess.run` recorded: argv[0] is the
    shim, argv is a list of strings, `shell` is never truthy. A registry check fails when a new
    subprocess site appears in the module without being added here.
-2. **Gap accounting** - `KNOWN_GAPS` lists the modules that still pass a bare `"sf"`. It is
-   empty since TP-13; it stays as the allowlist mechanism so a future exception is explicit. The
-   bare-argv detection is AST-based (a list/tuple literal whose first element is the string
-   `"sf"`), so a fix or a regression cannot slip past a string match. The test fails on a
-   STALE entry (listed but no longer bare: delete it) and on a NEW gap (bare but unlisted).
+2. **Gap accounting** - `KNOWN_GAPS` maps each module that still passes a bare `"sf"` to its
+   EXACT number of bare-`sf` sites (counts, not line numbers, so unrelated edits do not churn
+   it). It is empty since TP-13; it stays as the allowlist mechanism so a future exception is
+   explicit. Detection is AST-based (a list/tuple literal whose first element is the string
+   `"sf"`), so a fix or a regression cannot slip past a string match. The comparison is exact in
+   both directions: a count that goes UP (a new bare site, in a listed module or not) fails as a
+   new gap, and a count that goes DOWN fails as stale until the entry is lowered or deleted, so a
+   partial fix shows up site by site.
 3. **`run_sf_json` is a fix point** - `tasks/rlm_agents_common.run_sf_json` resolves argv[0]
    itself, so its callers' `"sf"` literals are not gaps and a behavioural check proves it
    (tests/test_rlm_sf_cli.py pins the rest of the argv). If it ever stops resolving, each
@@ -29,12 +32,15 @@ Run: `python tests/test_subprocess_contracts.py`  (also collectable by pytest).
 from __future__ import annotations
 
 import ast
+import importlib.util
 import json
 import os
 import pathlib
 import shutil
+import subprocess
 import sys
 import tempfile
+import types
 import unittest
 from unittest import mock
 
@@ -48,10 +54,10 @@ import tasks.rlm_sfdmu as rlm_sfdmu  # noqa: E402
 SHIM = r"C:\Users\dev\AppData\Roaming\npm\sf.cmd"
 FAKE_TOKEN = "00Dxx0000001gABEAY!AQFAKEACCESSTOKENVALUE1234567890ABCDE"
 
-# module (tasks/<name>.py) -> why its `sf` argv is still bare. Empty since TP-13 applied the
+# module (tasks/<name>.py) -> (exact number of bare-'sf' sites, why). Empty since TP-13 applied the
 # shared tasks/rlm_sf_cli.py::sf_executable() to every module and to run_sf_json. Do not add an
-# entry to silence a new bare 'sf': resolve the executable instead. The test asserts each entry
-# is STILL bare, so an entry must be deleted in the same change that fixes it.
+# entry to silence a new bare 'sf': resolve the executable instead. Counts are compared exactly:
+# lower the number in the same change that fixes a site, delete the entry when it reaches zero.
 KNOWN_GAPS: dict = {}
 
 # Every module that calls run_sf_json. A new caller has to be added here on purpose, which is
@@ -175,6 +181,37 @@ def _current_gaps():
     return gaps
 
 
+def _gap_counts():
+    """{module: number of bare-'sf' sites} - the quantity KNOWN_GAPS pins exactly."""
+    return {module: len(sites) for module, sites in _current_gaps().items()}
+
+
+def _load_by_path(name):
+    """Load tasks/<name>.py by file path, not `from tasks import x`: once CumulusCI is loaded the
+    `tasks` namespace package's `__path__` collapses to `[]` and a second `tasks.*` import fails
+    (see tests/test_decision_table_tasks.py::load_task_module). Not registered in sys.modules."""
+    spec = importlib.util.spec_from_file_location(f"_tp03_{name}", TASKS_DIR / f"{name}.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _assert_run_sf_json_uses_resolved_executable(testcase, module):
+    """Behavioural proof that `module.run_sf_json` swaps a bare 'sf' for shutil.which('sf')."""
+    seen = []
+
+    def fake_run(argv, **kwargs):
+        seen.append(argv)
+        return mock.Mock(returncode=0, stdout=json.dumps({"status": 0}), stderr="")
+
+    with mock.patch.object(shutil, "which", return_value=SHIM), mock.patch.object(
+        module.subprocess, "run", side_effect=fake_run
+    ):
+        module.run_sf_json(["sf", "agent", "activate"], timeout=5, label="x")
+    testcase.assertEqual(len(seen), 1)
+    testcase.assertEqual(seen[0][0], SHIM, "run_sf_json passed the bare 'sf' through")
+
+
 # --------------------------------------------------------------------------------------
 # 2 + 3. Gap accounting (AST) and run_sf_json coverage
 # --------------------------------------------------------------------------------------
@@ -182,27 +219,46 @@ def _current_gaps():
 
 class TestKnownGaps(unittest.TestCase):
     def test_no_stale_known_gap_entries(self):
-        stale = sorted(set(KNOWN_GAPS) - set(_current_gaps()))
+        counts = _gap_counts()
+        stale = {
+            module: {"listed": listed, "measured": counts.get(module, 0)}
+            for module, (listed, _reason) in KNOWN_GAPS.items()
+            if counts.get(module, 0) < listed
+        }
         self.assertEqual(
             stale,
-            [],
-            f"KNOWN_GAPS lists modules that no longer pass a bare 'sf': {stale}. "
-            "The gap was fixed - delete the entry so it cannot come back unnoticed.",
+            {},
+            f"KNOWN_GAPS lists more bare 'sf' sites than tasks/ still has: {stale}. A site was "
+            "fixed - lower the count (delete the entry at zero) so a regression cannot hide "
+            "behind the old number.",
         )
 
     def test_no_new_bare_sf_gaps(self):
+        counts = _gap_counts()
         gaps = _current_gaps()
-        new = {m: sites for m, sites in gaps.items() if m not in KNOWN_GAPS}
+        new = {
+            module: {
+                "listed": KNOWN_GAPS.get(module, (0, ""))[0],
+                "measured": count,
+                "sites": gaps[module],
+            }
+            for module, count in counts.items()
+            if count > KNOWN_GAPS.get(module, (0, ""))[0]
+        }
         self.assertEqual(
             new,
             {},
-            f"tasks/ modules pass a bare 'sf' as argv[0] and are not in KNOWN_GAPS: {new}. "
-            "On native Windows this raises FileNotFoundError (A-C2). Resolve the executable "
-            "with shutil.which('sf') or 'sf' (see tasks/rlm_sfdmu.py::_sf_executable).",
+            f"tasks/ has more bare 'sf' argv[0] sites than KNOWN_GAPS allows: {new}. On native "
+            "Windows this raises FileNotFoundError (A-C2). Resolve the executable with "
+            "shutil.which('sf') or 'sf' (see tasks/rlm_sfdmu.py::_sf_executable).",
         )
 
+    def test_known_gap_counts_are_positive(self):
+        for module, (count, _reason) in KNOWN_GAPS.items():
+            self.assertGreater(count, 0, f"{module}: delete the entry instead of listing zero")
+
     def test_known_gap_reasons_name_the_follow_up(self):
-        for module, reason in KNOWN_GAPS.items():
+        for module, (_count, reason) in KNOWN_GAPS.items():
             self.assertIn("TP-13", reason, module)
 
     def test_sfdmu_is_the_resolved_reference_implementation(self):
@@ -231,19 +287,28 @@ class TestRunSfJsonCoverage(unittest.TestCase):
             self.assertTrue(RUN_SF_JSON_CALLERS <= set(KNOWN_GAPS), sorted(RUN_SF_JSON_CALLERS - set(KNOWN_GAPS)))
             return
         # TP-13 landed: prove it behaviourally rather than trusting the AST heuristic.
-        from tasks import rlm_agents_common
+        _assert_run_sf_json_uses_resolved_executable(self, _load_by_path("rlm_agents_common"))
 
-        seen = []
+    def test_behavioural_check_control(self):
+        """The branch above is only live once TP-13 lands, so pin the helper it relies on now:
+        it must pass for a resolving run_sf_json and fail for one that passes argv through."""
+        resolving = types.ModuleType("resolving")
+        resolving.subprocess = subprocess
 
-        def fake_run(argv, **kwargs):
-            seen.append(argv)
-            return mock.Mock(returncode=0, stdout=json.dumps({"status": 0}), stderr="")
+        def resolving_run_sf_json(cmd, *, timeout, label):
+            cmd = [shutil.which("sf") or "sf"] + list(cmd[1:])
+            return resolving.subprocess.run(cmd, timeout=timeout)
 
-        with mock.patch.object(shutil, "which", return_value=SHIM), mock.patch.object(
-            rlm_agents_common.subprocess, "run", side_effect=fake_run
-        ):
-            rlm_agents_common.run_sf_json(["sf", "agent", "activate"], timeout=5, label="x")
-        self.assertEqual(seen[0][0], SHIM)
+        resolving.run_sf_json = resolving_run_sf_json
+        _assert_run_sf_json_uses_resolved_executable(self, resolving)
+
+        passthrough = types.ModuleType("passthrough")
+        passthrough.subprocess = subprocess
+        passthrough.run_sf_json = lambda cmd, *, timeout, label: passthrough.subprocess.run(
+            cmd, timeout=timeout
+        )
+        with self.assertRaises(AssertionError):
+            _assert_run_sf_json_uses_resolved_executable(self, passthrough)
 
 
 class TestNoShell(unittest.TestCase):
