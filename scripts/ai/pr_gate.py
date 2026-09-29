@@ -400,7 +400,9 @@ CHECKS = [
         triggers=["tasks/", "scripts/", "tests/", "datasets/", "cumulusci.yml",
                   "force-app/", "unpackaged/",
                   ".agents/", ".claude/", ".cursor/", "docs/references/",
-                  "AGENTS.md", "CLAUDE.md", "README.md", ".gitnexusrc"],
+                  "AGENTS.md", "CLAUDE.md", "README.md", ".gitnexusrc",
+                  # tests/test_coverage_ratchet.py asserts the committed floor file is well-formed.
+                  "coverage-floor.json"],
         deps=[], gating=True,
     ),
     dict(
@@ -619,6 +621,7 @@ STDLIB_SUITES = [
     "tests/test_context_payload.py",
     "tests/test_context_plan_validator.py",
     "tests/test_context_runtime.py",
+    "tests/test_coverage_ratchet.py",
     "tests/test_decision_tables_client.py",
     "tests/test_decision_tables_toolkit.py",
     "tests/test_df_workshop_replay.py",
