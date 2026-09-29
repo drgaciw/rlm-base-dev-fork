@@ -23,6 +23,12 @@ sys.path.insert(0, str(REPO / "scripts"))
 
 import sfdmu_export as se  # noqa: E402
 
+# Top-level script (no main()): reconfigure once, here, and not in the imported module. See the
+# Windows-console note in tests/test_context_apply.py's main().
+for _s in (sys.stdout, sys.stderr):
+    if hasattr(_s, "reconfigure"):
+        _s.reconfigure(errors="replace")
+
 _failures: list[str] = []
 
 
