@@ -19,14 +19,18 @@ import xml.etree.ElementTree as ET
 from datetime import datetime
 from pathlib import Path
 
+# Imported before the CCI try/except below: CumulusCI's import machinery collapses the
+# `tasks` namespace package's __path__ once it is loaded, so a same-package
+# `from tasks.x import y` done afterwards raises ModuleNotFoundError (the A-C3 ordering
+# hazard, see tasks/rlm_sfdmu.py and tests/test_decision_table_tasks.py).
+from tasks.robot_utils import check_urllib3_for_robot
+
 try:
     from cumulusci.core.tasks import BaseTask
     from cumulusci.core.exceptions import TaskOptionsError
 except ImportError:
     BaseTask = object  # type: ignore
     TaskOptionsError = Exception  # type: ignore
-
-from tasks.robot_utils import check_urllib3_for_robot
 
 DEFAULT_SUITE = "robot/rlm-base/tests/e2e"
 DEFAULT_OUTPUT_DIR = "robot/rlm-base/results"

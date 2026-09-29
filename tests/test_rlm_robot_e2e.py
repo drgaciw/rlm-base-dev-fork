@@ -466,7 +466,6 @@ def check_real_robot_rerun_and_merge(_):
         suite = Path(tmp) / "fixture.robot"
         suite.write_text(FIXTURE, encoding="utf-8")
         marker = Path(tmp) / "marker"
-        rel_suite = os.path.relpath(suite, REPO_ROOT) if os.name != "nt" else str(suite)
         task = make_task(Path(tmp) / "out", options={"rerun_failed": "true", "suite": str(suite)})
         saved = e2e.check_urllib3_for_robot
         e2e.check_urllib3_for_robot = lambda **kw: None
