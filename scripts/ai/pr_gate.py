@@ -432,6 +432,9 @@ CHECKS = [
         triggers=["tasks/", "scripts/", "tests/", "datasets/", "cumulusci.yml",
                   "force-app/", "unpackaged/", "robot/",
                   ".agents/", ".claude/", ".cursor/", "docs/references/",
+                  # tests/test_finding_baseline.py pins the Apex gate (TP-06): the Lint step, its
+                  # Code Analyzer config and the committed baseline it compares against.
+                  ".github/workflows/pr-checks.yml", "code-analyzer.yml", "config/code-analyzer-baseline.json",
                   "AGENTS.md", "CLAUDE.md", "README.md", ".gitnexusrc"],
         deps=[], gating=True,
     ),
@@ -687,6 +690,7 @@ STDLIB_SUITES = [
     "tests/test_renewal_bucket_planner.py",
     "tests/test_rlm_apex_file.py",
     "tests/test_rlm_robot_e2e.py",
+    "tests/test_rlm_sf_cli.py",
     "tests/test_robot_sleep_ratchet.py",
     "tests/test_snapshot_dev_guide.py",
     "tests/test_snapshot_help.py",

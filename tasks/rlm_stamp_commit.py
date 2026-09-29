@@ -25,6 +25,7 @@ from datetime import datetime, timezone
 from xml.sax.saxutils import escape
 
 import yaml
+from tasks.rlm_sf_cli import sf_executable
 
 try:
     from cumulusci.tasks.sfdx import SFDXBaseTask
@@ -359,7 +360,7 @@ class StampGitCommit(SFDXBaseTask):
         from the CLI's path-traversal checks.
         """
         command = [
-            "sf",
+            sf_executable(),
             "project",
             "deploy",
             "start",
