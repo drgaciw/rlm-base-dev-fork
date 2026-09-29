@@ -697,6 +697,19 @@ tasks:
     options:
       required_org_code_coverage_percent: 75
 
+  verify_agent_permset_grants:
+    group: Revenue Lifecycle Management
+    description: >
+      Post-build assertion that the RLM_QuotingAssistant permission set grants Quote edit
+      plus edit on Quote.Description/ExpirationDate/Status and
+      QuoteLineItem.StartDate/EndDate/Description (what RLM_AI_UpdateRecordFieldsService
+      needs under USER_MODE). Fails listing every mismatch. Must run after prepare_agents
+      (the permission sets deploy after publish_agents, so an Apex test cannot see them).
+      See scripts/apex/verify_agent_permset_grants.apex.
+    class_path: cumulusci.tasks.apex.anon.AnonymousApexTask
+    options:
+      path: scripts/apex/verify_agent_permset_grants.apex
+
   #--------------------------#
   # CONTEXT DEFINITION TASKS #
   #--------------------------#
@@ -5168,6 +5181,85 @@ flows:
       14:
         task: test_qb_prm_pricing_idempotency
         when: project_config.project__custom__prm and project_config.project__custom__prm_pricing and project_config.project__custom__qb
+
+  # ---------------------------------------------------------------------------
+  # Nightly verification (TP-04, docs/references/test-plan-2026-09.md §4.8).
+  # Runs AFTER prepare_rlm_org on the same org. .github/workflows/prepare-rlm-org.yml
+  # runs the three stage flows as separate steps (so one failing stage does not hide
+  # the others); ci_nightly_verify chains them for a single local/manual command.
+  # ---------------------------------------------------------------------------
+  ci_verify_agent_permsets:
+    group: Revenue Lifecycle Management
+    description: Nightly stage - assert the RLM_QuotingAssistant permission set grants (after prepare_agents). Skipped when the agents flag is off.
+    steps:
+      1:
+        task: verify_agent_permset_grants
+        when: project_config.project__custom__agents
+
+  ci_verify_apex:
+    group: Revenue Lifecycle Management
+    description: Nightly stage - run Apex tests (run_tests, org-wide coverage floor from the run_tests task) and write JUnit + JSON results under test-results/apex/.
+    steps:
+      1:
+        task: run_tests
+        options:
+          junit_output: test-results/apex/test_results.xml
+          json_output: test-results/apex/test_results.json
+
+  ci_verify_robot_setup:
+    group: E2E Testing
+    description: >
+      Nightly stage - re-run the Robot setup-automation suites (tests/setup/*) headless
+      through their existing per-suite wrapper tasks, which pass the org username so the
+      browser session is authenticated. Steps and when: guards mirror where prepare_rlm_org
+      runs each wrapper. The suites are idempotent by contract, so a re-run on a built org
+      is a valid check. Behavioral evidence requires a live org (robot --dryrun is not).
+    steps:
+      1:
+        task: enable_document_builder_toggle
+        when: project_config.project__custom__docgen
+      2:
+        task: enable_timeline
+        when: project_config.project__custom__billing_ui and not project_config.project__custom__tso
+      3:
+        task: enable_constraints_settings
+        when: project_config.project__custom__constraints_data
+      4:
+        task: configure_revenue_settings
+        when: "not (project_config.project__custom__quantumbit or project_config.project__custom__tso)"
+      5:
+        task: configure_revenue_settings
+        when: "project_config.project__custom__quantumbit or project_config.project__custom__tso"
+        options:
+          create_contracts_flow: RLM_CreateContractFromQuote
+          manage_assets_flow: RLM_ARC_Assets
+      6:
+        task: configure_core_pricing_setup
+      7:
+        task: configure_product_discovery_settings
+        when: project_config.project__custom__qb
+      8:
+        task: enable_analytics_replication
+        when: project_config.project__custom__analytics
+      9:
+        task: reorder_app_launcher
+        when: project_config.project__custom__ux
+
+  ci_nightly_verify:
+    group: Revenue Lifecycle Management
+    description: >
+      Nightly verification chain for an org already built by prepare_rlm_org: agent
+      permission-set grants, Apex tests, QB data idempotency, Robot setup suites. Stops at
+      the first failing stage (the nightly workflow runs the stage flows individually instead).
+    steps:
+      1:
+        flow: ci_verify_agent_permsets
+      2:
+        flow: ci_verify_apex
+      3:
+        flow: run_qb_idempotency_tests
+      4:
+        flow: ci_verify_robot_setup
 
   run_q3_idempotency_tests:
     group: Data Management - Idempotency
