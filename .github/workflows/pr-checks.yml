@@ -189,6 +189,55 @@ jobs:
             attempt=$((attempt + 1))
           done
 
+  # TP-05: the gate's stdlib tier on Windows. `gate` above runs on ubuntu only, so everything that
+  # is specific to a native Windows checkout — junction/symlink repair, the hook launcher, cp1252
+  # console output, `.cmd` shims, path separators — is exercised nowhere before merge. Each of those
+  # has already regressed once and was found by hand on a developer's Windows machine.
+  #
+  # A separate job, not a `strategy.matrix` on `gate`: a matrix key would widen the primary gate's
+  # pinned job keys, and `Mechanical checks` is the one name a branch ruleset matches. This job
+  # publishes its own name and cannot satisfy that context. Requiring it is a repo-settings change
+  # for the maintainer (Settings > Rules), not something a workflow file can do.
+  #
+  # Nothing is installed: `--tier stdlib` selects only checks that declare no package dependency, so
+  # a green run also proves those suites need nothing beyond the interpreter. `--all` rather than
+  # `--base`, because the point is to run the portable suites on every PR, not the ones a diff
+  # selected. PYTHONUTF8 and PYTHONIOENCODING must stay unset — Python's default Windows encoding
+  # is the locale's (cp1252), and forcing UTF-8 would hide exactly the bugs this leg exists to
+  # find. The assert step fails the job if either is present, and tests/test_pr_gate.py fails the
+  # workflow if any step or job sets one.
+  #
+  # Owner: whoever owns scripts/ai (agent-layer tooling). A flaky suite here is fixed or moved out
+  # of the tier via `WINDOWS_WAIVERS` within 2 working days (test plan section 7); never retried.
+  gate-windows:
+    name: Mechanical checks (Windows stdlib)
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          # The same version as `gate`, so the two legs differ by operating system only.
+          python-version: "3.13"
+
+      # A Windows checkout cannot create the repo's symlinked skill directories (`core.symlinks` is
+      # off), so `.claude/skills/` and `.agents/skills/` arrive as stub files and `agent_tooling`
+      # fails on "native skill links". CLAUDE.md documents this repair for developers; the step runs
+      # it, which also exercises the junction code path on the OS where it matters. No admin rights.
+      - name: Repair skill links
+        run: python scripts/ai/link_skills.py --fix
+
+      - name: Assert the locale encoding is in effect
+        run: python -c "import locale, os, sys; assert 'PYTHONUTF8' not in os.environ and 'PYTHONIOENCODING' not in os.environ and not sys.flags.utf8_mode, 'UTF-8 mode is on, so this leg would not exercise the locale encoding'; print('utf8_mode', sys.flags.utf8_mode, 'locale', locale.getpreferredencoding(False))"
+
+      - name: Run the stdlib gate
+        run: python scripts/ai/pr_gate.py --all --tier stdlib
+
   # Diff-only lint: ruff (Python), ESLint (LWC JS) and prettier --check, each
   # scoped to files the PR actually touches. Independent of `gate` (no
   # `needs:`) so it runs in parallel — it is a code-quality signal, not part
@@ -227,10 +276,9 @@ jobs:
         uses: actions/setup-node@v7
         with:
           node-version-file: "package.json" # resolves engines.node (>=22)
-          # No `cache: npm`: setup-node's npm cache keys off package-lock.json,
-          # which is gitignored here (C7 — tracked as a follow-up, out of
-          # scope for this PR). `npm install` below is used instead of
-          # `npm ci` for the same reason.
+          # setup-node's npm cache keys off the committed package-lock.json,
+          # and `npm ci` below installs exactly that lockfile.
+          cache: "npm"
 
       - name: List changed files
         id: diff
@@ -274,9 +322,9 @@ jobs:
           # instead of being split into two bogus paths.
           echo "${PY_FILES}" | xargs -r -d '\n' python -m ruff check
 
-      - name: npm install
+      - name: npm ci
         if: steps.diff.outputs.js_files != '' || steps.diff.outputs.prettier_files != ''
-        run: npm install
+        run: npm ci
 
       - name: eslint
         if: steps.diff.outputs.js_files != ''
@@ -407,3 +455,61 @@ jobs:
             fi
           done < <(grep -E '^[A-Za-z_][A-Za-z0-9_]*=' config/tool-versions.env)
           exit "${fail}"
+
+  # Owner: TP-07 (LWC Jest baseline; test plan docs/references/test-plan-2026-09.md 4.3).
+  # The job always runs on a pull request so its check name is always published, but every
+  # step after the diff is skipped unless the PR touches LWC sources, the jest/npm config or
+  # the lockfile. `npm ci` (not `npm install`) — package-lock.json is committed for this job.
+  lwc-tests:
+    name: LWC Jest tests
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Detect LWC or jest changes
+        id: diff
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          if git diff --name-only "${BASE_SHA}" "${HEAD_SHA}" \
+              | grep -E '^((force-app|unpackaged)/.*/lwc/|jest\.config\.js$|package(-lock)?\.json$|sfdx-project\.json$|\.github/workflows/pr-checks\.yml$)' \
+              > /dev/null; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "No LWC, jest or npm changes in this PR; skipping LWC Jest tests." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Set up Node.js
+        if: steps.diff.outputs.run == 'true'
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: "package.json" # resolves engines.node (>=22)
+          cache: "npm"
+
+      - name: Install dependencies
+        if: steps.diff.outputs.run == 'true'
+        run: npm ci
+
+      - name: Run LWC Jest tests with coverage
+        if: steps.diff.outputs.run == 'true'
+        run: npm run test:coverage
+
+      - name: Upload coverage
+        if: always() && steps.diff.outputs.run == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: lwc-coverage
+          path: coverage/
+          retention-days: 14
+          if-no-files-found: ignore

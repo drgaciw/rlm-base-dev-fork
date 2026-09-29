@@ -120,7 +120,8 @@ def run_check(cwd, *args, extra_path=None, no_fetch=True):
     env = dict(GIT_ENV)
     if extra_path:
         env["PATH"] = f"{extra_path}{os.pathsep}{env['PATH']}"
-    proc = subprocess.run(argv, cwd=cwd, capture_output=True, text=True, env=env, encoding="utf-8")
+    proc = subprocess.run(argv, cwd=cwd, capture_output=True, text=True, env=env, encoding="utf-8",
+                          errors="replace")  # cp1252 child output must not blank proc.stdout
     return proc.returncode, proc.stdout + proc.stderr
 
 
