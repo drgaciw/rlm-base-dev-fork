@@ -375,6 +375,21 @@ jobs:
           # pyproject.toml needs 7.10+ and the ratchet's figures must not move with a coverage release.
           python -m pip install -r requirements-dev.txt "coverage==7.16.2"
 
+      - name: Resolve the base ref
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          # Same pattern as the gate job: checkout with fetch-depth: 0 normally has origin/<base>
+          # already, and the fetch is only the fallback because persist-credentials is false (an
+          # unconditional fetch works anonymously on a public repo and would fail on a private one).
+          # The ratchet reads the base branch's coverage-floor.json with `git show`, so the ref has
+          # to resolve before it runs; an unresolvable ref is a tool error there, not a free pass.
+          if ! git rev-parse --verify --quiet "origin/${BASE_REF}" >/dev/null; then
+            git fetch --no-tags origin "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}"
+          fi
+          git rev-parse --verify --quiet "origin/${BASE_REF}" >/dev/null
+
       - name: Measure coverage
         run: |
           set -euo pipefail
