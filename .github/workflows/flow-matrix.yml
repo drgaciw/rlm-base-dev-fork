@@ -1,0 +1,370 @@
+name: Flow Matrix
+
+# TP-09 (docs/references/test-plan-2026-09.md section 6, environments in section 5).
+# Weekly CCI flow matrix across scratch shapes: flag-driven `when:` guards (pde, trial,
+# edition) are otherwise only exercised one shape at a time by humans.
+#
+#   shape      build path                                                      flags
+#   dev        cci org scratch dev  + prepare_rlm_org                          committed defaults
+#   ent        cci org scratch ent  + prepare_rlm_org                          committed defaults
+#   tfid-pde   scripts/build_pde_dev_r1.sh (SHAPE=tfid-pde, pinned ORG alias)  pde=true, billing_ui=false
+#                                                                              (runtime override, self-reverting)
+#
+# Every leg then runs validate_setup and the Apex tests (ci_verify_apex -> run_tests,
+# JUnit + JSON under test-results/apex/), uploads artifacts, writes its own job summary
+# and deletes its scratch org (if: always()). A failed leg opens (or comments on) one
+# issue titled "Flow matrix failure: <shape>".
+#
+# No automatic retries: a failed leg is reported as failed. One-rerun / flaky reporting
+# (test plan section 7.3) is not applied to a 30+ minute org build.
+#
+# Owner: @drgaciw (CI). Runs on the devhub environment; the weekly schedule must be an
+# allowed deployment source there (Settings -> Environments -> devhub), and if that
+# environment requires reviewers each leg waits for approval.
+#
+# org validation pending: this workflow was statically validated only (actionlint, YAML
+# parse, local dry-runs of the inline scripts); it has not run against a Dev Hub.
+
+on:
+  workflow_dispatch:
+    inputs:
+      shape:
+        description: "Shape to build (all runs the full dev, ent, tfid-pde matrix)"
+        type: choice
+        required: false
+        default: "all"
+        options:
+          - all
+          - dev
+          - ent
+          - tfid-pde
+  # Sunday 04:00 UTC: clear of the 03:00 Mon-Fri nightly (prepare-rlm-org.yml), so the
+  # weekly legs never compete with the nightly for Dev Hub scratch-org capacity.
+  # Schedules only fire from the default branch.
+  schedule:
+    - cron: "0 4 * * 0"
+
+permissions:
+  contents: read
+
+# Separate from prepare-rlm-org / prepare-rlm-org-nightly. cancel-in-progress is false
+# so an in-flight matrix finishes (and tears down its orgs) before the next one starts.
+concurrency:
+  group: flow-matrix
+  cancel-in-progress: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - name: Select shapes
+        id: plan
+        env:
+          SHAPE_INPUT: ${{ inputs.shape }}
+        run: |
+          case "${SHAPE_INPUT:-all}" in
+            all) matrix='["dev","ent","tfid-pde"]' ;;
+            dev|ent|tfid-pde) matrix="[\"${SHAPE_INPUT}\"]" ;;
+            *) echo "::error::Unknown shape '${SHAPE_INPUT}'"; exit 1 ;;
+          esac
+          echo "matrix=${matrix}" >> "$GITHUB_OUTPUT"
+          echo "Shapes: ${matrix}"
+
+  flow-matrix:
+    # The report job matches this exact name ("flow-matrix (<shape>)") in the Actions API.
+    name: flow-matrix (${{ matrix.shape }})
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    # Gates access to SFDX_AUTH_URL (a live Dev Hub credential) behind the protected
+    # devhub environment; see prepare-rlm-org.yml for the required environment settings.
+    environment: devhub
+    strategy:
+      # One shape failing must not cancel the others: each leg is its own signal.
+      fail-fast: false
+      matrix:
+        shape: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    env:
+      SHAPE: ${{ matrix.shape }}
+      ORG_ALIAS: fm-${{ matrix.shape }}-${{ github.run_id }}-${{ github.run_attempt }}
+      # See prepare-rlm-org.yml: the npm-installed sf CLI prints an update notice on
+      # stderr that can displace the real failure cause in CCI task output.
+      SF_SKIP_NEW_VERSION_CHECK: "true"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Load pinned tool versions
+        run: grep -E '^[A-Za-z_][A-Za-z0-9_]*=' config/tool-versions.env >> "$GITHUB_ENV"
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+          cache-dependency-path: |
+            config/tool-versions.env
+            robot/requirements.txt
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Cache npm download cache
+        uses: actions/cache@v5
+        with:
+          path: ~/.npm
+          key: npm-cache-${{ runner.os }}-node24
+
+      - name: Install sf CLI and SFDMU plugin
+        run: |
+          npm install -g "@salesforce/cli@${SF_CLI_VERSION}"
+          yes | sf plugins install "sfdmu@${SFDMU_VERSION}"
+          sf --version
+          sf plugins
+
+      - name: Install CumulusCI and dependencies
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install --upgrade pip "setuptools>=75.4,<77"
+          .venv/bin/pip install "cumulusci==${CUMULUSCI_VERSION}"
+          .venv/bin/pip install -r robot/requirements.txt
+          echo "$(pwd)/.venv/bin" >> "$GITHUB_PATH"
+          .venv/bin/cci version
+
+      - name: Validate setup
+        id: validate_setup
+        run: |
+          node --version
+          sf --version
+          cci version
+          cci task run validate_setup
+
+      - name: Authenticate Dev Hub
+        env:
+          SFDX_AUTH_URL: ${{ secrets.SFDX_AUTH_URL }}
+        run: |
+          printf '%s' "$SFDX_AUTH_URL" > /tmp/sfdx-auth-url.txt
+          sf org login sfdx-url --sfdx-url-file /tmp/sfdx-auth-url.txt --set-default-dev-hub --alias devhub
+          rm /tmp/sfdx-auth-url.txt
+
+      # SF_TEMP_SHOW_SECRETS is scoped to the steps where CumulusCI reads a scratch-org
+      # access token via `sf org display --json` (see prepare-rlm-org.yml).
+      # No continue-on-error on the build: the later stages need the org it creates, so a
+      # failed build must stop them (the summary then reports them as skipped and fails the leg).
+      - name: Build org (${{ matrix.shape }})
+        id: build
+        env:
+          SF_TEMP_SHOW_SECRETS: "true"
+        run: |
+          if [ "$SHAPE" = "tfid-pde" ]; then
+            # The /build-pde path: provisions ORG_ALIAS from the tfid-pde shape, applies the
+            # runtime-only overrides pde=true + billing_ui=false to cumulusci.yml, runs
+            # prepare_rlm_org and restores cumulusci.yml on exit (scripts/build_pde_dev_r1.sh).
+            ORG="$ORG_ALIAS" SHAPE=tfid-pde FLOW=prepare_rlm_org scripts/build_pde_dev_r1.sh
+          else
+            cci org scratch "$SHAPE" "$ORG_ALIAS"
+            cci flow run prepare_rlm_org --org "$ORG_ALIAS"
+          fi
+
+      # continue-on-error so the summary and artifacts always report this stage; the
+      # "Leg summary" step fails the job from the recorded outcomes (as in prepare-rlm-org.yml).
+      - name: Run Apex tests
+        id: apex
+        continue-on-error: true
+        env:
+          SF_TEMP_SHOW_SECRETS: "true"
+        run: |
+          mkdir -p test-results/apex
+          cci flow run ci_verify_apex --org "$ORG_ALIAS"
+
+      - name: Upload leg artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: flow-matrix-${{ matrix.shape }}-${{ github.run_id }}
+          path: test-results/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Leg summary
+        if: always()
+        env:
+          OUTCOME_VALIDATE: ${{ steps.validate_setup.outcome }}
+          OUTCOME_BUILD: ${{ steps.build.outcome }}
+          OUTCOME_APEX: ${{ steps.apex.outcome }}
+        run: |
+          python - <<'PY'
+          import glob
+          import os
+          import xml.etree.ElementTree as ET
+
+
+          def junit_counts(path):
+              total = failed = skipped = 0
+              for case in ET.parse(path).getroot().iter("testcase"):
+                  total += 1
+                  if case.find("failure") is not None or case.find("error") is not None:
+                      failed += 1
+                  elif case.find("skipped") is not None:
+                      skipped += 1
+              return total, failed, skipped
+
+
+          shape = os.environ["SHAPE"]
+          flags = (
+              "`pde=true`, `billing_ui=false` (runtime override by `scripts/build_pde_dev_r1.sh`)"
+              if shape == "tfid-pde"
+              else "committed defaults"
+          )
+          apex_counts = ("-", "-", "-")
+          files = glob.glob("test-results/apex/*.xml")
+          if files:
+              total = failed = skipped = 0
+              for f in files:
+                  try:
+                      t, fl, sk = junit_counts(f)
+                  except ET.ParseError:
+                      continue
+                  total, failed, skipped = total + t, failed + fl, skipped + sk
+              apex_counts = (total, failed, skipped)
+
+          stages = [
+              ("Validate setup", "OUTCOME_VALIDATE", ("-", "-", "-")),
+              ("Build (`prepare_rlm_org`)", "OUTCOME_BUILD", ("-", "-", "-")),
+              ("Apex tests (`run_tests`)", "OUTCOME_APEX", apex_counts),
+          ]
+          lines = [
+              f"## Flow matrix: {shape}",
+              "",
+              f"- Scratch alias: `{os.environ['ORG_ALIAS']}` (deleted at the end of the job)",
+              f"- Flags: {flags}",
+              "",
+              "| Stage | Outcome | Tests | Failed | Skipped |",
+              "|---|---|---|---|---|",
+          ]
+          failed_stages = []
+          not_run = []
+          for label, env, counts in stages:
+              outcome = os.environ.get(env, "") or "skipped"
+              if outcome == "skipped":
+                  not_run.append(label)
+              elif outcome != "success":
+                  failed_stages.append(label)
+              lines.append(f"| {label} | {outcome} | {counts[0]} | {counts[1]} | {counts[2]} |")
+          if failed_stages:
+              result = "FAIL: " + ", ".join(failed_stages)
+          elif not_run:
+              result = "INCOMPLETE (not run: " + ", ".join(not_run) + ")"
+          else:
+              result = "PASS"
+          lines += [
+              "",
+              f"Result: **{result}**",
+              "",
+              "No automatic retry: a failed stage is reported as failed.",
+          ]
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as fh:
+              fh.write("\n".join(lines) + "\n")
+          # Any stage that is not a success (failed or not run) fails the leg.
+          if failed_stages or not_run:
+              print("::error::Flow matrix leg " + shape + " not successful: " + result)
+              raise SystemExit(1)
+          PY
+
+      - name: Delete scratch org
+        if: always()
+        env:
+          SF_TEMP_SHOW_SECRETS: "true" # CCI reads org info to delete the scratch
+        run: |
+          cci org scratch_delete "$ORG_ALIAS" || echo "::warning::Could not delete scratch org ${ORG_ALIAS} (it may never have been created); check the Dev Hub for a leaked org."
+
+  report:
+    # Opens (or comments on) one issue per failed shape. Separate job on purpose: it holds
+    # issues: write but never sees the devhub environment or its secrets. Only real
+    # failures report; a manually cancelled run does not open issues.
+    needs: [plan, flow-matrix]
+    if: ${{ always() && needs.flow-matrix.result == 'failure' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: read
+      issues: write
+    steps:
+      - name: Open or update failure issues
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          SHA: ${{ github.sha }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import re
+          import subprocess
+
+
+          def gh(*args, check=True):
+              return subprocess.run(
+                  ["gh", *args], check=check, capture_output=True, text=True, encoding="utf-8"
+              ).stdout
+
+
+          repo = os.environ["REPO"]
+          jobs_raw = gh(
+              "api", "--paginate",
+              f"repos/{repo}/actions/runs/{os.environ['RUN_ID']}/attempts/{os.environ['RUN_ATTEMPT']}/jobs",
+              "--jq", '.jobs[] | select(.name | startswith("flow-matrix ("))',
+          )
+          failed = []
+          for line in jobs_raw.splitlines():
+              job = json.loads(line)
+              m = re.fullmatch(r"flow-matrix \((.+)\)", job["name"])
+              if m and job.get("conclusion") in ("failure", "timed_out"):
+                  steps = [s["name"] for s in job.get("steps", []) if s.get("conclusion") == "failure"]
+                  failed.append((m.group(1), job.get("html_url", os.environ["RUN_URL"]), steps))
+
+          summary = ["## Flow matrix failures", ""]
+          if not failed:
+              summary.append("No failed legs found in the Actions API (nothing to report).")
+          gh("label", "create", "flow-matrix", "--repo", repo, "--color", "d93f0b",
+             "--description", "Weekly CCI flow-matrix failure", check=False)
+          for shape, url, steps in failed:
+              title = f"Flow matrix failure: {shape}"
+              body = (
+                  f"The weekly flow matrix leg for shape `{shape}` failed.\n\n"
+                  f"- Run: {os.environ['RUN_URL']} (attempt {os.environ['RUN_ATTEMPT']})\n"
+                  f"- Leg job: {url}\n"
+                  f"- Commit: {os.environ['SHA']}\n"
+                  f"- Failed step(s): {', '.join(steps) if steps else 'see the job log'}\n\n"
+                  "See the leg's job summary and the `flow-matrix-" + shape + "-*` artifact. "
+                  "No automatic retry was attempted."
+              )
+              existing = json.loads(gh(
+                  "issue", "list", "--repo", repo, "--state", "open", "--label", "flow-matrix",
+                  "--limit", "100", "--json", "number,title",
+              ) or "[]")
+              match = next((i["number"] for i in existing if i["title"] == title), None)
+              if match is not None:
+                  gh("issue", "comment", str(match), "--repo", repo, "--body", body)
+                  summary.append(f"- `{shape}`: commented on #{match}")
+              else:
+                  out = gh("issue", "create", "--repo", repo, "--title", title,
+                           "--label", "flow-matrix", "--body", body).strip()
+                  summary.append(f"- `{shape}`: opened {out}")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as fh:
+              fh.write("\n".join(summary) + "\n")
+          PY
