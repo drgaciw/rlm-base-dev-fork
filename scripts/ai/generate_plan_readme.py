@@ -37,8 +37,8 @@ import sys
 sys.path.insert(0, os.path.dirname(__file__))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from check_plan_readme_consistency import (  # noqa: E402
-    REPO_ROOT,
     csv_index,
+    display_rel,
     find_plan_dirs,
     load_export_data,
     load_plan,
@@ -255,7 +255,7 @@ def write_readme(plan_dir: str, force: bool = False) -> tuple[bool, str]:
 
     if not os.path.isfile(readme):
         _write_fresh(readme, plan_dir, generate_block(plan_dir))
-        return True, f"wrote {os.path.relpath(readme, REPO_ROOT)} (new)"
+        return True, f"wrote {display_rel(readme)} (new)"
 
     with open(readme, encoding="utf-8") as fh:
         existing = fh.read()
@@ -273,7 +273,7 @@ def write_readme(plan_dir: str, force: bool = False) -> tuple[bool, str]:
 
     if not has_clean_markers and not force:
         return False, (
-            f"skip {os.path.relpath(readme, REPO_ROOT)} — has no generate_plan_readme markers; "
+            f"skip {display_rel(readme)} — has no generate_plan_readme markers; "
             "regenerating would discard hand-written content. Pass --force to replace it wholesale."
         )
 
@@ -287,10 +287,10 @@ def write_readme(plan_dir: str, force: bool = False) -> tuple[bool, str]:
         content = pre + block + post
         with open(readme, "w", encoding="utf-8") as fh:
             fh.write(content)
-        return True, f"wrote {os.path.relpath(readme, REPO_ROOT)} (regenerated marked block, narrative preserved)"
+        return True, f"wrote {display_rel(readme)} (regenerated marked block, narrative preserved)"
 
     _write_fresh(readme, plan_dir, block)
-    return True, f"wrote {os.path.relpath(readme, REPO_ROOT)} (--force: replaced whole file, no markers found)"
+    return True, f"wrote {display_rel(readme)} (--force: replaced whole file, no markers found)"
 
 
 def find_missing() -> list[str]:

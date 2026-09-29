@@ -2671,6 +2671,11 @@ class SFDMUValidator:
 
 def main():
     """Main entry point."""
+    # A Windows console decodes with cp1252, which cannot encode the arrows/emoji printed below;
+    # degrade the character rather than crash the run. Only the error policy changes.
+    for _s in (sys.stdout, sys.stderr):
+        if hasattr(_s, "reconfigure"):
+            _s.reconfigure(errors="replace")
     parser = argparse.ArgumentParser(
         description="Validate SFDMU v5 datasets for composite key compliance",
         formatter_class=argparse.RawDescriptionHelpFormatter,
