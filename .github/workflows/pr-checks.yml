@@ -315,7 +315,8 @@ jobs:
         if: steps.apex.outputs.changed == 'true'
         env:
           # Exact pin. A new version can change rules and messages: bump it in its own PR and
-          # regenerate config/code-analyzer-baseline.json (see docs/guides/ci-runbook.md).
+          # regenerate config/code-analyzer-baseline.json (procedure: the "Apex findings vs
+          # baseline" step below).
           CODE_ANALYZER_VERSION: "5.16.0"
         run: |
           set -euo pipefail
@@ -357,10 +358,19 @@ jobs:
         if: steps.apex.outputs.changed == 'true'
         run: |
           set -euo pipefail
-          # REPORT-ONLY until the baseline is committed (next commit): prints what it would fail on.
+          # Blocking. Exit 1 = a finding the baseline does not allow (a new rule, file or message, or
+          # one more of an old one); exit 2 = the analysis itself failed (e.g. an engine crashed),
+          # which is never read as a clean run. Fixed findings only warn.
+          #
+          # To regenerate the baseline (Code Analyzer bump, or after fixing findings): download the
+          # `code-analyzer-results` artifact of a green run of THIS job (Linux paths, so the file
+          # matches what CI will compare) and run
+          #   python scripts/lint/finding_baseline.py --format code-analyzer --name "Apex finding" \
+          #     --baseline config/code-analyzer-baseline.json --write code-analyzer-results.json
+          # `--write` keeps each entry's `reason`; give new entries one. A renamed or moved .cls
+          # re-surfaces its entries as new findings — regenerate in the same PR.
           python scripts/lint/finding_baseline.py --format code-analyzer --name "Apex finding" \
-            --baseline config/code-analyzer-baseline.json code-analyzer-results.json \
-            || echo "::warning::report-only: the baseline is not enforced yet"
+            --baseline config/code-analyzer-baseline.json code-analyzer-results.json
 
   # config/tool-versions.env is the single source of truth for pinned tool
   # versions; docker/Dockerfile's ARG defaults are a plain-`docker build`

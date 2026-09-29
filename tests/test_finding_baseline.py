@@ -9,6 +9,7 @@ convention). Run from the repo root with base Python:
 Exits 0 when all checks pass, 1 otherwise.
 """
 import json
+import re
 import subprocess
 import sys
 import tempfile
@@ -243,6 +244,37 @@ def test_code_analyzer_cli():
         check("CLI code-analyzer: an engine crash exits 2, never 0", proc.returncode == 2)
 
 
+def test_apex_gate_wiring():
+    text = (REPO_ROOT / ".github" / "workflows" / "pr-checks.yml").read_text(encoding="utf-8")
+    check("CODE_ANALYZER_VERSION is an exact version, never latest or a range",
+          re.search(r'^\s*CODE_ANALYZER_VERSION: "\d+\.\d+\.\d+"$', text, re.MULTILINE))
+    check("the Apex gate selects the PMD Security and ErrorProne tags and nothing broader",
+          "--rule-selector pmd:Security" in text and "--rule-selector pmd:ErrorProne" in text)
+    step = text.split("- name: Apex findings vs baseline", 1)[1].split("\n      - name:", 1)[0]
+    check("the Apex baseline step is blocking: no tolerated failure, no `|| true`, no continue-on-error",
+          "finding_baseline.py --format code-analyzer" in step and "--baseline config/code-analyzer-baseline.json" in step
+          and "||" not in step and "continue-on-error" not in step)
+    config = (REPO_ROOT / "code-analyzer.yml").read_text(encoding="utf-8")
+    check("code-analyzer.yml restricts PMD to Apex file extensions",
+          "apex:" in config and "xml: []" in config and "visualforce: []" in config)
+
+    data = json.loads((REPO_ROOT / "config" / "code-analyzer-baseline.json").read_text(encoding="utf-8"))
+    entries = data["entries"]
+    keys = [(e["rule"], e["file"], e.get("message", "")) for e in entries]
+    check("committed Apex baseline is sorted and free of duplicates", keys == sorted(set(keys)))
+    check("every Apex baseline entry has a count >= 1 and a reason",
+          all(isinstance(e["count"], int) and e["count"] >= 1 and e["reason"].strip() for e in entries))
+    check("every Apex baseline file is a repo-relative path with forward slashes to a real Apex file",
+          all("\\" not in e["file"] and not e["file"].startswith("/") and (REPO_ROOT / e["file"]).is_file()
+              and e["file"].endswith((".cls", ".trigger")) for e in entries))
+    check("every Apex baseline rule is a pmd rule id and no message carries an absolute path",
+          all(e["rule"].startswith("pmd:") and "\\" not in e.get("message", "")
+              and "/home/" not in e.get("message", "") for e in entries))
+    check("none of the TP-06 test classes is in the baseline: they were written clean",
+          not any(e["file"].rsplit("/", 1)[-1] in {"RLM_TestDataFactory.cls", "RLM_CalculateTaxServiceTest.cls"}
+                  or e["file"].endswith("ServiceUserModeTest.cls") for e in entries))
+
+
 def test_registry():
     check("FORMATS registers the pairs, zizmor and code-analyzer parsers; a new linter adds one entry",
           set(B.FORMATS) == {"pairs", "zizmor", "code-analyzer"} and all(callable(p) for p in B.FORMATS.values()))
@@ -256,6 +288,7 @@ def main():
     test_cli()
     test_code_analyzer_cli()
     test_write_keeps_reasons()
+    test_apex_gate_wiring()
     test_registry()
 
     passed = sum(1 for _, ok in RESULTS if ok)
