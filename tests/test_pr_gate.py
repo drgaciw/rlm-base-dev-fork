@@ -5463,7 +5463,11 @@ README_COUNT = re.compile(r"Verified by `tests/test_pr_gate\.py` \((\d+) checks"
 # describes, not a drift.
 # Raised again for wave 2 (I2/A-M1): check_text_encoding_suite and text_encoding_gate were
 # added to CHECKS, and the same per-check loops add checks proportional to len(CHECKS).
-EXPECTED = 769
+# Raised again for TP-03: rest_contracts and subprocess_contracts were added to CHECKS (6 more
+# per-check verdicts across the loops), the deliberate re-count and not a drift.
+# Raised again for TP-05: --tier stdlib (tier pin, composition, empty tier) and the Windows job's
+# whitelist with its mutation controls, +40 checks, none looping over CHECKS.
+EXPECTED = 775
 _readme_text = pathlib.Path(os.path.join(REPO, "scripts/ai/README.md")).read_text(encoding="utf-8")
 cited = README_COUNT.search(_readme_text)
 check("the check count quoted in scripts/ai/README.md matches EXPECTED, so the prose cannot drift "
@@ -5480,7 +5484,7 @@ _NUM_WORDS = {13: "thirteen", 14: "fourteen", 15: "fifteen", 16: "sixteen", 17: 
               18: "eighteen", 19: "nineteen", 20: "twenty", 21: "twenty-one", 22: "twenty-two",
               23: "twenty-three", 24: "twenty-four", 25: "twenty-five", 26: "twenty-six",
               27: "twenty-seven", 28: "twenty-eight", 29: "twenty-nine", 30: "thirty",
-              31: "thirty-one"}
+              31: "thirty-one", 32: "thirty-two", 33: "thirty-three"}
 _actual = len(pr_gate.CHECKS)
 # A word boundary that also rejects a trailing hyphen, so the pattern for a smaller number word
 # does not match inside a hyphenated compound of a larger one: "two of the twenty" must NOT
