@@ -83,12 +83,31 @@ module.exports = {
         '!**/__tests__/**',
         '!**/__mocks__/**'
     ],
-    // Coverage floor = measured baseline after the smoke tranche (TP-07), rounded
-    // down. Target is 50/40/50/50, reached by a +5 points per quarter ratchet;
-    // the floor is only ever raised, never lowered. See
-    // docs/references/test-plan-2026-09.md (TP-07, section 4.3).
+    // Coverage floor = measured baseline, rounded down. Target is 70/55/70/70,
+    // reached by a +5 points per quarter ratchet; floors are only ever raised,
+    // never lowered. See docs/references/test-plan-2026-09.md (TP-07, TP-07b,
+    // section 4.3).
     coverageThreshold: {
-        global: { statements: 27, branches: 16, functions: 34, lines: 28 }
+        // Jest subtracts every per-path entry below from `global`, so
+        // `global` = the REMAINING 46 bundles only (measured
+        // 40.04/27.36/46.42/40.37, rounded down). The ALL-FILES figure is
+        // 60.91/47.93/64.45/62.59 (stmts/branches/fns/lines). Do NOT "fix"
+        // `global` to the all-files number: it would fail the gate. Each
+        // partition is ratcheted up from its own measured value.
+        global: { statements: 40, branches: 27, functions: 46, lines: 40 },
+        // Per-bundle floors (TP-07b): measured values rounded down, so a
+        // regression concentrated in one of these bundles cannot hide in the
+        // global average.
+        './unpackaged/post_large_stx/lwc/rlmSetUpQuoteWizard/rlmSetUpQuoteWizard.js':
+            { statements: 90, branches: 71, functions: 94, lines: 92 },
+        './unpackaged/post_billing_ui/lwc/rlmBsgOverview/rlmBsgOverview.js':
+            { statements: 75, branches: 59, functions: 82, lines: 81 },
+        './unpackaged/post_large_stx/lwc/rlmSetUpQuoteHierarchyTree/rlmSetUpQuoteHierarchyTree.js':
+            { statements: 91, branches: 79, functions: 98, lines: 96 },
+        './unpackaged/post_utils/lwc/rlmDecisionTableManager/rlmDecisionTableManager.js':
+            { statements: 91, branches: 75, functions: 98, lines: 95 },
+        './unpackaged/post_utils/lwc/rlmUsageUploader/rlmUsageUploader.js':
+            { statements: 95, branches: 84, functions: 97, lines: 97 }
     },
     coverageDirectory: 'coverage',
     coverageReporters: ['text-summary', 'lcov', 'json-summary'],
