@@ -159,6 +159,8 @@ jobs:
 
       # SF_TEMP_SHOW_SECRETS is scoped to the steps where CumulusCI reads a scratch-org
       # access token via `sf org display --json` (see prepare-rlm-org.yml).
+      # No continue-on-error on the build: the later stages need the org it creates, so a
+      # failed build must stop them (the summary then reports them as skipped and fails the leg).
       - name: Build org (${{ matrix.shape }})
         id: build
         env:
@@ -174,8 +176,11 @@ jobs:
             cci flow run prepare_rlm_org --org "$ORG_ALIAS"
           fi
 
+      # continue-on-error so the summary and artifacts always report this stage; the
+      # "Leg summary" step fails the job from the recorded outcomes (as in prepare-rlm-org.yml).
       - name: Run Apex tests
         id: apex
+        continue-on-error: true
         env:
           SF_TEMP_SHOW_SECRETS: "true"
         run: |
@@ -270,6 +275,10 @@ jobs:
           ]
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as fh:
               fh.write("\n".join(lines) + "\n")
+          # Any stage that is not a success (failed or not run) fails the leg.
+          if failed_stages or not_run:
+              print("::error::Flow matrix leg " + shape + " not successful: " + result)
+              raise SystemExit(1)
           PY
 
       - name: Delete scratch org
