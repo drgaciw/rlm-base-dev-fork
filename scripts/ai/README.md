@@ -581,10 +581,10 @@ it the violation, because on a correct file a working rule and a blind one retur
 answer. This file is densely commented precisely because each setting matters, which is what
 made the first version of three separate guards vacuous.
 
-A full `--all` run is 33 checks in about 100 seconds on a Windows machine with no
-CumulusCI/pytest installed, dominated by three suites: `stdlib_offline_suites` and
-`pr_gate_suite` at roughly 27s each and `branch_scope` (`tests/test_branch_scope.py`) at about
-21s — together well over half the wall-clock total — while most of the remaining checks finish
+A full `--all` run is 33 checks in about 160 seconds on a Windows machine with no
+CumulusCI/pytest installed (re-measured for TP-03: 158s wall clock in a fresh clone), dominated by three suites: `stdlib_offline_suites` at roughly 45s and
+`pr_gate_suite` at roughly 30s and `branch_scope` (`tests/test_branch_scope.py`) at about
+37s — together well over half the wall-clock total — while most of the remaining checks finish
 in a second or two, and a typical docs-only selection is a couple of seconds. Re-measured for
 wave 2 (A-L3/I4): the prior "17 seconds" figure predated `branch_scope` needing real `git`/`gh`
 subprocess round-trips per case and was never re-timed against it. That timing is measured on a
