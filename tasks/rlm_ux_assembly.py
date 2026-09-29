@@ -33,6 +33,12 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 import xml.etree.ElementTree as ET
 from tasks.rlm_sf_cli import sf_executable
 
+# Before the CCI try/except: see the same-package import note in tasks/rlm_sfdmu.py.
+try:
+    from tasks.rlm_ux_utils import get_ux_feature_flags, resolve_flexipage_sources, PERSONAS_PROFILES, SALES_TXN_LINE_EDITOR_IDENTIFIER
+except ImportError:
+    from rlm_ux_utils import get_ux_feature_flags, resolve_flexipage_sources, PERSONAS_PROFILES, SALES_TXN_LINE_EDITOR_IDENTIFIER
+
 try:
     import yaml
 except ImportError:
@@ -53,11 +59,6 @@ except ImportError:
         if isinstance(val, bool):
             return val
         return str(val).lower() in ("true", "1", "yes")
-
-try:
-    from tasks.rlm_ux_utils import get_ux_feature_flags, resolve_flexipage_sources, PERSONAS_PROFILES, SALES_TXN_LINE_EDITOR_IDENTIFIER
-except ImportError:
-    from rlm_ux_utils import get_ux_feature_flags, resolve_flexipage_sources, PERSONAS_PROFILES, SALES_TXN_LINE_EDITOR_IDENTIFIER
 
 
 # Salesforce metadata XML namespace

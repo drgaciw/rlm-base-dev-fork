@@ -29,6 +29,14 @@ What is pinned:
 5. **One resolver** - `tasks/rlm_sfdmu.py` aliases the shared helper and has no `which("sf")`.
    Checked on the AST because importing the module needs `requests`.
 
+6. **Import order** - in every `tasks/*.py`, no module-level `tasks.*` import may follow a
+   `cumulusci` import (`TestTasksImportOrder`). Once CumulusCI is loaded the `tasks` namespace
+   package's `__path__` collapses, so the later import fails when the module is imported directly
+   (architect review A-C3); this broke the first push of this PR. `LEGACY_IMPORT_ORDER` is the exact
+   list of modules that already broke the rule before TP-13; a new violation AND a stale entry both
+   fail, so the list can only shrink. Follow-up TP-13b: fix the order in those modules; acceptance =
+   `LEGACY_IMPORT_ORDER` empty.
+
 Run: `python tests/test_rlm_sf_cli.py`  (also collectable by pytest).
 """
 from __future__ import annotations
@@ -138,6 +146,30 @@ INCREMENTAL = {
 }
 
 _RESOLVER_NAMES = {"sf_executable", "_sf_executable"}
+
+# Modules that put a `tasks.*` import after a `cumulusci` import before TP-13. They work under the
+# CCI runtime and break only when imported directly (tests). Exact: a new violation and a stale
+# entry both fail. A test written for one of these must fix that module's import order first, and
+# the stale-entry failure then forces the removal from this dict. Follow-up: TP-13b.
+_LEGACY_REASON = "pre-existing; works under the CCI runtime, breaks direct import in tests (architect-review A-C3)"
+LEGACY_IMPORT_ORDER = {
+    name: _LEGACY_REASON
+    for name in (
+        "rlm_analytics",
+        "rlm_configure_core_pricing_setup",
+        "rlm_configure_product_discovery_settings",
+        "rlm_configure_revenue_settings",
+        "rlm_diff_ux",
+        "rlm_enable_constraints_settings",
+        "rlm_enable_document_builder_toggle",
+        "rlm_enable_timeline",
+        "rlm_expression_set_connect",
+        "rlm_reorder_app_launcher",
+        "rlm_retrieve_ux",
+        "rlm_robot_e2e",
+        "rlm_writeback_ux",
+    )
+}
 
 
 # --------------------------------------------------------------------------------------
@@ -500,6 +532,117 @@ class TestCheapSitesUseTheResolvedExecutable(unittest.TestCase):
         task = self._validate_setup()
         seen = self._capture(rlm_validate_setup, task._check_sf_cli, "@salesforce/cli/2.60.1\n", which=None)
         self.assertEqual(seen[0][0], ["sf", "--version"])
+
+
+# --------------------------------------------------------------------------------------
+# 6. import order: no `tasks.*` import after a `cumulusci` import
+# --------------------------------------------------------------------------------------
+
+
+def _import_roots(tree: ast.AST):
+    """[(lineno, imported module)] for module-level imports (including those inside top-level
+    try/except/if/with blocks), in source order. Function/class bodies and lambdas are excluded:
+    they run later, not at import time."""
+    found = []
+
+    def visit(node):
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
+                continue
+            if isinstance(child, ast.Import):
+                found.extend((child.lineno, alias.name) for alias in child.names)
+            elif isinstance(child, ast.ImportFrom) and child.level == 0 and child.module:
+                found.append((child.lineno, child.module))
+            visit(child)
+
+    visit(tree)
+    return sorted(found)
+
+
+def _is_pkg(module: str, root: str) -> bool:
+    return module == root or module.startswith(root + ".")
+
+
+def late_tasks_imports(tree: ast.AST):
+    """[(lineno, module)] of `tasks.*` imports that come after the first `cumulusci` import."""
+    imports = _import_roots(tree)
+    cci = [line for line, mod in imports if _is_pkg(mod, "cumulusci")]
+    if not cci:
+        return []
+    first = min(cci)
+    return [(line, mod) for line, mod in imports if _is_pkg(mod, "tasks") and line > first]
+
+
+def _violating_modules():
+    out = {}
+    for path in sorted(TASKS_DIR.glob("*.py")):
+        late = late_tasks_imports(ast.parse(path.read_text(encoding="utf-8"), filename=str(path)))
+        if late:
+            out[path.stem] = late
+    return out
+
+
+class TestTasksImportOrder(unittest.TestCase):
+    HINT = (
+        "Move the `tasks.*` import above the `try: from cumulusci...` block (see the note in "
+        "tasks/rlm_sfdmu.py). Do not add a module to LEGACY_IMPORT_ORDER."
+    )
+
+    def test_no_new_import_order_violations(self):
+        new = {m: late for m, late in _violating_modules().items() if m not in LEGACY_IMPORT_ORDER}
+        self.assertEqual(new, {}, f"tasks.* import after a cumulusci import: {new}. {self.HINT}")
+
+    def test_no_stale_legacy_entries(self):
+        stale = sorted(set(LEGACY_IMPORT_ORDER) - set(_violating_modules()))
+        self.assertEqual(
+            stale,
+            [],
+            f"LEGACY_IMPORT_ORDER lists modules that no longer violate the rule: {stale}. "
+            "The order was fixed - delete the entry so it cannot come back unnoticed.",
+        )
+
+    def test_every_legacy_entry_carries_its_reason(self):
+        for module, reason in LEGACY_IMPORT_ORDER.items():
+            self.assertTrue(reason.strip(), module)
+            self.assertTrue((TASKS_DIR / f"{module}.py").is_file(), f"{module}: no such module")
+
+    def test_the_sf_resolver_importers_are_not_legacy(self):
+        """The modules this PR touches must be clean: they are the ones the shared helper reaches."""
+        importers = set()
+        for path in sorted(TASKS_DIR.glob("*.py")):
+            for _, mod in _import_roots(ast.parse(path.read_text(encoding="utf-8"))):
+                if mod in ("tasks.rlm_sf_cli", "tasks.rlm_agents_common"):
+                    importers.add(path.stem)
+        self.assertTrue(importers, "expected importers of the shared helper")
+        self.assertEqual(sorted(importers & set(LEGACY_IMPORT_ORDER)), [])
+        self.assertEqual(sorted(importers & set(_violating_modules())), [])
+
+    def test_negative_controls(self):
+        """The detector must flag each violating shape and spare each clean one."""
+
+        def late(source):
+            return late_tasks_imports(ast.parse(source))
+
+        # from-import after a cci import inside try/except (the real-world shape)
+        violating = (
+            "try:",
+            "    from cumulusci.core.tasks import BaseTask",
+            "except ImportError:",
+            "    BaseTask = object",
+            "from tasks.rlm_agents_common import run_sf_json",
+        )
+        self.assertEqual(late("\n".join(violating)), [(5, "tasks.rlm_agents_common")])
+        # plain `import tasks.x`, and a tasks import nested in a later top-level try
+        self.assertEqual(len(late("import cumulusci\nimport tasks.rlm_sf_cli\n")), 1)
+        nested = ("import cumulusci", "try:", "    from tasks import x", "except ImportError:", "    x = 1")
+        self.assertEqual(len(late("\n".join(nested))), 1)
+        # correct order, function/class-level imports, other packages and lookalike names are clean
+        self.assertEqual(late("from tasks.rlm_sf_cli import f\nimport cumulusci\n"), [])
+        self.assertEqual(late("import cumulusci\ndef g():\n    from tasks import x\n"), [])
+        self.assertEqual(late("import cumulusci\nclass C:\n    from tasks import x\n"), [])
+        self.assertEqual(late("from tasks import x\n"), [])
+        self.assertEqual(late("import cumulusci\nimport mytasks\nfrom tasksfoo import y\n"), [])
+        self.assertEqual(late("import cumulusci_extras\nfrom tasks import x\n"), [])
 
 
 # --------------------------------------------------------------------------------------
