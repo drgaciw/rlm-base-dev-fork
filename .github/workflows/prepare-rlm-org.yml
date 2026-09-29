@@ -148,8 +148,6 @@ jobs:
           import subprocess
           import sys
 
-          from packaging.version import Version
-
           import selenium
           import SeleniumLibrary
 
@@ -160,7 +158,7 @@ jobs:
           if selenium_version.split(".")[0] != "4":
               failures.append(f"selenium major must be 4, found {selenium_version} "
                               "(CumulusCI's selenium<4 pin won the resolve)")
-          if Version(selenium_library_version) < Version("6.9.0"):
+          if tuple(int(part) for part in re.findall(r"\d+", selenium_library_version)[:3]) < (6, 9, 0):
               failures.append(f"SeleniumLibrary must be >= 6.9.0, found {selenium_library_version}")
           # The distribution metadata must agree with the imported modules, so a stale
           # or shadowed copy on sys.path cannot satisfy the import check alone.
