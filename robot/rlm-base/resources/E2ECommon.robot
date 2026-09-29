@@ -66,9 +66,10 @@ Close Browser For E2E
 # ── Condition Waits (TP-08b: replace fixed Sleeps) ──────────────────
 # Strict waits (Wait Until Keyword Succeeds, Wait Until Element ..., REST polls) assert a
 # positive signal and fail the test on timeout. The helpers below are BEST-EFFORT: on timeout
-# they log a structured WARN `SETTLE_TIMEOUT` line naming the calling keyword and the timeout (counted in the
-# e2e stage summary) and continue. Every best-effort wait must be anchored by a strict wait or
-# assertion before the next click/input -- tests/test_robot_sleep_ratchet.py enforces that.
+# they log a structured WARN `SETTLE_TIMEOUT` line naming the calling keyword and the timeout
+# (counted in the e2e stage summary) and continue. Every best-effort wait must be anchored by a
+# strict wait or assertion before the next click/input -- tests/test_robot_sleep_ratchet.py
+# enforces that.
 # E2E path only: never use these from tests/setup/* or SetupToggles.robot.
 
 Wait Until Page Is Settled
