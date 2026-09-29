@@ -1,10 +1,16 @@
 {
   "_comment": "Per-package coverage floors (TP-10). scripts/lint/coverage_ratchet.py fails a PR whose measured coverage is below a floor, or that lowers a floor already on the base branch. Raising floors is a manual 'measure' then 'update' run, never automatic in CI. 'target' is the plan's goal (test-plan-2026-09.md 4.1) and does not gate.",
-  "reason": "Initial floors: measured baseline (branch mode, whole gate), rounded down to one decimal. To lower a floor, add a line 'coverage-floor-lowered: <why>' to this field.",
+  "reason": "Initial floors: Linux CI measured baseline (PR #26, run 36611881385: scripts/ai 56.89%, tasks 19.63%; branch mode, whole gate), rounded down to one decimal. To lower a floor, add a line 'coverage-floor-lowered: <why>' to this field.",
   "version": 1,
   "metric": "branch-combined",
   "packages": {
-    "scripts/ai": { "floor": 56.9, "target": 85.0 },
-    "tasks": { "floor": 16.0, "target": 60.0 }
+    "scripts/ai": {
+      "floor": 56.8,
+      "target": 85.0
+    },
+    "tasks": {
+      "floor": 19.6,
+      "target": 60.0
+    }
   }
 }
