@@ -166,7 +166,6 @@ LEGACY_IMPORT_ORDER = {
         "rlm_expression_set_connect",
         "rlm_reorder_app_launcher",
         "rlm_retrieve_ux",
-        "rlm_robot_e2e",
         "rlm_writeback_ux",
     )
 }
