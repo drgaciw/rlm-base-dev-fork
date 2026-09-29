@@ -2,6 +2,17 @@
 # Install in the same environment as CumulusCI so CCI tasks can run robot:
 #   pip install -r robot/requirements.txt
 #   or: pipx inject cumulusci --force -r robot/requirements.txt
+#
+# This stack DELIBERATELY OVERRIDES CumulusCI 4.8.1's pins (`selenium<4`,
+# `robotframework-seleniumlibrary<6`). Resolving both together is
+# ResolutionImpossible, so install it in a SECOND pip call after CumulusCI, and
+# expect `pip check` to report exactly those two CumulusCI conflicts. Do not
+# "fix" them by loosening or dropping the selenium/SeleniumLibrary lines below:
+# that lets CCI's pin win and every Robot suite breaks on selenium 3.x.
+# .github/workflows/prepare-rlm-org.yml ("Assert robot stack overrides
+# CumulusCI selenium pin") fails the build if selenium is not 4.x, SeleniumLibrary
+# is below 6.9, or `pip check` reports anything beyond those two conflicts.
+# Re-check monthly whether a newer CumulusCI lifted its pin (test plan section 7).
 robotframework>=7.5,<8
 robotframework-seleniumlibrary>=6.9.0,<7
 selenium>=4.49.0,<5
