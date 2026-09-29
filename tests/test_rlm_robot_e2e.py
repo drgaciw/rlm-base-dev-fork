@@ -23,6 +23,7 @@ from two output files, so a bug in this logic would silently launder real failur
 into "flaky" or flaky tests into "pass". The checks assert on the classification,
 not on the task's exit code.
 """
+import ast
 import importlib.util
 import json
 import os
@@ -313,6 +314,57 @@ def check_default_mode_is_unchanged(_):
     )
 
 
+# ---- import order (the A-C3 hazard) -----------------------------------------------------
+
+
+def import_lines(source):
+    """(line of the first `tasks.robot_utils` import, line of the first cumulusci import)."""
+    robot_utils = cci = None
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.ImportFrom):
+            mods = [node.module or ""]
+        elif isinstance(node, ast.Import):
+            mods = [a.name for a in node.names]
+        else:
+            continue
+        for mod in mods:
+            if mod == "tasks.robot_utils" and (robot_utils is None or node.lineno < robot_utils):
+                robot_utils = node.lineno
+            if mod.split(".")[0] == "cumulusci" and (cci is None or node.lineno < cci):
+                cci = node.lineno
+    return robot_utils, cci
+
+
+def check_robot_utils_is_imported_before_cumulusci(_):
+    """Once CumulusCI is imported it collapses the `tasks` namespace `__path__`, so a later
+    `from tasks.robot_utils import ...` raises ModuleNotFoundError. The CCI-less stdlib check
+    cannot see that (its try/except falls back to shims), so assert the order in the source."""
+    source = (REPO_ROOT / "tasks" / "rlm_robot_e2e.py").read_text(encoding="utf-8")
+    robot_utils, cci = import_lines(source)
+    check(
+        "robot_utils_import_precedes_cumulusci_import",
+        robot_utils is not None and cci is not None and robot_utils < cci,
+        f"tasks.robot_utils at line {robot_utils}, first cumulusci import at line {cci}",
+    )
+    reversed_src = "\n".join(
+        [
+            "try:",
+            "    from cumulusci.core.tasks import BaseTask",
+            "except ImportError:",
+            "    BaseTask = object",
+            "from tasks.robot_utils import check_urllib3_for_robot",
+        ]
+    )
+    r, c = import_lines(reversed_src)
+    check(
+        "import_order_control_detects_the_reversed_order",
+        r is not None and c is not None and not r < c,
+        f"robot_utils line {r}, cumulusci line {c}",
+    )
+    r, c = import_lines("import os")
+    check("import_order_control_sees_neither_import_in_unrelated_source", (r, c) == (None, None), "")
+
+
 # ---- quarantine register (robot/QUARANTINE.md) ------------------------------------------
 
 QUARANTINE_TAG = "flaky"
@@ -360,7 +412,7 @@ def parse_quarantine(text):
     return rows
 
 
-def quarantine_problems(rows, tagged, today=None):
+def quarantine_problems(rows, tagged):
     problems = []
     listed = set()
     for cells in rows:
@@ -523,6 +575,7 @@ def main():
         check_framework_error_is_not_retried,
         check_rerun_filters_match_first_run,
         check_default_mode_is_unchanged,
+        check_robot_utils_is_imported_before_cumulusci,
         check_quarantine_register_matches_flaky_tags,
         check_quarantine_validator_catches_bad_rows,
         check_real_robot_rerun_and_merge,
