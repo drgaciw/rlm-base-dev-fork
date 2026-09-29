@@ -623,6 +623,7 @@ STDLIB_SUITES = [
     "tests/test_decision_tables_toolkit.py",
     "tests/test_df_workshop_replay.py",
     "tests/test_expression_sets_toolkit.py",
+    "tests/test_finding_baseline.py",
     "tests/test_fix_scratch_identity.py",
     "tests/test_gitnexus_guard.py",
     "tests/test_post_process_extraction.py",
