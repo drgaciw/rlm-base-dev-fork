@@ -4361,8 +4361,7 @@ for spec in pr_gate.CHECKS:
             if rel in declared or not os.path.exists(os.path.join(REPO, rel)):
                 continue
             if not pr_gate.selects(spec, [as_change(rel)]):
-                unselected_reads.append(f"{spec['name']} reads {rel} ({src}) but is not "
-                                        f"selected by it")
+                unselected_reads.append(f"{spec['name']} reads {rel} ({src}) but is not selected by it")
 check("no suite reads a file that cannot select it", not unselected_reads,
       "; ".join(unselected_reads[:8]))
 check("the enumeration actually inspected something", inspected > 20, inspected)

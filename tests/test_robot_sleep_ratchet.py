@@ -27,6 +27,7 @@ What counts
 A decrease is not a failure: it prints "lower the baseline" so the pin is tightened and
 the win cannot silently regress later.
 """
+import os
 import re
 import sys
 from pathlib import Path
@@ -176,7 +177,12 @@ def main():
         print(f"  {'PASS' if ok else 'FAIL'}  {name:<{width}}  {detail if not ok else ''}")
         failed += 0 if ok else 1
     for note in NOTES:
-        print(f"  NOTE  {note}")
+        # In GitHub Actions a workflow command surfaces the note as an annotation on the run
+        # instead of burying it in the log of a passing check.
+        if os.environ.get("GITHUB_ACTIONS") == "true":
+            print(f"::warning title=Sleep ratchet::{note}")
+        else:
+            print(f"  NOTE  {note}")
     total = sum(current_counts().values())
     print("=" * (width + 60))
     print(f"{len(RESULTS) - failed}/{len(RESULTS)} checks passed; {total} Sleep(s) remain (target 0)")
