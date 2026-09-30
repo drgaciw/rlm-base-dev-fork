@@ -76,7 +76,7 @@ runs:
 
     - name: Set up Python
       if: inputs.python == 'true'
-      uses: actions/setup-python@v6
+      uses: actions/setup-python@v7
       with:
         python-version: ${{ steps.versions.outputs.python }}
         cache: "pip"
