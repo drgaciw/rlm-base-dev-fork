@@ -95,6 +95,8 @@ except ImportError:
     BaseProjectKeychain = object
 ```
 
+Put `tasks.*` imports above the CumulusCI `try/except` (TP-13b).
+
 ---
 
 ## Task Options
@@ -161,7 +163,7 @@ class ManageDecisionTables(BaseTask):
         # REST API call
         url = f"{instance_url}/services/data/v68.0/query/"
         params = {"q": "SELECT Id, DeveloperName FROM DecisionTable"}
-        response = requests.get(url, headers=headers, params=params)
+        response = rlm_rest_base.request("GET", url, headers=headers, params=params)
         response.raise_for_status()
         records = response.json().get("records", [])
 
@@ -223,8 +225,7 @@ class RunE2ETests(BaseTask):
     }
 
     def _run_task(self):
-        cmd = ["python", "-m", "robot"]
-        cmd.extend(["--variable", f"ORG:{self.org_config.username}"])
+        cmd = [sys.executable, "-m", "robot", "--variable", f"ORG_ALIAS:{self.org_config.username}"]
         cmd.extend(["--outputdir", self.options.get("outputdir", "results")])
 
         # Pass feature flags as Robot variables
@@ -232,7 +233,7 @@ class RunE2ETests(BaseTask):
             val = self.project_config.project__custom.get(flag, False)
             cmd.extend(["--variable", f"{flag.upper()}:{val}"])
 
-        cmd.append(self.options.get("suite", "robot/tests"))
+        cmd.append(self.options.get("suite", "robot/rlm-base/tests/"))
         result = subprocess.run(cmd, cwd=str(Path.cwd()))
         if result.returncode != 0:
             raise CommandException(f"Robot exited with {result.returncode}")
@@ -281,9 +282,9 @@ Getting this wrong causes "org not found" or "auth failed" errors.
 ### Resolving the org for `sf` CLI subprocess calls
 
 ```python
-# CORRECT — use username for CLI commands
-org_target = self.org_config.username  # e.g. "test-abc123@example.com"
-cmd = ["sf", "data", "query", "-q", soql, "--target-org", org_target]
+# CORRECT — use username for CLI commands, sf_executable() as argv[0]
+from tasks.rlm_sf_cli import sf_executable  # place above the `try: from cumulusci…` block
+cmd = [sf_executable(), "data", "query", "-q", soql, "--target-org", self.org_config.username]
 
 # WRONG — never pass access_token to CLI
 cmd = ["sf", "data", "query", "--target-org", self.org_config.access_token]  # FAILS + leaks secret
@@ -331,12 +332,15 @@ the username always works.
 
 ## REST API Patterns
 
+Every `requests` call in `tasks/` passes exactly one `timeout=` (`tests/test_rest_contracts.py`); every `sf` subprocess uses `sf_executable()` as argv[0] (`tests/test_subprocess_contracts.py`). `rlm_rest_base.request` supplies the default timeout.
+
 ### SOQL Query (REST)
 
 ```python
-headers = {"Authorization": f"Bearer {self.org_config.access_token}"}
+from tasks import rlm_rest_base
+headers = rlm_rest_base.headers(self.org_config.access_token)
 url = f"{self.org_config.instance_url}/services/data/v68.0/query/"
-resp = requests.get(url, headers=headers, params={"q": soql})
+resp = rlm_rest_base.request("GET", url, headers=headers, params={"q": soql})
 resp.raise_for_status()
 records = resp.json().get("records", [])
 ```
@@ -345,20 +349,20 @@ records = resp.json().get("records", [])
 
 ```python
 url = f"{self.org_config.instance_url}/services/data/v68.0/tooling/query/"
-resp = requests.get(url, headers=headers, params={"q": tooling_soql})
+resp = rlm_rest_base.request("GET", url, headers=headers, params={"q": tooling_soql})
 ```
 
 ### Connect API
 
 ```python
 url = f"{self.org_config.instance_url}/services/data/v68.0/connect/..."
-resp = requests.post(url, headers=headers, json=payload)
+resp = rlm_rest_base.request("POST", url, headers=headers, json=payload)
 ```
 
 ### PATCH/POST with error handling
 
 ```python
-resp = requests.patch(url, headers=headers, json=body)
+resp = rlm_rest_base.request("PATCH", url, headers=headers, json=body)
 if resp.status_code >= 400:
     self.logger.error(f"API error {resp.status_code}: {resp.text}")
     raise TaskOptionsError(f"Failed: {resp.status_code}")

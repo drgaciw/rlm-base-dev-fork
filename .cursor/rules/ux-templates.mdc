@@ -22,8 +22,7 @@ That directory is fully regenerated on every `assemble_and_deploy_ux` run. Edit 
 - **Standalone overrides**: `templates/flexipages/standalone/{feature}/` — complete page replacements
 - **Patches**: `templates/flexipages/patches/{feature}/` — YAML semantic patches applied on top of standalones/base
 - One canonical standalone per page — don't duplicate across features
-- Priority order (last wins): payments → billing → billing_ui → quantumbit → tso → constraints → utils → docgen → approvals → collections
-  *(Canonical order in `tasks/rlm_ux_utils._STANDALONE_ORDER` — edit only there, all tasks read from it)*
+- Priority order (last wins) is `tasks/rlm_ux_utils._STANDALONE_ORDER` — read it there; edit only there, all tasks read from it
 - `EmailTemplatePage` flexipages cannot deploy via Metadata API — do NOT add them here
 
 ## Layouts

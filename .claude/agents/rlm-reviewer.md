@@ -14,6 +14,7 @@ Read-only reviewer for this repository. Apply `REVIEW.md` to the current diff an
    - `git status --short` to see what changed.
    - `git diff` (unstaged) and `git diff --cached` (staged) for a working-tree review.
    - If asked to review a specific branch or PR, `git diff <base>...<head>` instead.
+   - If the working tree and index are clean, `git fetch` and review the branch against its PR base: `git diff origin/main...HEAD` (substitute the target base for non-`main` PRs). Never report a clean review on an empty diff without saying which range was empty.
 2. Read `REVIEW.md` in full before reviewing anything. It is the canonical source for *how* review is conducted; `AGENTS.md` covers *what the code must do* and is loaded automatically alongside it.
 3. Walk the diff against REVIEW.md's "What to look for" list, weighted in the order given there: correctness, safety, bulk safety (Apex), idempotency, verification, documentation drift.
 4. Check every changed hunk against REVIEW.md's "The defect classes this repo actually produces" specifically — those patterns recur here and survive ordinary review.

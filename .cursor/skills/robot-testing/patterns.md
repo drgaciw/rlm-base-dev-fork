@@ -24,12 +24,12 @@ robot/rlm-base/
 │       ├── enable_timeline.robot
 │       └── reorder_app_launcher.robot
 ├── resources/
-│   ├── E2ECommon.robot               # ~1250 lines — main E2E keywords
-│   ├── SetupToggles.robot            # ~380 lines — setup toggle keywords
+│   ├── E2ECommon.robot               # main E2E keywords
+│   ├── SetupToggles.robot            # setup toggle keywords
 │   ├── SalesforceAPI.py              # REST API keywords (SOQL, DML)
 │   ├── ChromeOptionsHelper.py        # Headless Chrome options
 │   ├── ChromeDebugHelper.py          # Headed Chrome + CDP
-│   ├── AnalyticsSetupHelper.py       # VF iframe checkbox automation
+│   ├── AnalyticsSetupHelper.py       # Enable CRM Analytics button (main Lightning DOM, shadow traversal)
 │   └── WebDriverManager.py           # ChromeDriver path resolution
 ├── variables/
 │   ├── E2EVariables.robot            # Test data + feature flags
@@ -342,7 +342,7 @@ processing makes `/\s+/` ambiguous. Prefer a `charCodeAt`-based whitespace check
 | Internal keywords | Prefix with `_` |
 | Python libraries | `WITH NAME` alias |
 | Screenshots | `e2e_{counter}_{step_name}.png` |
-| Tags | `e2e`, `requires_qb`, `maintenance` |
+| Tags | `e2e`, `requires_qb`, `maintenance`, `flaky` (quarantined; see `robot/QUARANTINE.md`) |
 
 ---
 
@@ -374,7 +374,7 @@ processing makes `/\s+/` ambiguous. Prefer a `charCodeAt`-based whitespace check
 |-------|---------|-----|
 | Lightning Record Pages | E2E tests | SeleniumLibrary + shadow DOM JS |
 | Lightning Setup Pages | Setup tests | SeleniumLibrary + XPath + shadow DOM JS |
-| Visualforce Iframes | `enable_analytics` | `switch_to.frame()` + standard WebDriver |
+| Lightning Setup (Getting Started page) | `enable_analytics` | shadow-DOM JS traversal in main DOM — no frame switching (VF iframe removed in 262+) |
 | Aura Framework API | `reorder_app_launcher` | Synchronous XHR to `/aura` |
 | Salesforce REST API | E2E verification | `SalesforceAPI.py` via `sf org display` |
 | SF CLI (`sf`) | Auth + navigation | `Run Process sf org open/display` |

@@ -22,7 +22,11 @@ Use the helper `scripts/ai/pr_review.py`.
      `python scripts/ai/pr_review.py handle $ARGUMENTS --comment <id> --body "<resolution + commit SHA>"`
      For a **false positive**, put an evidence-backed refutation in `--body` and add
      `--no-react` — reply + resolve but **don't** 👍, and don't change correct code.
-     (👍 only on valid comments, per AGENTS.md.)
+     (👍 only on valid comments, per `.cursor/skills/audit-review/merge-and-review-procedures.md`.)
+
+2b. **Push once.** After every real finding is fixed and verified locally, push the
+    branch a single time (REVIEW.md → *Push discipline*). Post the `handle` replies
+    only after that push, so each cited SHA is visible on the PR.
 
 3. **Confirm clean:**
    `python scripts/ai/pr_review.py verify $ARGUMENTS` → must report **0

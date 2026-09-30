@@ -13,7 +13,7 @@ a write) and lives on the `QuoteLineGroup`, cascading to its ramped lines.
 **Five prerequisites** (Salesforce Help: *"Compound Uplift in Ramp Deals"*,
 *"Create Ramp Deals with Standard or Compound Price Uplifts"*):
 
-1. **Revenue Settings → Advanced Detail Line Pricing = ON** — this repo now defaults it
+1. **Revenue Settings → Advanced Detail Line Pricing = ON** — this repo defaults it
    **ON** (`unpackaged/pre/1_settings/RevenueManagement.settings-meta.xml`,
    `enableAdvancedDetailLinePricing=true`), so compound is available (it is hidden from the
    Ramp Uplift Type picklist only when ADLP is off). The 264 Help's hand-authoring path
@@ -51,10 +51,9 @@ a write) and lives on the `QuoteLineGroup`, cascading to its ramped lines.
    Help says compound "requires a newly-created procedure" — that is a **UI-authoring**
    limitation (the builder won't let you enable compound uplift on an existing procedure);
    deploying the full expression-set metadata bypasses it. The tracked
-   `RLM_DefaultPricingProcedure` in this repo **now ships two** `PriceRevision` BKMs — the
-   long-standing **non-ramp** step, **and** the **ramp-path** compound step (migrated from
-   the old `FormulaBasedPricing` `Uplift` BKM by metadata deploy). Compound ramp uplift
-   therefore works on the tracked default out of the box; no clone is needed:
+   `RLM_DefaultPricingProcedure` ships two `PriceRevision` BKMs — the **non-ramp** step and
+   the **ramp-path** compound step — so compound ramp uplift works on the tracked default
+   out of the box:
 
    | BKM step (parent filter) | Kind in tracked default | Drives |
    |---|---|---|
@@ -88,10 +87,8 @@ python scripts/expression_sets/list_expression_sets.py --target-org <sf_alias> \
     --type PricingProcedure --versions
 # Is compound enabled, and what feeds the rate? Inspect the SELECTED procedure for a
 # ramp-path PriceRevision BKM (the ramp branch is "Applyupliftstoramped…") and read
-# IsCompoundUpliftEnabled + its Rate input. NOTE the tracked RLM_DefaultPricingProcedure
-# NOW ships one there (IsCompoundUpliftEnabled=true), so compound works out of the box; an
-# ABSENT ramp-path PriceRevision is the signal that compound uplift is not configured on
-# that procedure (e.g. a custom procedure that predates the migration). Use the
+# IsCompoundUpliftEnabled + its Rate input. An ABSENT ramp-path PriceRevision means
+# compound uplift is not configured on that procedure. Use the
 # DeveloperName discovered above.
 python scripts/expression_sets/describe_expression_set.py --target-org <sf_alias> \
     --developer-name <PRICING_PROCEDURE> --params
