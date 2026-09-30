@@ -133,7 +133,8 @@ runs:
 
     # Plugins come from the same lockfile and are linked, not `sf plugins install`ed: an install
     # would resolve the plugin's dependency tree afresh, unlocked. `sf plugins link` registers the
-    # already-installed package, and it takes precedence over the Code Analyzer that the sf CLI
+    # already-installed package (--no-install: link would otherwise run its own, unlocked, yarn/npm
+    # install if a plugin tarball ever shipped a lockfile), and it takes precedence over the Code Analyzer that the sf CLI
     # would otherwise fetch just-in-time at whatever version it currently ships.
     - name: Link SFDMU and Code Analyzer plugins
       if: inputs.sf == 'true' && (inputs.sfdmu == 'true' || inputs.code-analyzer == 'true')
@@ -145,10 +146,10 @@ runs:
         set -euo pipefail
         modules="${GITHUB_WORKSPACE}/config/sf-cli/node_modules"
         if [ "${IN_SFDMU}" = true ]; then
-          sf plugins link "${modules}/sfdmu"
+          sf plugins link --no-install "${modules}/sfdmu"
         fi
         if [ "${IN_CODE_ANALYZER}" = true ]; then
-          sf plugins link "${modules}/@salesforce/plugin-code-analyzer"
+          sf plugins link --no-install "${modules}/@salesforce/plugin-code-analyzer"
         fi
 
     - name: Verify Salesforce CLI
@@ -196,7 +197,7 @@ runs:
         fi
 
     - name: Assert robot stack overrides CumulusCI selenium pin
-      if: inputs.robot == 'true' && inputs.cci == 'true'
+      if: inputs.robot == 'true'
       shell: bash
       env:
         ACTION_PATH: ${{ github.action_path }}

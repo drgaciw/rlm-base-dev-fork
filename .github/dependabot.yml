@@ -4,8 +4,12 @@ updates:
   # commit SHA (see config/tool-versions.env and the workflow files for the
   # `# vX.Y.Z` comment convention) still get PRs here — Dependabot bumps the
   # SHA and updates the trailing version comment.
+  # The local composite action's own `uses:` (.github/actions/setup-toolchain) is
+  # covered by the second directory.
   - package-ecosystem: "github-actions"
-    directory: "/"
+    directories:
+      - "/"
+      - "/.github/actions/*"
     schedule:
       interval: "weekly"
 

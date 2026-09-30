@@ -54,7 +54,12 @@ if failures:
     for failure in failures:
         print(f"::error::{failure}")
     sys.exit(1)
-if check.returncode == 0:
+try:
+    md.version("cumulusci")
+    cumulusci_installed = True
+except md.PackageNotFoundError:
+    cumulusci_installed = False  # robot without cci: there is no CumulusCI pin to have been lifted
+if check.returncode == 0 and cumulusci_installed:
     print("::notice::CumulusCI no longer pins selenium<4 or SeleniumLibrary<6; "
           "drop this allow-list and the requirements-file comments (F2 resolved)")
 print("robot stack OK: selenium 4.x and SeleniumLibrary >= 6.9 with only the known CumulusCI conflicts")

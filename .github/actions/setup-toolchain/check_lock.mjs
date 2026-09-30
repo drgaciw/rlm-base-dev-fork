@@ -1,6 +1,6 @@
 // Fails when config/sf-cli/package.json or package-lock.json disagree with the pins in
 // config/tool-versions.env. Called by the setup-toolchain composite action before `npm ci`.
-// Inputs come from the environment (the action loads tool-versions.env into GITHUB_ENV first):
+// Inputs come from the environment (the action sources tool-versions.env into this step first):
 //   SF_CLI_DIR (default config/sf-cli), SF_CLI_VERSION, SFDMU_VERSION, CODE_ANALYZER_VERSION.
 // Node built-ins only: this runs before anything is installed.
 import { readFileSync } from "node:fs";
