@@ -173,7 +173,7 @@ def test_provenance_grammar():
 def test_excluded_lines():
     print("\nvalidate_excluded_lines: keys that drifted")
     files = {"a.cls": "line one\n// dataPath semantics verified on v67.0\nline three\n"}
-    with Tree(files) as t:
+    with Tree(files):
         ok = {("a.cls", 2): ("why", "dataPath semantics")}
         check("an entry pointing at its marker line is clean", _validate(ok) == [])
         check("a marker that moved is reported as drifted (the exclusion would shield another line)",
