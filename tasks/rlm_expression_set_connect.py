@@ -56,15 +56,9 @@ from typing import Any, Dict, List, Optional
 
 import requests
 
-try:
-    from cumulusci.tasks.salesforce import BaseSalesforceTask
-    from cumulusci.core.tasks import BaseTask
-    from cumulusci.core.exceptions import TaskOptionsError
-except ImportError:
-    BaseSalesforceTask = object
-    BaseTask = object
-    TaskOptionsError = Exception
-
+# Resolve `tasks.*` before the cumulusci import below: once CumulusCI is loaded the
+# `tasks` namespace package's __path__ collapses and a later `tasks.*` import fails when
+# this module is imported directly (tests).
 from tasks.expression_set_schema import (
     RESOURCE_INIT_TYPES,
     existing_step_differences,
@@ -74,6 +68,15 @@ from tasks.expression_set_schema import (
     validate_overlay,
     validate_overlay_against_definition,
 )
+
+try:
+    from cumulusci.tasks.salesforce import BaseSalesforceTask
+    from cumulusci.core.tasks import BaseTask
+    from cumulusci.core.exceptions import TaskOptionsError
+except ImportError:
+    BaseSalesforceTask = object
+    BaseTask = object
+    TaskOptionsError = Exception
 
 
 _REQUEST_TIMEOUT = 120
