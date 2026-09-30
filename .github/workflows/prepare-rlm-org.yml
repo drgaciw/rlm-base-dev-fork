@@ -102,7 +102,7 @@ jobs:
         run: grep -E '^[A-Za-z_][A-Za-z0-9_]*=' config/tool-versions.env >> "$GITHUB_ENV"
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: "pip"
