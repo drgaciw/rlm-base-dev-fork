@@ -1,0 +1,204 @@
+name: Set up CI toolchain
+description: >-
+  Installs the pinned Python, CumulusCI, Robot, Salesforce CLI, SFDMU and Code Analyzer toolchain.
+  Every version comes from config/tool-versions.env; the Salesforce CLI and its plugins are
+  installed with `npm ci` from the committed config/sf-cli/package-lock.json. The caller must
+  check the repository out first.
+
+inputs:
+  python:
+    description: Set up Python and create the .venv (required by cci and robot).
+    required: false
+    default: "false"
+  cci:
+    description: Install cumulusci==CUMULUSCI_VERSION into the .venv.
+    required: false
+    default: "false"
+  robot:
+    description: Install robot/requirements.txt into the .venv and assert the F2 selenium override.
+    required: false
+    default: "false"
+  sf:
+    description: Set up Node.js and install the Salesforce CLI from config/sf-cli/package-lock.json.
+    required: false
+    default: "false"
+  sfdmu:
+    description: Link the SFDMU plugin (requires sf).
+    required: false
+    default: "false"
+  code-analyzer:
+    description: Link the Salesforce Code Analyzer plugin (requires sf).
+    required: false
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    - name: Validate toolchain inputs
+      shell: bash
+      env:
+        IN_PYTHON: ${{ inputs.python }}
+        IN_CCI: ${{ inputs.cci }}
+        IN_ROBOT: ${{ inputs.robot }}
+        IN_SF: ${{ inputs.sf }}
+        IN_SFDMU: ${{ inputs.sfdmu }}
+        IN_CODE_ANALYZER: ${{ inputs.code-analyzer }}
+      run: |
+        set -euo pipefail
+        for name in PYTHON CCI ROBOT SF SFDMU CODE_ANALYZER; do
+          var="IN_${name}"
+          case "${!var}" in
+            true|false) ;;
+            *) echo "::error::setup-toolchain input '${name}' must be 'true' or 'false', got '${!var}'"; exit 1 ;;
+          esac
+        done
+        if { [ "${IN_CCI}" = true ] || [ "${IN_ROBOT}" = true ]; } && [ "${IN_PYTHON}" != true ]; then
+          echo "::error::setup-toolchain: cci and robot need python: true"; exit 1
+        fi
+        if { [ "${IN_SFDMU}" = true ] || [ "${IN_CODE_ANALYZER}" = true ]; } && [ "${IN_SF}" != true ]; then
+          echo "::error::setup-toolchain: sfdmu and code-analyzer need sf: true"; exit 1
+        fi
+
+    - name: Read pinned tool versions
+      id: versions
+      shell: bash
+      # The versions the `uses:` steps below need, as step outputs. Steps that run shell source
+      # config/tool-versions.env themselves. Nothing is written to $GITHUB_ENV: an environment
+      # file write is what zizmor's github-env audit flags, and the callers never needed these
+      # variables afterwards.
+      run: |
+        set -euo pipefail
+        set -a; . config/tool-versions.env; set +a
+        {
+          echo "python=${PYTHON_VERSION}"
+          echo "node=${NODE_VERSION}"
+        } >> "$GITHUB_OUTPUT"
+
+    - name: Set up Python
+      if: inputs.python == 'true'
+      uses: actions/setup-python@v6
+      with:
+        python-version: ${{ steps.versions.outputs.python }}
+        cache: "pip"
+        cache-dependency-path: |
+          config/tool-versions.env
+          robot/requirements.txt
+
+    - name: Set up Node.js
+      if: inputs.sf == 'true'
+      uses: actions/setup-node@v7
+      with:
+        # Pinned to an exact 24.x minor (config/tool-versions.env). node-version "24" floats to
+        # "latest 24.x", which moved 24.16.0 → 24.17.0; on 24.17.0 the npm-installed sf CLI exits
+        # 13 on `sf org login` ("Detected unsettled top-level await" in the CLI entrypoint).
+        # 24.16.0 is the last-known-good — Prepare RLM Org succeeded on it 2026-06-11 (run
+        # 27314890121). Re-float once a newer 24.x or sf CLI release restores compatibility
+        # (tracked alongside check-cci-token-fix.yml).
+        node-version: ${{ steps.versions.outputs.node }}
+
+    - name: Check config/sf-cli matches tool-versions.env
+      if: inputs.sf == 'true'
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+      # Runs before `npm ci`: a lock that resolves a different @salesforce/cli (or plugin) than the
+      # pin in config/tool-versions.env fails here, so the two cannot drift apart silently.
+      run: |
+        set -euo pipefail
+        set -a; . config/tool-versions.env; set +a
+        node "${ACTION_PATH}/check_lock.mjs"
+
+    - name: Cache npm download cache
+      if: inputs.sf == 'true'
+      uses: actions/cache@v5
+      with:
+        path: ~/.npm
+        # The lockfile decides what is downloaded, Node's version decides which native/optional
+        # packages resolve, and the OS decides the platform builds.
+        key: npm-${{ runner.os }}-node${{ steps.versions.outputs.node }}-${{ hashFiles('config/sf-cli/package-lock.json') }}
+        restore-keys: |
+          npm-${{ runner.os }}-node${{ steps.versions.outputs.node }}-
+
+    - name: Install Salesforce CLI (npm ci from the lockfile)
+      if: inputs.sf == 'true'
+      shell: bash
+      # sf CLI 2.147.7 (was 2.127.2, pinned 2026-06) because the 264 build reaches
+      # `prepare_agents` → `sf agent activate`, part of the authoring-bundle path this release
+      # moved to; 2.127.2 predates that work. Keep it within one or two minors of what developers
+      # run, since the agent commands are moving. The version lives in config/tool-versions.env.
+      run: |
+        set -euo pipefail
+        npm ci --prefix config/sf-cli --no-audit --no-fund
+        echo "${GITHUB_WORKSPACE}/config/sf-cli/node_modules/.bin" >> "$GITHUB_PATH"
+
+    # Plugins come from the same lockfile and are linked, not `sf plugins install`ed: an install
+    # would resolve the plugin's dependency tree afresh, unlocked. `sf plugins link` registers the
+    # already-installed package (--no-install: link would otherwise run its own, unlocked, yarn/npm
+    # install if a plugin tarball ever shipped a lockfile), and it takes precedence over the Code Analyzer that the sf CLI
+    # would otherwise fetch just-in-time at whatever version it currently ships.
+    - name: Link SFDMU and Code Analyzer plugins
+      if: inputs.sf == 'true' && (inputs.sfdmu == 'true' || inputs.code-analyzer == 'true')
+      shell: bash
+      env:
+        IN_SFDMU: ${{ inputs.sfdmu }}
+        IN_CODE_ANALYZER: ${{ inputs.code-analyzer }}
+      run: |
+        set -euo pipefail
+        modules="${GITHUB_WORKSPACE}/config/sf-cli/node_modules"
+        if [ "${IN_SFDMU}" = true ]; then
+          sf plugins link --no-install "${modules}/sfdmu"
+        fi
+        if [ "${IN_CODE_ANALYZER}" = true ]; then
+          sf plugins link --no-install "${modules}/@salesforce/plugin-code-analyzer"
+        fi
+
+    - name: Verify Salesforce CLI
+      if: inputs.sf == 'true'
+      shell: bash
+      env:
+        IN_SFDMU: ${{ inputs.sfdmu }}
+        IN_CODE_ANALYZER: ${{ inputs.code-analyzer }}
+      run: |
+        set -euo pipefail
+        set -a; . config/tool-versions.env; set +a
+        sf --version
+        sf --version | grep -F "@salesforce/cli/${SF_CLI_VERSION} "
+        sf plugins
+        if [ "${IN_SFDMU}" = true ]; then
+          sf plugins --json | node -e 'const p=JSON.parse(require("fs").readFileSync(0,"utf8")).find(x=>x.name==="sfdmu");if(!p||p.version!==process.env.SFDMU_VERSION){console.log("::error::sfdmu plugin is "+(p?p.version:"missing")+", expected "+process.env.SFDMU_VERSION);process.exit(1)}'
+        fi
+        if [ "${IN_CODE_ANALYZER}" = true ]; then
+          sf plugins --json | node -e 'const p=JSON.parse(require("fs").readFileSync(0,"utf8")).find(x=>x.name==="@salesforce/plugin-code-analyzer");if(!p||p.version!==process.env.CODE_ANALYZER_VERSION){console.log("::error::code-analyzer plugin is "+(p?p.version:"missing")+", expected "+process.env.CODE_ANALYZER_VERSION);process.exit(1)}'
+        fi
+
+    - name: Create Python environment
+      if: inputs.python == 'true'
+      shell: bash
+      env:
+        IN_CCI: ${{ inputs.cci }}
+        IN_ROBOT: ${{ inputs.robot }}
+      # The robot stack must go in AFTER cumulusci, in its own pip call: cumulusci==4.8.1 declares
+      # `selenium<4` and `robotframework-seleniumlibrary<6`, robot/requirements.txt needs
+      # selenium>=4.49 / SeleniumLibrary>=6.9, and one resolve of both is ResolutionImpossible.
+      run: |
+        set -euo pipefail
+        set -a; . config/tool-versions.env; set +a
+        python -m venv .venv
+        .venv/bin/pip install --upgrade pip "setuptools>=75.4,<77"
+        if [ "${IN_CCI}" = true ]; then
+          .venv/bin/pip install "cumulusci==${CUMULUSCI_VERSION}"
+        fi
+        if [ "${IN_ROBOT}" = true ]; then
+          .venv/bin/pip install -r robot/requirements.txt
+        fi
+        echo "${GITHUB_WORKSPACE}/.venv/bin" >> "$GITHUB_PATH"
+        if [ "${IN_CCI}" = true ]; then
+          .venv/bin/cci version
+        fi
+
+    - name: Assert robot stack overrides CumulusCI selenium pin
+      if: inputs.robot == 'true'
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+      run: .venv/bin/python "${ACTION_PATH}/assert_robot_stack.py"

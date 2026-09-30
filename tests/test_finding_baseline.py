@@ -277,8 +277,12 @@ def test_code_analyzer_cli():
 
 def test_apex_gate_wiring():
     text = (REPO_ROOT / ".github" / "workflows" / "pr-checks.yml").read_text(encoding="utf-8")
+    # TP-14: the pin moved out of the workflow into config/tool-versions.env, read by the
+    # setup-toolchain action (and checked against config/sf-cli's lockfile).
+    versions = (REPO_ROOT / "config" / "tool-versions.env").read_text(encoding="utf-8")
     check("CODE_ANALYZER_VERSION is an exact version, never latest or a range",
-          re.search(r'^\s*CODE_ANALYZER_VERSION: "\d+\.\d+\.\d+"$', text, re.MULTILINE))
+          re.search(r'^CODE_ANALYZER_VERSION=\d+\.\d+\.\d+$', versions, re.MULTILINE)
+          and "CODE_ANALYZER_VERSION" not in text)
     check("the Apex gate selects the PMD Security and ErrorProne tags and nothing broader",
           "--rule-selector pmd:Security" in text and "--rule-selector pmd:ErrorProne" in text)
     step = text.split("- name: Apex findings vs baseline", 1)[1].split("\n      - name:", 1)[0]
