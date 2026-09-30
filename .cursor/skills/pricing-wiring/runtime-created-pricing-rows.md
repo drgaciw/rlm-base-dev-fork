@@ -31,9 +31,7 @@ end in an activation:
 cci task run refresh_dt_default_pricing
 ```
 
-(`refresh_dt_*` tasks accept `--org` as of 2026-07-27 — `RefreshDecisionTable` now sets
-`salesforce_task = True`. Before that they silently ran against the CCI **default** org.
-`manage_expression_sets` and most other custom tasks still reject it; see issue #320.)
+(`refresh_dt_*` tasks accept `--org`. `manage_expression_sets` does not — it runs against the CCI default org; see issue #320.)
 
 **Use `LastSyncDate` to decide whether a refresh happened.** It only advances on a refresh
 that actually ran, so the staleness comparison above is the one check that holds for every

@@ -35,8 +35,9 @@ For contributions, follow [CONTRIBUTING.md](../CONTRIBUTING.md).
      this repository actually produces, and push discipline.
    - Division of labour: `AGENTS.md` governs *what the code must do*; `REVIEW.md`
      governs *how review is conducted*. They overlap on three points by design —
-     verifying a finding, sweeping a class, and push discipline — where `AGENTS.md`
-     carries the short operational form and `REVIEW.md` carries the reasoning.
+     verifying a finding, sweeping a class, and push discipline — where
+     `.cursor/skills/audit-review/merge-and-review-procedures.md` (linked from
+     `AGENTS.md`) carries the short operational form and `REVIEW.md` carries the reasoning.
    - Applies to human and AI reviewers alike, and to PR authors for the
      one-push-per-review-round rule.
 
@@ -53,12 +54,7 @@ For contributions, follow [CONTRIBUTING.md](../CONTRIBUTING.md).
      [discovery guide](../docs/guides/agent-skill-discovery.md) for tested
      clients, symlink limitations, and a plain-file fallback.
 
-4. **`.cursor/rules/` — Cursor-specific rule files with reusable guidance**
-   - Contains `.mdc` files that Cursor can auto-inject based on edited file
-     patterns.
-   - Non-Cursor tools can still read these files manually when working on the
-     same file types; the guidance is reusable, but the auto-injection mechanism
-     is Cursor-specific.
+4. **`.cursor/rules/` — file-pattern rule sources** — `.mdc` files that Cursor auto-injects by glob. `scripts/ai/sync_claude_rules.py` generates `.claude/rules/*.md` from them (except the Cursor-only `analysis-artifacts.mdc`), and Claude Code auto-loads those by `paths:`. Other tools can read either copy by hand. Edit only the `.mdc` source.
 
 5. **`.claude/skill-manifest.yml` — optional cross-repo skill manifest**
    - Advertises Foundations skills, grounding artifacts, and cross-repo paths so
@@ -78,7 +74,7 @@ For contributions, follow [CONTRIBUTING.md](../CONTRIBUTING.md).
 1. Direct human/system instructions for the current task.
 2. `AGENTS.md` for repository-wide policy and safety.
 3. Relevant skill files under `.cursor/skills/` for task-specific workflows.
-4. Relevant `.cursor/rules/` files for file-pattern-specific guidance.
+4. Relevant `.cursor/rules/` files (or their generated `.claude/rules/` copies) for file-pattern-specific guidance.
 5. Tool adapter files, including `.github/copilot-instructions.md` and the files
    in `.agents/adapters/`, for mapping a tool to the shared instruction stack.
 

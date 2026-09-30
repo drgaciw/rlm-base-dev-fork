@@ -9,26 +9,7 @@ the repository root as the working directory.
 
 Use these before opening or updating a PR. They complement the [PR Review Focus Areas](../../../AGENTS.md#pr-review-focus-areas) in the root contract.
 
-**Run `python scripts/ai/pr_gate.py --base origin/main` first.** It selects the mechanical
-checks your diff actually needs, runs them, and prints a status for **every** check — including the
-ones it skipped and why. That is the point: the checks below already existed and were enforced only
-by an agent reading this list, which is the enforcement that failed in `#264-27`, `#264-55` and
-`#264-56`. A missing dependency **fails** the gate rather than skipping, and every check gates —
-including `validate_sfdmu_v5_datasets.py`, which used to be **advisory** because it exited non-zero
-on a clean tree for two reasons. Two Critical findings were the validator's own false positives, and
-pack 123 fixed them: a `Readonly` object is queried from the target org and owes no CSV, and a
-per-pass object's CSV can live under `objectset_source/object-set-N/`, an alternative to its root CSV
-**for that pass only** — and only when the plan sets `useSeparatedCSVFiles: true`; pass 1 always
-reads the root regardless of the flag. Absent either qualifier, the root CSV is still owed. The other
-findings were High — zero-byte `Upsert` CSVs in `datasets/sfdmu/mfg/en-US/mfg-multicurrency/` — a real
-defect, but a dormant one: `grep -ic mfg cumulusci.yml` returned **0**, so that plan and its eleven
-`mfg` siblings were all unwired. Pack 110 removed the plan rather than adding header rows,
-following its precedent `q3-multicurrency`, deleted in `dab545ab` carrying zero-byte
-`CostBook`/`CostBookEntry` CSVs of its own — the same finding, disposed of the same way. With both
-fixes landed the check now gates like every other one. (Pack numbers refer to entries in the durable
-todo tracker under `.agents/artifacts/todos/`, which is gitignored — the reference resolves only from
-a tree that carries it.) The checklists below remain the reference for *what* each check means and for
-the judgement steps no gate can make.
+**Run `python scripts/ai/pr_gate.py --base origin/main` first.** It selects the mechanical checks your diff needs, runs them, and prints a status for **every** check, including skips and why. Every selected check gates, including `validate_sfdmu_v5_datasets.py`, and a missing dependency fails rather than skips. The checklists below say what each check means and cover the judgement no gate can make.
 
 **The same gate now runs in CI** on every pull request (`.github/workflows/pr-checks.yml`, plus
 `check_branch_scope.py`, which needs a PR number, so only CI can supply it automatically — run it
@@ -38,6 +19,8 @@ deliberately **not** path-filtered, though not for the reason usually given: a p
 reports *nothing*, so a required check on it sits **Pending** and blocks every PR that misses the
 paths. (What reports success is a *job-level* `if:` skip, which is a different mechanism.) Either
 way selection is the driver's job and never the trigger's.
+
+`pr-checks.yml` also runs jobs `pr_gate.py` does not: `Mechanical checks (Windows stdlib)`, `Lint (changed files)` (including the blocking Apex Code Analyzer baseline), `LWC Jest tests`, `Python coverage ratchet`, and the Docker ARG check. Procedures for their baselines and floors are in `docs/guides/ci-runbook.md`.
 
 **Running is blocking, and a skipped run is too.** `Mechanical checks` is a **required status
 check** on `main`, `264` and `release/*` — the `Approvals` ruleset requires the context from the
@@ -67,8 +50,8 @@ can still be overridden deliberately. Treat doing so as a decision to record, no
 
 ### SFDMU data plans (`datasets/sfdmu/**`, `export.json`, CSVs)
 
-1. Run `python scripts/validate_sfdmu_v5_datasets.py` and require the clean-tree thresholds stated in `AGENTS.md`. The former `mfg/en-US/mfg-multicurrency` baseline (zero-byte CSVs in an unwired plan) was resolved by deleting that plan (pack 110). Treat any Critical or High as new.
-2. Keep **`externalId`** (`;` delimiters) and CSV `$$` columns aligned with the SFDMU rules in `AGENTS.md` — do not change `Upsert` to `Insert` + `deleteOldData: true` without explicit user approval.
+1. Run `python scripts/validate_sfdmu_v5_datasets.py` and require the clean-tree baseline stated in `.cursor/skills/doc-consistency/SKILL.md` (Quick Rule 8). Treat any finding above it as new.
+2. Keep **`externalId`** (`;` delimiters) and CSV `$$` columns aligned per `.cursor/skills/sfdmu-data-plans/SKILL.md`. Do not change `Upsert` to `Insert` + `deleteOldData: true` without explicit user approval (AGENTS.md DO NOT #3).
 3. Every tracked plan needs a **README** — a new plan without one, or an existing plan whose behavior or objects changed without a README update, both fail `python scripts/ai/check_plan_readme_consistency.py --strict <plan_dir>` (repo-wide with no argument): a missing README is a named error, and an existing one fails if its object table or `# N records` listings drift from the actual `export.json`/CSVs (record counts). Operation/externalId mismatches and missing-object rows are WARN-only and pass by exit code without `--strict` — `pr_gate.py` runs this check with it specifically so they gate too; the command shown here carries it for the same reason. `scripts/ai/generate_plan_readme.py <plan_dir>` derives a minimal, mechanically-accurate object table + file listing from `export.json`/CSVs for a plan that has none, between `<!-- generate_plan_readme:begin/end -->` markers; regenerate (same command) after a real change rather than hand-editing the table — content outside the markers, e.g. hand-written narrative, is preserved. A README with no markers is left alone unless `--force` is passed. Must report **0 errors, 0 warnings**.
 
 ### `cumulusci.yml` and CCI tasks

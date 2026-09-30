@@ -84,7 +84,7 @@ copy-paste recipes live in `scripts/txn_data_harness/AI_TOOLS.md` and
 - **DO NOT** edit lifecycle payloads from memory; check
   `scripts/txn_data_harness/CONTRACTS.md` and update it with any verified change.
 - **DO NOT** copy org aliases, run ids, invoice numbers, or order numbers from
-  `CONTRACTS.md` / `docs/followups.md` into operator docs. Those files are
+  `scripts/txn_data_harness/CONTRACTS.md` / `scripts/txn_data_harness/docs/followups.md` into operator docs. Those files are
   evidence notebooks; reusable docs should use placeholders or explicitly
   labeled example data.
 

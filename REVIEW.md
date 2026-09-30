@@ -12,8 +12,9 @@ is the canonical source for *what the code must do*; this file governs *how revi
 conducted*.
 
 The two overlap on three points by design — verifying a finding, sweeping a class, and
-push discipline. `AGENTS.md` carries the short operational form of each inside its
-step-by-step PR protocol; this file carries the reasoning behind it. Keep those three in
+push discipline. The short operational form of each lives in
+`.cursor/skills/audit-review/merge-and-review-procedures.md` (linked from `AGENTS.md` →
+*Responding to Automated PR Reviews*). This file carries the reasoning. Keep those three in
 sync when either file changes, and do not add duplication beyond them.
 
 ---

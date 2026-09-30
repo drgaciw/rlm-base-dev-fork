@@ -31,6 +31,7 @@ at `.cursor/skills/doc-consistency/SKILL.md`.
 
 5. **`.cursor/skills/**`** — if adding a new skill or sub-file, follow
    `.cursor/skills/skill-authoring/SKILL.md`; register top-level skills in
-   `AGENTS.md`, `.cursor/skills/README.md`, and the manifest when applicable.
+   `.cursor/skills/README.md` and the manifest when applicable (`AGENTS.md` only
+   points at the catalog).
 
 For the full change-surface map, read `.cursor/skills/doc-consistency/SKILL.md`.

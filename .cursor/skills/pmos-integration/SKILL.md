@@ -41,7 +41,7 @@ contributions. The [skill catalog](../README.md) provides standalone starting po
 | Concern | Canonical source | Why |
 |---|---|---|
 | Object/field schema (what exists today) | **Foundations** (`docs/erds/erd-data.json`) | Verified against live orgs and Core UDD source |
-| 935 Salesforce Help articles per release | **Foundations** (`docs/salesforce/{release}/help/`) | Mirrored from help.salesforce.com, diffable across releases |
+| Salesforce Help articles per release | **Foundations** (`docs/salesforce/{release}/help/`) | Mirrored from help.salesforce.com, diffable across releases |
 | QB scenario reference (real demo records) | **Foundations** (`docs/enablement/master/qb-scenario-reference.md`) | The records `prepare_rlm_org` actually loads |
 | RLM business APIs reference | **Foundations** (`.cursor/skills/rlm-business-apis/`) | API endpoints + working examples |
 | `prepare_rlm_org` flow + 41 feature flags | **Foundations** (`cumulusci.yml`) | The build itself |

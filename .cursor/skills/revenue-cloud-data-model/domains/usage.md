@@ -82,7 +82,7 @@ Verify this list with `python scripts/ai/query_erd.py domain Usage`.
 
 | Object | Purpose | Key Fields |
 |--------|---------|-----------|
-| `RatingFrequencyPolicy` | How often to rate usage | RatingPeriod, ProductId, UsageResourceId |
+| `RatingFrequencyPolicy` | How often to rate usage (bound per product/resource through PURP; ProductId/UsageResourceId removed in 264) | RatingPeriod, RatingDelayDuration |
 | `UsageCommitmentPolicy` | Commitment/minimum usage rules | Name |
 | `UsageOveragePolicy` | Overage handling rules | Name |
 | `UsageGrantRenewalPolicy` | Grant renewal rules | Code, UsageSummaryId |
@@ -105,10 +105,8 @@ Verify this list with `python scripts/ai/query_erd.py domain Usage`.
 | `UsageCmtAssetRelatedObj` | **Commitment → anchor junction.** `AssetId` = the *commitment* asset, `RelatedObjectId` = the *anchor* asset. Without this row the commitment is inert. | AssetId, RelatedObjectId, UsageResourceId |
 | `UsageRatableSumCmtAssetRt` | Ratable summary commitment | UsageResourceId |
 
-> ⚠ **`TransactionUsageEntitlement` has never carried `UsageCommitmentPolicyId` or
-> `UsageOveragePolicyId` — on 262 *or* 264.** This table listed both until 2026-08-14; that was
-> an authoring error, **not** a 264 removal, so do not "restore" them and do not describe them
-> as removed in 264. Verified by describing TUE on a true 262 org and a fresh 264 org: **40
+> ⚠ **`TransactionUsageEntitlement` has never carried `UsageCommitmentPolicyId` or `UsageOveragePolicyId` — on 262 *or* 264** — do not add them or describe them as removed in 264.
+> Verified by describing TUE on a true 262 org and a fresh 264 org: **40
 > fields → 36, exactly four removed** (`ChargeForOverage`, `DrawdownOrder`,
 > `RatingFrequencyPolicyId`, `UsageAggregationPolicyId`), none added, and both policy lookups
 > absent on **both** releases. The only policy lookups TUE has ever had are
@@ -238,17 +236,7 @@ The corresponding *rules* (stated positively, with worked arithmetic) are in
    `TransactionJournal` holds what you recorded.
    → *Re-testing one period needs a full account reset and an asset rebuild, not a
    usage clear. A clear only frees you to use a DIFFERENT period.*
-5. **A commitment sold after the org was built can rate at the undiscounted anchor
-   rate.** Selling a commitment creates its `AssetRateAdjustment` rows, and the
-   commitment rate is looked up through the `Commitment_based_Rate_Adjustment`
-   decision table. That table was missing from the `CreateAssetOrderEvent` refresh
-   chain (`RLM_Platform_Event_CreateAssetOrderEvent_Stamp_Asset_Renewal_Info`) —
-   every sibling rate table on the same source objects was in it, so only the
-   commitment lookup went stale. Fixed by adding it to the chain; it now refreshes
-   on order activation, measured at ~6s after the rows are created.
-   → *On an org built BEFORE that fix, refresh by hand before recording usage, and
-   confirm `DecisionTable.LastSyncDate` is later than the newest
-   `AssetRateAdjustment.CreatedDate`.*
+5. **A commitment sold into an org whose `CreateAssetOrderEvent` flow lacks the `Commitment_based_Rate_Adjustment` refresh rates at the undiscounted anchor rate.** The shipped `RLM_Platform_Event_CreateAssetOrderEvent_Stamp_Asset_Renewal_Info` refreshes it on order activation (~6s). → *On an org whose flow predates that, refresh by hand and confirm `DecisionTable.LastSyncDate` is later than the newest `AssetRateAdjustment.CreatedDate`.*
 
 ### Entitlement bucket tree
 

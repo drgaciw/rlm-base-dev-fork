@@ -341,7 +341,7 @@ at either place, dropping `stacked` from the failure condition, disabling the
 containment or fork guard, and either removing the fetch or letting it fail
 silently each fail the suite.
 
-**Used by:** `AGENTS.md` §"Merges and unintended diffs",
+**Used by:** `.cursor/skills/audit-review/merge-and-review-procedures.md` §"Merges and unintended diffs",
 `.cursor/skills/audit-review/SKILL.md` §"Step −1"
 
 ### `pr_gate.py`
