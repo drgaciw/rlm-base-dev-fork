@@ -1,0 +1,262 @@
+name: Test Health
+
+# TP-12 (docs/references/test-plan-2026-09.md section 6; flaky-test policy in section 7).
+# Weekly test-health reporting and quarantine automation. Four independent jobs:
+#
+#   quarantine    scripts/ai/test_health.py check-quarantine. FAILS when a quarantine entry has
+#                 passed its `expires` date in EITHER register (robot/QUARANTINE.md, tests/quarantine/
+#                 registry.json), or when a register cannot be parsed. Plan section 7.4.
+#   report        Aggregates the JUnit / Robot artifacts of the last `window_days` nightly and
+#                 weekly runs (prepare-rlm-org.yml, flow-matrix.yml on the default branch) into the
+#                 job summary: pass rate, pass-after-rerun (flaky) rate, MTTR, still-failing tests,
+#                 merged quarantine table with ages. Informational: a week with no artifacts is
+#                 reported as such, not failed.
+#   zizmor-drift  NON-gating. `zizmor --pedantic --no-config` over .github/workflows, compared with
+#                 the TP-11 count baseline (.github/zizmor-baseline.json): lists what the baseline
+#                 and the .zizmor.yml policy hide. continue-on-error, so it never fails the workflow.
+#   issue         Optional. Posts the report (and the zizmor audit) to one rolling "Test health
+#                 report" issue. Off unless the dispatch input `open_issue` is set or the
+#                 repository variable TEST_HEALTH_ISSUE is "true" (the scheduled runs read only the
+#                 variable). Separate job so issues: write never sits next to the other jobs.
+#
+# Monday 08:00 UTC: after the weekday 03:00 nightly (prepare-rlm-org.yml, up to 120 min) and the
+# Sunday 04:00 flow matrix, so the week's runs have finished. Artifacts are retained 14 days
+# (prepare-rlm-org.yml, flow-matrix.yml), so a 7-day window always has its data.
+#
+# Owner: @drgaciw (CI). No Dev Hub, no scratch org and no secret is used: it reads artifacts of
+# other runs with the workflow's own read-only token.
+#
+# org validation pending: the report job reads artifacts that only the org-backed nightly and
+# flow-matrix jobs produce; none of those has run yet, so the aggregation was validated only on
+# fixtures (tests/test_test_health.py) and this file only statically (actionlint, zizmor, YAML
+# parse). It has not run on GitHub yet: workflow_dispatch needs the file on the default branch.
+
+on:
+  workflow_dispatch:
+    inputs:
+      window_days:
+        description: "How many days of nightly / weekly runs to aggregate (artifacts expire after 14)"
+        type: string
+        required: false
+        default: "7"
+      open_issue:
+        description: "Post the report to the rolling 'Test health report' issue"
+        type: boolean
+        required: false
+        default: false
+  schedule:
+    - cron: "0 8 * * 1"
+
+# No permissions by default; each job asks for what it uses.
+permissions: {}
+
+concurrency:
+  group: test-health
+  cancel-in-progress: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  quarantine:
+    name: Quarantine expiry check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read # checkout
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      # Exit 1 = an expired entry, 2 = an unreadable or rule-breaking register; either fails the job.
+      - name: Check quarantine registers
+        run: |
+          status=0
+          python scripts/ai/test_health.py check-quarantine > "${RUNNER_TEMP}/quarantine.md" || status=$?
+          cat "${RUNNER_TEMP}/quarantine.md" >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
+
+  report:
+    name: Aggregate test health
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read # checkout
+      actions: read # list runs and download their artifacts
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      # Only runs on the default branch that were not label-triggered PR runs: the point is the
+      # health of main over time. artifacts/<run id>/<artifact name>/ is what `report` reads.
+      - name: Download run artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          WINDOW_DAYS: ${{ inputs.window_days || '7' }}
+        run: |
+          set -euo pipefail
+          case "${WINDOW_DAYS}" in ''|*[!0-9]*) echo "::error::window_days must be a whole number, got '${WINDOW_DAYS}'"; exit 1 ;; esac
+          if [ "${WINDOW_DAYS}" -lt 1 ] || [ "${WINDOW_DAYS}" -gt 14 ]; then
+            echo "::error::window_days must be 1..14 (artifacts expire after 14 days), got ${WINDOW_DAYS}"; exit 1
+          fi
+          since="$(date -u -d "${WINDOW_DAYS} days ago" +%Y-%m-%dT%H:%M:%SZ)"
+          mkdir -p artifacts "${RUNNER_TEMP}/runs"
+          for workflow in prepare-rlm-org.yml flow-matrix.yml; do
+            gh run list --repo "${REPO}" --workflow "${workflow}" --branch "${DEFAULT_BRANCH}" \
+              --created ">=${since}" --limit 100 \
+              --json databaseId,createdAt,conclusion,status,event,workflowName \
+              > "${RUNNER_TEMP}/runs/${workflow}.json"
+          done
+          jq -s 'add | map(select(.status == "completed" and .event != "pull_request"))
+                 | map({id: .databaseId, created_at: .createdAt, conclusion: .conclusion, workflow: .workflowName})' \
+            "${RUNNER_TEMP}"/runs/*.json > runs.json
+          echo "Runs in the last ${WINDOW_DAYS} day(s): $(jq length runs.json)"
+          : > artifact-gaps.txt
+          while read -r id; do
+            # A run with no live artifact (expired, or the job never reached the upload) is fine.
+            # A listing or download that FAILS is a gap: recorded, shown in the report, and it
+            # does not fail the job (one bad artifact must not hide the rest of the week).
+            if ! listing="$(gh api "repos/${REPO}/actions/runs/${id}/artifacts" --paginate               --jq '.artifacts[] | select(.expired == false) | select(.name | test("^(verify|e2e|flow-matrix)-")) | .name')"; then
+              echo "::warning::Could not list artifacts of run ${id}"
+              echo "run ${id}: artifact listing failed" >> artifact-gaps.txt
+              continue
+            fi
+            names=()
+            [ -n "${listing}" ] && mapfile -t names <<< "${listing}"
+            for name in "${names[@]}"; do
+              if ! gh run download "${id}" --repo "${REPO}" --name "${name}" --dir "artifacts/${id}/${name}"; then
+                echo "::warning::Could not download ${name} of run ${id}"
+                echo "run ${id}: ${name} (download failed)" >> artifact-gaps.txt
+                rm -rf "artifacts/${id:?}/${name:?}"  # never aggregate a half-extracted artifact
+              fi
+            done
+          done < <(jq -r '.[].id' runs.json)
+
+      - name: Aggregate and report
+        run: |
+          python scripts/ai/test_health.py report --artifacts artifacts --runs runs.json --gaps artifact-gaps.txt > health.md
+          cat health.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload report
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-health-report
+          path: health.md
+          retention-days: 14
+
+  zizmor-drift:
+    name: zizmor drift audit (non-gating)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Never fails the workflow: a finding here is a report line, not a verdict. A tool error still
+    # turns this job's own step red so it is visible.
+    continue-on-error: true
+    permissions:
+      contents: read # checkout
+    env:
+      # Same pinned version as the PR check (TP-11, pr-checks.yml); bump both together.
+      ZIZMOR_VERSION: "1.30.1"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      # --offline because the baseline was written offline, so the two are comparable; --no-config so
+      # the .zizmor.yml policy suppresses nothing.
+      - name: Install zizmor (pinned)
+        run: python -m pip install "zizmor==${ZIZMOR_VERSION}"
+
+      - name: Audit
+        run: |
+          set -euo pipefail
+          zizmor --pedantic --offline --no-config --no-exit-codes --format json \
+            .github/workflows/ > "${RUNNER_TEMP}/zizmor.json"
+          python scripts/ai/test_health.py zizmor-audit --findings "${RUNNER_TEMP}/zizmor.json" \
+            --baseline .github/zizmor-baseline.json --zizmor-version "${ZIZMOR_VERSION}" > zizmor-drift.md
+          cat zizmor-drift.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload audit
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-health-zizmor
+          path: zizmor-drift.md
+          if-no-files-found: ignore
+          retention-days: 14
+
+  issue:
+    name: Post report to issue (optional)
+    needs: [quarantine, report, zizmor-drift]
+    if: ${{ always() && (inputs.open_issue || vars.TEST_HEALTH_ISSUE == 'true') && needs.report.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      issues: write # open or comment on the rolling issue
+    steps:
+      - name: Download reports
+        uses: actions/download-artifact@v8
+        with:
+          pattern: test-health-*
+          merge-multiple: true
+          path: reports
+
+      - name: Open or update the issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          QUARANTINE_RESULT: ${{ needs.quarantine.result }}
+        run: |
+          set -euo pipefail
+          title="Test health report"
+          {
+            echo "Weekly test-health report: ${RUN_URL}"
+            echo
+            if [ "${QUARANTINE_RESULT}" = "success" ]; then
+              echo "Quarantine check: passed."
+            else
+              echo "**Quarantine check: ${QUARANTINE_RESULT}** (an entry has expired or a register is invalid; see the run)."
+            fi
+            echo
+            cat reports/health.md
+            if [ -f reports/zizmor-drift.md ]; then echo; cat reports/zizmor-drift.md; fi
+          } > body.md
+          # GitHub caps an issue or comment body at 65536 characters.
+          if [ "$(wc -c < body.md)" -gt 60000 ]; then
+            head -c 60000 body.md > body.trunc.md
+            printf '\n\n_Truncated; the full report is in the run summary._\n' >> body.trunc.md
+            mv body.trunc.md body.md
+          fi
+          gh label create test-health --repo "${REPO}" --color 0e8a16 \
+            --description "Weekly test-health report" 2>/dev/null || true
+          number="$(gh issue list --repo "${REPO}" --state open --label test-health --limit 100 \
+            --json number,title --jq "map(select(.title == \"${title}\")) | .[0].number // empty")"
+          if [ -n "${number}" ]; then
+            gh issue comment "${number}" --repo "${REPO}" --body-file body.md
+            echo "Commented on #${number}" >> "$GITHUB_STEP_SUMMARY"
+          else
+            url="$(gh issue create --repo "${REPO}" --title "${title}" --label test-health --body-file body.md)"
+            echo "Opened ${url}" >> "$GITHUB_STEP_SUMMARY"
+          fi

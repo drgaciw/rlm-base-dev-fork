@@ -19,6 +19,14 @@ from typing import List, Optional
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
+# Resolve `tasks.*` before the cumulusci import below: once CumulusCI is loaded the
+# `tasks` namespace package's __path__ collapses and a later `tasks.*` import fails when
+# this module is imported directly (tests) - and the fallback below would then hide it.
+try:
+    from tasks.rlm_ux_utils import get_ux_feature_flags, resolve_flexipage_sources
+except ImportError:
+    from rlm_ux_utils import get_ux_feature_flags, resolve_flexipage_sources
+
 try:
     from cumulusci.core.tasks import BaseSalesforceTask
     from cumulusci.core.exceptions import TaskOptionsError, CommandException
@@ -26,11 +34,6 @@ except ImportError:
     BaseSalesforceTask = object
     TaskOptionsError = Exception
     CommandException = Exception
-
-try:
-    from tasks.rlm_ux_utils import get_ux_feature_flags, resolve_flexipage_sources
-except ImportError:
-    from rlm_ux_utils import get_ux_feature_flags, resolve_flexipage_sources
 
 
 _SUPPORTED_TYPES = {

@@ -2,27 +2,6 @@
   "description": "Allowed zizmor-finding counts per (rule, file, message).",
   "entries": [
     {
-      "rule": "adhoc-packages",
-      "file": ".github/workflows/flow-matrix.yml",
-      "message": "ad-hoc installation of packages",
-      "count": 1,
-      "reason": "SECURITY-ADJACENT: `npm install -g @salesforce/cli@${SF_CLI_VERSION}` in flow-matrix.yml. Pin source: SF_CLI_VERSION in config/tool-versions.env. Residual risk: transitive dependencies of @salesforce/cli are not locked. zizmor only accepts a committed package.json + lockfile installed with `npm ci`; prepare-rlm-org.yml has the same pattern, so all three workflows are fixed together by TP-14 shared locked sf CLI install."
-    },
-    {
-      "rule": "adhoc-packages",
-      "file": ".github/workflows/pr-checks.yml",
-      "message": "ad-hoc installation of packages",
-      "count": 1,
-      "reason": "SECURITY-ADJACENT: the `Install Salesforce Code Analyzer` step's `npm install --global @salesforce/cli@${sf_version}`. Pin source: SF_CLI_VERSION in config/tool-versions.env; the code-analyzer plugin is pinned separately by CODE_ANALYZER_VERSION in that step. Residual risk: transitive dependencies of @salesforce/cli are not locked. zizmor only accepts a committed package.json + lockfile installed with `npm ci`; prepare-rlm-org.yml has the same pattern, so all three workflows are fixed together by TP-14 shared locked sf CLI install."
-    },
-    {
-      "rule": "adhoc-packages",
-      "file": ".github/workflows/prepare-rlm-org.yml",
-      "message": "ad-hoc installation of packages",
-      "count": 1,
-      "reason": "SECURITY-ADJACENT: `npm install -g @salesforce/cli@${SF_CLI_VERSION}` is version-pinned from config/tool-versions.env but has no lockfile; TP-02/TP-04 own the file."
-    },
-    {
       "rule": "anonymous-definition",
       "file": ".github/workflows/check-cci-token-fix.yml",
       "message": "workflow or action definition without a name",
@@ -84,6 +63,34 @@
       "message": "overly broad permissions",
       "count": 1,
       "reason": "SECURITY: workflow-level `pull-requests: write` (job-level scoping is TP-02/TP-04's file); not fixed here."
+    },
+    {
+      "rule": "github-env",
+      "file": ".github/actions/setup-toolchain/action.yml",
+      "message": "dangerous use of environment file",
+      "count": 2,
+      "reason": "SECURITY-ADJACENT: the two `>> \"$GITHUB_PATH\"` writes that put config/sf-cli/node_modules/.bin and .venv/bin on PATH for the caller's later steps. Not avoidable in a composite action (PATH is the only way to hand `sf`/`cci` to the job), and the appended directories are the workspace's own install output, not attacker-controlled text. The third write (tool-versions.env into GITHUB_ENV) was removed: versions are step outputs and each shell step sources the file."
+    },
+    {
+      "rule": "self-repository",
+      "file": ".github/workflows/flow-matrix.yml",
+      "message": "use GitHub's dedicated self-repository syntax",
+      "count": 1,
+      "reason": "Pedantic style on `uses: ./.github/actions/setup-toolchain`. The suggested `$/...` form is rejected by the pinned actionlint 1.7.12 (\"ref is missing\"), which the same Lint job requires clean; revisit when actionlint supports it."
+    },
+    {
+      "rule": "self-repository",
+      "file": ".github/workflows/pr-checks.yml",
+      "message": "use GitHub's dedicated self-repository syntax",
+      "count": 1,
+      "reason": "Pedantic style on `uses: ./.github/actions/setup-toolchain`. The suggested `$/...` form is rejected by the pinned actionlint 1.7.12 (\"ref is missing\"), which the same Lint job requires clean; revisit when actionlint supports it."
+    },
+    {
+      "rule": "self-repository",
+      "file": ".github/workflows/prepare-rlm-org.yml",
+      "message": "use GitHub's dedicated self-repository syntax",
+      "count": 1,
+      "reason": "Pedantic style on `uses: ./.github/actions/setup-toolchain`. The suggested `$/...` form is rejected by the pinned actionlint 1.7.12 (\"ref is missing\"), which the same Lint job requires clean; revisit when actionlint supports it."
     },
     {
       "rule": "superfluous-actions",

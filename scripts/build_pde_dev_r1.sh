@@ -27,6 +27,7 @@
 # Overridable via environment variables:
 #   ORG=pde<datetime><pid>       scratch-org alias to create/build (must be unused)
 #   SHAPE=tfid-pde               scratch shape (config under orgs.scratch)
+#   DAYS=<n>                     optional scratch-org lifetime in days (unset = shape default; CI passes 1)
 #   FLOW=prepare_rlm_org         CCI flow to run
 #   CLEAN_BUILD_ARTIFACTS=true   require/clean post_ux + datasets build churn
 #
@@ -166,7 +167,7 @@ if [[ -n "$CCI_PROJECT_NAME" && -f "${CCI_HOME}/${CCI_PROJECT_NAME}/${ORG}.org" 
   exit 1
 fi
 log "Registering scratch org '${ORG}' from shape '${SHAPE}': cci org scratch ${SHAPE} ${ORG}"
-cci org scratch "$SHAPE" "$ORG"
+cci org scratch "$SHAPE" "$ORG" ${DAYS:+--days "$DAYS"}
 
 log "Running: cci flow run ${FLOW} --org ${ORG}"
 rc=0

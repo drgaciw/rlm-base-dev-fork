@@ -1,0 +1,12 @@
+{
+  "name": "rlm-sf-cli",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Locked Salesforce CLI toolchain for CI (sf CLI, SFDMU and Code Analyzer plugins). Installed with `npm ci` by .github/actions/setup-toolchain.",
+  "license": "Apache-2.0",
+  "dependencies": {
+    "@salesforce/cli": "2.147.7",
+    "@salesforce/plugin-code-analyzer": "5.16.0",
+    "sfdmu": "5.8.0"
+  }
+}

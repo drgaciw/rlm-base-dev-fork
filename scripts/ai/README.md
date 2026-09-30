@@ -348,7 +348,7 @@ silently each fail the suite.
 
 Runs the mechanical checks a change actually needs, and reports the status of **every**
 check — including the ones it skipped, and why. One command instead of remembering which
-of thirty-three validators a given diff should have run.
+of thirty-four validators a given diff should have run.
 
 ```bash
 python scripts/ai/pr_gate.py --base origin/main   # select from the diff vs a base ref
@@ -596,19 +596,19 @@ it the violation, because on a correct file a working rule and a blind one retur
 answer. This file is densely commented precisely because each setting matters, which is what
 made the first version of three separate guards vacuous.
 
-A full `--all` run is 33 checks in about 160 seconds on a Windows machine with no
+A full `--all` run is 34 checks in about 160 seconds on a Windows machine with no
 CumulusCI/pytest installed (re-measured for TP-03: 158s wall clock in a fresh clone), dominated by three suites: `stdlib_offline_suites` at roughly 45s and
 `pr_gate_suite` at roughly 30s and `branch_scope` (`tests/test_branch_scope.py`) at about
 37s — together well over half the wall-clock total — while most of the remaining checks finish
 in a second or two, and a typical docs-only selection is a couple of seconds. Re-measured for
 wave 2 (A-L3/I4): the prior "17 seconds" figure predated `branch_scope` needing real `git`/`gh`
 subprocess round-trips per case and was never re-timed against it. That timing is measured on a
-machine where five of the thirty-three (`doc_build_steps`, `extend_stdctx_recovery` — need
+machine where six of the thirty-four (`doc_build_steps`, `extend_stdctx_recovery`, `tasks_import_with_cci` — need
 `cumulusci`; `docgen_suite`, `harness_suites`, `billing_portal_suites` — need `pytest`) are
 blocked on optional dependencies and so contribute nothing, which is worth naming rather than
-leaving the reader to assume all thirty-three ran: with those installed the number is higher.
+leaving the reader to assume all thirty-four ran: with those installed the number is higher.
 
-Verified by `tests/test_pr_gate.py` (776 checks, throwaway repos, no network — hermetic for all but
+Verified by `tests/test_pr_gate.py` (780 checks, throwaway repos, no network — hermetic for all but
 one, the fixture that runs the real gate and so selects the real `skill_manifest` check, which
 resolves sibling repos by absolute path and therefore fails in a detached worktree), which
 drives the verdict rather than the helpers. Every mutation below is confirmed to fail the
@@ -628,7 +628,7 @@ empty stdout, indistinguishable from a clean tree, so it would drop uncommitted 
 the selection and, in the CCI-reference check, report "no drift" and pass — `--untracked-files=all`
 dropped, the setuptools co-requirement dropped or emitted after the package that needs it,
 a directory claim swallowing shell suites again, `pyproject.toml` removed from either
-pytest-driven check's triggers, each of the thirty-three trigger lists narrowed back off an input its
+pytest-driven check's triggers, each of the thirty-four trigger lists narrowed back off an input its
 check reads or a script it runs, and each of the four read-enumeration shapes stopped being recognised (directory
 arguments unexpanded, rooted single segments unseen, chain prefixes unfiltered, a root
 directory counted as a read). The rest of the corpus — the figure given below, counted
@@ -1520,6 +1520,28 @@ suite.
 **Used by:** `AGENTS.md` §"Pre-merge checklists". The workflow that runs it on every PR is
 `.github/workflows/pr-checks.yml`, added by `#264-58`; `Mechanical checks` is a **required** status
 check on `main`, `264` and `release/*` (repository settings, applied separately from the workflow).
+
+---
+
+### `test_health.py`
+
+Test-health reporting and quarantine automation (TP-12, `docs/references/test-plan-2026-09.md`
+section 6 and the flaky-test policy in section 7). Stdlib only. Run weekly by
+`.github/workflows/test-health.yml`, not by the PR gate, so an expiring quarantine entry never
+blocks an unrelated PR; `tests/test_test_health.py` (in `STDLIB_SUITES`) checks the script and the
+shape of the committed registers on every PR.
+
+```bash
+python scripts/ai/test_health.py check-quarantine   # merged table; exit 1 expired, 2 invalid
+python scripts/ai/test_health.py report --artifacts DIR [--runs runs.json]
+python scripts/ai/test_health.py zizmor-audit --findings zizmor.json   # non-gating drift audit
+```
+
+`check-quarantine` reads `robot/QUARANTINE.md` (TP-08's table, read-only) and
+`tests/quarantine/registry.json` (python, apex, lwc, flow) into one record type and prints one table
+sorted by `expires`. An unparseable register, an unknown or missing key, a non-ISO date, a window
+over 14 days or a duplicate id is exit 2, never "no entries". Format:
+[`tests/quarantine/README.md`](../../tests/quarantine/README.md).
 
 ---
 

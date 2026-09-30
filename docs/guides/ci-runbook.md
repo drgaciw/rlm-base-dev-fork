@@ -1,15 +1,16 @@
 # CI Runbook
 
 Procedures for keeping the repository's own CI honest: linting the workflows
-themselves, and proving `docker-publish` still works after an action bump.
-Neither needs a Salesforce org. Background: [test plan §4.6](../references/test-plan-2026-09.md)
+themselves, proving `docker-publish` still works after an action bump, and
+maintaining the baselines and ratchets (sections 3 to 7). Only section 6 involves
+a Salesforce org. Background: [test plan §4.6](../references/test-plan-2026-09.md)
 (TP-11).
 
 ## 1. Workflow lint (`actionlint` + `zizmor`)
 
 Both run as steps of the **Lint (changed files)** job in
 `.github/workflows/pr-checks.yml`, on pull requests that change
-`.github/workflows/**`, `.zizmor.yml`, `.github/zizmor-baseline.json` or
+`.github/workflows/**`, `.github/actions/**`, `.zizmor.yml`, `.github/zizmor-baseline.json` or
 `scripts/lint/finding_baseline.py`. Any other PR skips them. They are steps of
 the existing job, not a new job, so the set of check-run names the workflow
 publishes does not change.
@@ -29,15 +30,16 @@ of them (`SC2086` unquoted expansions, some of them intentional, `SC2016` on
 literal `$`-text in single quotes, `SC2129` chained `echo >> file`) and hiding them by file or regex would also hide the next real
 one. Severity is the one cut that leaves every warning visible.
 
-**zizmor** runs `--pedantic --offline` against `.github/workflows/`, with the
+**zizmor** runs `--pedantic --offline` against `.github/workflows/` and `.github/actions/`, with the
 policy in `.zizmor.yml`:
 
 - `actions/*` may be pinned by tag (`ref-pin`); Dependabot bumps them.
 - every other action must be pinned to a full commit SHA (`hash-pin`).
 - Offline on purpose: the audits that query the GitHub API (known-vulnerable
   actions, impostor commits) depend on live advisory data and the network, so
-  they would turn an unrelated PR red for a reason no commit caused. A scheduled
-  full audit that runs without the baseline is tracked under TP-12.
+  they would turn an unrelated PR red for a reason no commit caused. TP-12's
+  weekly `zizmor --pedantic --no-config` run is a **non-gating drift audit**: it
+  reports what the baseline suppresses and never fails a PR.
 
 ### The zizmor baseline
 
@@ -66,7 +68,7 @@ to whoever owns the workflow.
 ```bash
 pip install "zizmor==<ZIZMOR_VERSION from pr-checks.yml>"
 zizmor --pedantic --offline --config .zizmor.yml --no-exit-codes --format json \
-  .github/workflows/ > /tmp/zizmor.json
+  .github/workflows/ .github/actions/ > /tmp/zizmor.json
 python scripts/lint/finding_baseline.py --name zizmor-finding \
   --baseline .github/zizmor-baseline.json --format zizmor /tmp/zizmor.json
 # once it reports "can shrink":
@@ -164,3 +166,137 @@ run URL in the PR that introduced the bump.
 
 This is a manual procedure. Nothing in CI dispatches it, so the run result
 above is evidence for a PR only when someone has actually done it.
+
+## 3. Regenerating the Apex Code Analyzer baseline
+
+The **Apex findings vs baseline** step of the Lint job (`pr-checks.yml`) compares
+a full Code Analyzer scan (PMD Security + ErrorProne tags) with
+`config/code-analyzer-baseline.json`, using the same comparator as zizmor. It runs
+when Apex, `code-analyzer.yml`, the baseline, `scripts/lint/finding_baseline.py`,
+`pr-checks.yml`, `config/sf-cli/` or `config/tool-versions.env` changes (so an analyzer bump
+re-runs the scan). Regenerate after a Code Analyzer version bump
+(`CODE_ANALYZER_VERSION`, bump it in its own PR) or after fixing findings. The
+analyzer pin lives in `config/tool-versions.env` and must match
+`config/sf-cli/package.json` and its lockfile, which install it (see
+[section 8](#8-ci-toolchain-setup-toolchain)); a plain `sf plugins install` is no
+longer used:
+
+1. Download the `code-analyzer-results` artifact of a green run of that job (its
+   paths are Linux paths, which is what CI compares against).
+2. Run
+
+   ```bash
+   python scripts/lint/finding_baseline.py --format code-analyzer --name "Apex finding"      --baseline config/code-analyzer-baseline.json --write code-analyzer-results.json
+   ```
+
+3. `--write` keeps each entry's `reason`; give every new entry one. A renamed or
+   moved `.cls` re-surfaces its entries as new findings, so regenerate in the same
+   PR.
+
+## 4. Python coverage ratchet: raising a floor
+
+`coverage-floor.json` holds a floor per package; the **Python coverage ratchet**
+job fails below a floor and on a PR that lowers one. Being above the floor only
+prints a `::notice::` ("coverage floor can be raised"); CI never raises it. To
+raise floors after a real improvement:
+
+```bash
+python scripts/lint/coverage_ratchet.py measure            # runs the whole gate under coverage
+python scripts/lint/coverage_ratchet.py update --report coverage/python-coverage.json
+```
+
+`update` sets each floor to the measured value rounded down to one decimal, never
+lowers a floor and never touches `target`. Commit the file. Lowering a floor
+needs a `coverage-floor-lowered: <reason>` line in the file's top-level `reason`
+field, which a reviewer must accept.
+
+## 5. Windows leg: waiving a check
+
+`Mechanical checks (Windows stdlib)` runs `pr_gate.py --all --tier stdlib` on
+`windows-latest` with `PYTHONUTF8` unset (never set it: it hides the encoding bugs
+the leg exists to find). A check that is flaky or cannot run on Windows is fixed
+or moved out of the tier within 2 working days (test plan §7); it is never
+retried. The only way out is an entry in `WINDOWS_WAIVERS` in
+`scripts/ai/pr_gate.py`, mapping the check name to a written reason;
+`tests/test_pr_gate.py` fails an entry that names no real check or has no reason,
+and a dependency-free check that is neither in the tier nor waived. The map is
+empty today. The leg runs only the dependency-free tier, so the
+`requests`-dependent contract suites are not covered on Windows (test plan,
+TP-13 row). Making the job a required check is a maintainer settings action.
+
+## 6. Triage of the nightly and the flow matrix
+
+Both need a Dev Hub and are not reproducible offline.
+
+- **Nightly** (`prepare-rlm-org.yml`, weekdays 03:00 UTC): start from the run's job
+  summary, then the `verify-<alias>-<run>` and `e2e-<alias>-<run>` artifacts. A
+  Robot test that passed only on the single rerun is reported as flaky, not green.
+- **Flow matrix** (`flow-matrix.yml`, weekly): a failed leg opens or comments on
+  an issue titled `Flow matrix failure: <shape>`; the leg's job summary and
+  artifacts hold the detail.
+- Neither reruns automatically on the Apex or build stages (test plan §7.3).
+  Re-dispatch by hand once the cause is fixed.
+- Scratch orgs are created with a 1-day lifetime and deleted at the end of the
+  job. A `::warning::` "Could not delete scratch org <alias>" means a possible leak:
+  check the Dev Hub.
+- A repeat offender goes into `robot/QUARANTINE.md` or
+  `tests/quarantine/registry.json` (owner, issue, `expires` within 14 days).
+
+## 7. Staleness policy
+
+The same idea applies everywhere; what differs is whether staleness fails:
+
+| Kind | Examples | An entry that is no longer needed |
+|---|---|---|
+| Name allowlists | `WINDOWS_WAIVERS`, quarantine registers | **fails** (an entry naming no real check, or past its `expires`, is an error) |
+| Count baselines | zizmor, Apex Code Analyzer, robot `Sleep` counts | **warns** that the baseline can shrink; never fails a PR that fixed something |
+| Coverage floors | `coverage-floor.json` | **notice** that the floor can be raised |
+
+Shrink or raise them in a normal PR; never widen one to make a check pass without
+a `reason` a reviewer accepts.
+
+## 8. CI toolchain (`setup-toolchain`)
+
+`.github/actions/setup-toolchain` is the one place CI installs its tools. It is used by
+`prepare-rlm-org.yml`, `flow-matrix.yml` and the Code Analyzer step of `pr-checks.yml`
+(`docs/references/test-plan-2026-09.md`, TP-14). No workflow carries a version literal.
+
+| Input | Installs | Versions come from |
+|---|---|---|
+| `python` | Python and the `.venv` | `PYTHON_VERSION` |
+| `cci` | `cumulusci` | `CUMULUSCI_VERSION` |
+| `robot` | `robot/requirements.txt`, then the F2 selenium assertion | `robot/requirements.txt` |
+| `sf` | Node and the Salesforce CLI (`npm ci`) | `NODE_VERSION`, `SF_CLI_VERSION` |
+| `sfdmu`, `code-analyzer` | the plugins, linked from the same install | `SFDMU_VERSION`, `CODE_ANALYZER_VERSION` |
+
+All of the versions above are in `config/tool-versions.env`. The `sf` CLI and both plugins are npm
+packages pinned exactly in `config/sf-cli/package.json` and locked in
+`config/sf-cli/package-lock.json`; the action runs `npm ci --prefix config/sf-cli` and then
+`sf plugins link` on the installed packages. That is deliberate: `sf plugins install` resolves the
+plugin's dependency tree afresh, and `npm install -g` did the same for the CLI, which is why zizmor
+flagged both as `adhoc-packages`. The npm cache key is
+`npm-<os>-node<NODE_VERSION>-<hash of the lockfile>`.
+
+**Guard.** Before `npm ci`, `check_lock.mjs` fails the job unless `package.json`, the lockfile root
+and the resolved `node_modules/<pkg>` entry all equal `SF_CLI_VERSION`, `SFDMU_VERSION` and
+`CODE_ANALYZER_VERSION` for `@salesforce/cli`, `sfdmu` and `@salesforce/plugin-code-analyzer`. A PR
+that touches `config/sf-cli/`, `config/tool-versions.env` or the action runs it even with no Apex
+change (the Lint job's "Set up sf CLI and Code Analyzer" step).
+
+### Bumping the sf CLI or a plugin
+
+One tool per PR:
+
+```bash
+# 1. the pin in config/tool-versions.env (SF_CLI_VERSION / SFDMU_VERSION / CODE_ANALYZER_VERSION)
+# 2. the same exact version in config/sf-cli/package.json, then refresh the lock:
+cd config/sf-cli && npm install --package-lock-only --ignore-scripts
+# 3. from the repo root, prove the pair agrees (sets the three variables, runs the guard):
+set -a; . config/tool-versions.env; set +a; node .github/actions/setup-toolchain/check_lock.mjs
+```
+
+A Dependabot npm PR for `/config/sf-cli` changes only step 2, so its Lint job fails the guard until
+you push step 1 to that branch. A Code Analyzer bump also regenerates
+`config/code-analyzer-baseline.json` (see the Apex baseline step in `pr-checks.yml`). Then run a
+labelled `ci:prepare-org` build: the org-backed jobs are the only proof the new CLI works against a
+real org.

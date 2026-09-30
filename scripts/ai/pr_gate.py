@@ -410,6 +410,16 @@ CHECKS = [
         deps=["cumulusci"], gating=True,
     ),
     dict(
+        name="tasks_import_with_cci",
+        cmd=["python", "tests/test_tasks_import_with_cci.py"],
+        # Kept out of stdlib_offline_suites on purpose: it proves the 12 task modules TP-13b fixed still
+        # import with CumulusCI LOADED (the CumulusCI-less half runs in tests/test_rlm_sf_cli.py), so it
+        # needs cumulusci + requests and must fail as MISSING-DEP rather than skip. Any tasks/ change
+        # can move an import, so the whole directory is a trigger.
+        triggers=["tasks/", "tests/test_tasks_import_with_cci.py", "tests/test_rlm_sf_cli.py"],
+        deps=["cumulusci", "requests"], gating=True,
+    ),
+    dict(
         name="cci_reference_drift",
         cmd=None,  # regenerate, then require a clean tree — see run_cci_reference_drift
         # The generated files themselves are triggers: they carry a "do not edit" banner, so a
@@ -432,16 +442,23 @@ CHECKS = [
         triggers=["tasks/", "scripts/", "tests/", "datasets/", "cumulusci.yml",
                   "force-app/", "unpackaged/", "robot/",
                   ".agents/", ".claude/", ".cursor/", "docs/references/",
-                  # tests/test_finding_baseline.py pins the Apex gate (TP-06): the Lint step, its
-                  # Code Analyzer config and the committed baseline it compares against.
-                  ".github/workflows/pr-checks.yml", "code-analyzer.yml", "config/code-analyzer-baseline.json",
+                  # tests/test_finding_baseline.py pins the Apex gate (TP-06): the Lint step (in
+                  # .github/workflows/pr-checks.yml, selected by the .github/workflows/ prefix
+                  # below), its Code Analyzer config and the committed baseline it compares against.
+                  "code-analyzer.yml", "config/code-analyzer-baseline.json",
                   # tests/test_workflow_lint.py (TP-11) reads the Lint job's pins, the zizmor
                   # config and baseline, and the runbook that documents them.
                   ".github/workflows/", ".github/zizmor-baseline.json",
                   ".zizmor.yml", "docs/guides/ci-runbook.md",
+                  # TP-14: the setup-toolchain action (test_workflow_lint.py baselines findings in
+                  # it) and the CODE_ANALYZER_VERSION pin that test_finding_baseline.py asserts.
+                  ".github/actions/", "config/tool-versions.env",
                   "AGENTS.md", "CLAUDE.md", "README.md", ".gitnexusrc",
                   # tests/test_coverage_ratchet.py asserts the committed floor file is well-formed.
-                  "coverage-floor.json"],
+                  "coverage-floor.json",
+                  # TP-10b: tests/test_check_help_corpus_text_artifacts.py asserts its glob still
+                  # matches the committed Help snapshot layout.
+                  "docs/salesforce/"],
         deps=[], gating=True,
     ),
     dict(
@@ -678,6 +695,9 @@ STDLIB_SUITES = [
     "tests/test_agent_launch_checks.py",
     "tests/test_agents_common.py",
     "tests/test_build_billing_ui_module.py",
+    "tests/test_bump_api_version.py",
+    "tests/test_check_help_corpus_text_artifacts.py",
+    "tests/test_ci_scripts.py",
     "tests/test_context_apply.py",
     "tests/test_context_delete.py",
     "tests/test_context_payload.py",
@@ -692,15 +712,20 @@ STDLIB_SUITES = [
     "tests/test_fix_scratch_identity.py",
     "tests/test_gitnexus_guard.py",
     "tests/test_post_process_extraction.py",
+    "tests/test_pr_review.py",
     "tests/test_protect_generated_hook.py",
     "tests/test_qb_multicurrency_data.py",
+    "tests/test_query_erd.py",
     "tests/test_renewal_bucket_planner.py",
     "tests/test_rlm_apex_file.py",
     "tests/test_rlm_robot_e2e.py",
     "tests/test_rlm_sf_cli.py",
     "tests/test_robot_sleep_ratchet.py",
+    "tests/test_skill_manifest.py",
     "tests/test_snapshot_dev_guide.py",
     "tests/test_snapshot_help.py",
+    "tests/test_test_health.py",
+    "tests/test_validate_expression_set.py",
     "tests/test_validate_keys_targets.py",
     "tests/test_workflow_lint.py",
 ]

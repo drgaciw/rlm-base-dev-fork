@@ -306,6 +306,11 @@ check("no suite in tests/ is left unclaimed", pr_gate.unlisted_suites() == [],
       pr_gate.unlisted_suites())
 missing = [s for s in pr_gate.STDLIB_SUITES if not os.path.exists(os.path.join(REPO, s))]
 check("every stdlib suite the gate names exists on disk", missing == [], missing)
+check("the untested-gate-script suites (TP-10b) run in the stdlib check",
+      all(s in pr_gate.STDLIB_SUITES
+          for s in ("tests/test_pr_review.py", "tests/test_query_erd.py", "tests/test_bump_api_version.py",
+                    "tests/test_validate_expression_set.py", "tests/test_skill_manifest.py",
+                    "tests/test_check_help_corpus_text_artifacts.py")))
 check("the Robot e2e wrapper and Sleep-ratchet suites (TP-08) run in the stdlib check",
       all(s in pr_gate.STDLIB_SUITES
           for s in ("tests/test_rlm_robot_e2e.py", "tests/test_robot_sleep_ratchet.py")))
@@ -4162,6 +4167,20 @@ NOT_INPUTS = {
         "docs/salesforce/262/help/articles": "a fixture manifest's 'path' value inside a "
                                               "throwaway TemporaryDirectory root, not read from this repo",
     },
+    "tests/test_skill_manifest.py": {
+        # _audit_release_identity()'s fixture is written into a throwaway TemporaryDirectory root,
+        # never read from this repo; docs/erds/erd-data.json must also stay off the trigger list
+        # (it is the gate's single-check probe path).
+        "CONTRIBUTING.md": "a file written inside a throwaway TemporaryDirectory fixture root",
+        "docs/index.md": "a file written inside a throwaway TemporaryDirectory fixture root",
+        "docs/erds/erd-data.json": "a file written inside a throwaway TemporaryDirectory fixture root",
+    },
+    "tests/test_bump_api_version.py": {
+        "docs/erds/erd-data.json": "a file written inside a throwaway TemporaryDirectory tree, not read "
+                                    "from this repo (the ERD stays the gate's single-check probe path)",
+        "sfdx-project.json": "a file written inside a throwaway TemporaryDirectory tree, not read from "
+                              "this repo",
+    },
     "tests/test_fix_scratch_identity.py": {
         ".sf/orgs": "runtime org state, gitignored — not a repo input",
     },
@@ -4342,8 +4361,7 @@ for spec in pr_gate.CHECKS:
             if rel in declared or not os.path.exists(os.path.join(REPO, rel)):
                 continue
             if not pr_gate.selects(spec, [as_change(rel)]):
-                unselected_reads.append(f"{spec['name']} reads {rel} ({src}) but is not "
-                                        f"selected by it")
+                unselected_reads.append(f"{spec['name']} reads {rel} ({src}) but is not selected by it")
 check("no suite reads a file that cannot select it", not unselected_reads,
       "; ".join(unselected_reads[:8]))
 check("the enumeration actually inspected something", inspected > 20, inspected)
@@ -5480,7 +5498,8 @@ README_COUNT = re.compile(r"Verified by `tests/test_pr_gate\.py` \((\d+) checks"
 # Raised again for TP-05: --tier stdlib (tier pin, composition, empty tier) and the Windows job's
 # whitelist with its mutation controls, +40 checks, none looping over CHECKS.
 # TP-08 adds one check (its suites are in STDLIB_SUITES): 775 -> 776.
-EXPECTED = 776
+# TP-10b adds one check (its six suites are in STDLIB_SUITES): 779 -> 780.
+EXPECTED = 780
 _readme_text = pathlib.Path(os.path.join(REPO, "scripts/ai/README.md")).read_text(encoding="utf-8")
 cited = README_COUNT.search(_readme_text)
 check("the check count quoted in scripts/ai/README.md matches EXPECTED, so the prose cannot drift "
@@ -5497,7 +5516,7 @@ _NUM_WORDS = {13: "thirteen", 14: "fourteen", 15: "fifteen", 16: "sixteen", 17: 
               18: "eighteen", 19: "nineteen", 20: "twenty", 21: "twenty-one", 22: "twenty-two",
               23: "twenty-three", 24: "twenty-four", 25: "twenty-five", 26: "twenty-six",
               27: "twenty-seven", 28: "twenty-eight", 29: "twenty-nine", 30: "thirty",
-              31: "thirty-one", 32: "thirty-two", 33: "thirty-three"}
+              31: "thirty-one", 32: "thirty-two", 33: "thirty-three", 34: "thirty-four"}
 _actual = len(pr_gate.CHECKS)
 # A word boundary that also rejects a trailing hyphen, so the pattern for a smaller number word
 # does not match inside a hyphenated compound of a larger one: "two of the twenty" must NOT
