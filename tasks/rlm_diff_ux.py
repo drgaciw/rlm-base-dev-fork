@@ -20,17 +20,20 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+# Resolve `tasks.*` before the cumulusci import below: once CumulusCI is loaded the
+# `tasks` namespace package's __path__ collapses and a later `tasks.*` import fails when
+# this module is imported directly (tests) - and the fallback below would then hide it.
+try:
+    from tasks.rlm_ux_assembly import AssembleAndDeployUX
+except ImportError:
+    AssembleAndDeployUX = None  # type: ignore
+
 try:
     from cumulusci.core.tasks import BaseTask
     from cumulusci.core.exceptions import TaskOptionsError
 except ImportError:
     BaseTask = object
     TaskOptionsError = Exception
-
-try:
-    from tasks.rlm_ux_assembly import AssembleAndDeployUX
-except ImportError:
-    AssembleAndDeployUX = None  # type: ignore
 
 
 _SF_NS = "http://soap.sforce.com/2006/04/metadata"
