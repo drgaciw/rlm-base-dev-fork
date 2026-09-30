@@ -10,14 +10,17 @@ import subprocess
 import sys
 from pathlib import Path
 
+# Resolve `tasks.*` before the cumulusci import below: once CumulusCI is loaded the
+# `tasks` namespace package's __path__ collapses and a later `tasks.*` import fails when
+# this module is imported directly (tests). tasks.robot_utils tolerates a missing cumulusci.
+from tasks.robot_utils import check_urllib3_for_robot
+
 try:
     from cumulusci.core.tasks import BaseTask
     from cumulusci.core.exceptions import TaskOptionsError
 except ImportError:
     BaseTask = object  # type: ignore
     TaskOptionsError = Exception  # type: ignore
-
-from tasks.robot_utils import check_urllib3_for_robot
 
 DEFAULT_SUITE = "robot/rlm-base/tests/setup/enable_timeline.robot"
 DEFAULT_OUTPUT_DIR = "robot/rlm-base/results"

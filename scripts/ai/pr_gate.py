@@ -410,6 +410,16 @@ CHECKS = [
         deps=["cumulusci"], gating=True,
     ),
     dict(
+        name="tasks_import_with_cci",
+        cmd=["python", "tests/test_tasks_import_with_cci.py"],
+        # Kept out of stdlib_offline_suites on purpose: it proves the 12 task modules TP-13b fixed still
+        # import with CumulusCI LOADED (the CumulusCI-less half runs in tests/test_rlm_sf_cli.py), so it
+        # needs cumulusci + requests and must fail as MISSING-DEP rather than skip. Any tasks/ change
+        # can move an import, so the whole directory is a trigger.
+        triggers=["tasks/", "tests/test_tasks_import_with_cci.py", "tests/test_rlm_sf_cli.py"],
+        deps=["cumulusci", "requests"], gating=True,
+    ),
+    dict(
         name="cci_reference_drift",
         cmd=None,  # regenerate, then require a clean tree — see run_cci_reference_drift
         # The generated files themselves are triggers: they carry a "do not edit" banner, so a
@@ -701,6 +711,7 @@ STDLIB_SUITES = [
     "tests/test_robot_sleep_ratchet.py",
     "tests/test_snapshot_dev_guide.py",
     "tests/test_snapshot_help.py",
+    "tests/test_test_health.py",
     "tests/test_validate_keys_targets.py",
     "tests/test_workflow_lint.py",
 ]
