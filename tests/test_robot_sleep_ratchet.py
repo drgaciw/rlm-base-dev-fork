@@ -62,9 +62,12 @@ E2E_DIR = "robot/rlm-base/tests/e2e/"
 
 # Keywords that end in the best-effort settle. Their own bodies are the definitions and are
 # exempt from the anchoring rule; every call to them is checked.
-SETTLE_NAMES = ("Wait Until Page Is Settled", "Wait For Dialog To Change", "Wait For Action Dialog")
-SETTLE_USERS = re.compile(r"\b(?:%s|_Wait Best Effort)\b" % "|".join(SETTLE_NAMES))
-SOFT_WRAPPERS = ("Run Keyword And Ignore Error", "Run Keyword And Warn On Failure", "_Wait Best Effort")
+# `_Wait Best Effort` is the same warn-only SETTLE_TIMEOUT mechanism, so a direct call is a settle
+# call too and needs an anchor. `Run Keyword And Ignore Error`, `... Warn On Failure` and
+# `Run Keyword And Return Status` swallow a failure, so they never count as strict.
+SETTLE_NAMES = ("Wait Until Page Is Settled", "Wait For Dialog To Change", "Wait For Action Dialog", "_Wait Best Effort")
+SETTLE_USERS = re.compile(r"\b(?:%s)\b" % "|".join(SETTLE_NAMES))
+SOFT_WRAPPERS = ("Run Keyword And Ignore Error", "Run Keyword And Warn On Failure", "Run Keyword And Return Status")
 STRICT = re.compile(
     r"^(?:Wait Until .*|Wait For (?!Dialog To Change$|Action Dialog$).*|.*Should .*|Verify .*|Fail|Textfield Value Should Be)$"
 )
@@ -105,8 +108,8 @@ def count_py_sleeps(text):
 
 
 def keyword_bodies(text):
-    """{keyword or test name: [step cells, ...]} -- continuation lines are joined to their step,
-    [Settings] and their continuations are dropped."""
+    """{keyword or test name: [(indent, step cells), ...]} -- continuation lines are joined to their
+    step, [Settings] and their continuations are dropped."""
     bodies, steps, in_setting = {}, None, False
     section = ""
     for raw in text.splitlines():
@@ -126,10 +129,10 @@ def keyword_bodies(text):
             in_setting = True
         elif cells[0] == "...":
             if not in_setting and steps:
-                steps[-1].extend(cells[1:])
+                steps[-1][1].extend(cells[1:])
         else:
             in_setting = False
-            steps.append(cells)
+            steps.append((len(raw) - len(raw.lstrip()), cells))
     return bodies
 
 
@@ -145,7 +148,7 @@ def classify(cells):
         return "settle"
     if name in SOFT_WRAPPERS:
         return "soft"
-    if name in ("Run Keyword And Return Status", "Run Keyword And Expect Error") and len(cells) > 1:
+    if name == "Run Keyword And Expect Error" and len(cells) > 1:
         inner = classify(cells[1:])
         return inner if inner in ("strict", "action") else "other"
     if STRICT.match(name):
@@ -160,14 +163,25 @@ def settle_violations(text, label):
     for name, steps in keyword_bodies(text).items():
         if name in SETTLE_NAMES:
             continue
-        kinds = [classify(s) for s in steps]
+        kinds = [classify(cells) for _, cells in steps]
         for i, kind in enumerate(kinds):
             if kind != "settle":
                 continue
-            nxt = next((k for k in kinds[i + 1 :] if k in ("strict", "action")), None)
+            indent = steps[i][0]
+            nxt = None
+            for j in range(i + 1, len(steps)):
+                # a RETURN at the settle's own level (or shallower) ends the keyword; a nested early
+                # RETURN is only one branch, so the scan continues past it
+                if steps[j][1][0] == "RETURN" and steps[j][0] <= indent:
+                    break
+                if kinds[j] in ("strict", "action"):
+                    nxt = kinds[j]
+                    break
             if nxt == "action":
                 problems.append(f"{label}: '{name}' step {i + 1} settles, then clicks/types before any strict wait")
-            elif nxt is None and "strict" not in kinds[:i]:
+            elif nxt is None and not any(k in ("strict", "action") for k in kinds[:i]):
+                # a direct click/input before the settle already fails the test if it did not work,
+                # so it anchors a settle that ends the keyword just as a strict wait does
                 problems.append(f"{label}: '{name}' step {i + 1} settles with no strict wait before or after it")
     return problems
 
@@ -225,28 +239,82 @@ def check_settle_anchoring_analyzer(_):
             "Strict Follows",
             "    Click Element    css:a",
             "    Wait For Dialog To Change    ${before}",
-            "    ${ok}=    Run Keyword And Return Status    Page Should Contain Element    css:b",
+            "    Page Should Contain Element    css:b",
             "    Click Element    css:b",
+            "Nested Return Ends At Its Own Level",
+            "    Click Element    css:a",
+            "    IF    ${x}",
+            "        Wait For Action Dialog",
+            "        RETURN",
+            "    END",
+            "    Click Element    css:c",
         ]
     )
     bad_action = "\n".join(
         ["*** Keywords ***", "Click Right After", "    Wait Until Page Is Settled", "    Click Element    css:a"]
     )
-    bad_tail = "\n".join(["*** Keywords ***", "Bare Tail", "    Click Element    css:a", "    Wait For Action Dialog"])
+    bad_tail = "\n".join(["*** Keywords ***", "Bare Tail", "    Log    x", "    Wait For Action Dialog"])
     soft_only = "\n".join(
         [
             "*** Keywords ***",
             "Soft Is Not Strict",
             "    Run Keyword And Ignore Error",
             "    ...    Wait Until Keyword Succeeds    5s    1s    Foo",
-            "    _Wait Best Effort    x    5s    1s    Foo",
             "    Wait Until Page Is Settled",
+        ]
+    )
+    return_status_only = "\n".join(
+        [
+            "*** Keywords ***",
+            "Return Status Never Fails",
+            "    ${ok}=    Run Keyword And Return Status    Wait Until Element Is Visible    css:a",
+            "    Wait Until Page Is Settled",
+        ]
+    )
+    direct_best_effort_then_click = "\n".join(
+        [
+            "*** Keywords ***",
+            "Direct Best Effort",
+            "    Wait Until Element Is Visible    css:a",
+            "    _Wait Best Effort    x    5s    1s    Foo",
+            "    Click Element    css:b",
+        ]
+    )
+    direct_best_effort_bare_tail = "\n".join(
+        ["*** Keywords ***", "Direct Bare Tail", "    _Wait Best Effort    x    5s    1s    Foo"]
+    )
+    nested_return_does_not_hide_click = "\n".join(
+        [
+            "*** Keywords ***",
+            "Nested Return",
+            "    Wait Until Element Is Visible    css:a",
+            "    Wait Until Page Is Settled",
+            "    IF    ${x}",
+            "        RETURN",
+            "    END",
+            "    Click Element    css:b",
         ]
     )
     check("anchoring_accepts_strict_before_or_after", settle_violations(good, "good") == [], str(settle_violations(good, "good")))
     check("anchoring_rejects_settle_then_click", len(settle_violations(bad_action, "bad")) == 1, "")
     check("anchoring_rejects_unanchored_tail_settle", len(settle_violations(bad_tail, "bad")) == 1, "")
     check("anchoring_does_not_count_soft_waits_as_strict", len(settle_violations(soft_only, "bad")) == 1, "")
+    check(
+        "anchoring_does_not_count_return_status_as_strict",
+        len(settle_violations(return_status_only, "bad")) == 1,
+        "",
+    )
+    check(
+        "anchoring_treats_direct_best_effort_wait_as_a_settle",
+        len(settle_violations(direct_best_effort_then_click, "bad")) == 1
+        and len(settle_violations(direct_best_effort_bare_tail, "bad")) == 1,
+        "",
+    )
+    check(
+        "anchoring_nested_return_does_not_hide_a_later_click",
+        len(settle_violations(nested_return_does_not_hide_click, "bad")) == 1,
+        "",
+    )
 
 
 def check_settle_is_confined_to_the_e2e_path(_):

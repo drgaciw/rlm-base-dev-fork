@@ -486,7 +486,7 @@ Fill Modal Field
         Click Element    ${input}
         Press Keys    ${input}    CTRL+a    DELETE
         Input Text    ${input}    ${value}
-        _Wait Best Effort    Fill Modal Field:value-readback    5s    250ms    Textfield Value Should Be    ${input}    ${value}
+        Wait Until Keyword Succeeds    5s    250ms    Textfield Value Should Be    ${input}    ${value}
         RETURN
     END
     # Try textarea
@@ -2030,31 +2030,6 @@ Dismiss Toast If Present
     ...            }
     ...        }
     ...    })()
-    _Wait Best Effort    Dismiss Toast If Present:toast-gone    3s    250ms    _Toast Should Be Gone
-
-_Toast Should Be Gone
-    [Documentation]    Internal keyword — passes once no toast notification is visible.
-    ${count}=    Execute JavaScript
-    ...    return (function(){
-    ...        function deepAll(root, sel, out, depth) {
-    ...            if (depth > 25) return out;
-    ...            var els = root.querySelectorAll(sel);
-    ...            for (var i = 0; i < els.length; i++) { out.push(els[i]); }
-    ...            var all = root.querySelectorAll('*');
-    ...            for (var j = 0; j < all.length; j++) {
-    ...                if (all[j].shadowRoot) { deepAll(all[j].shadowRoot, sel, out, depth + 1); }
-    ...            }
-    ...            return out;
-    ...        }
-    ...        var toasts = deepAll(document, '.slds-notify_toast', [], 0);
-    ...        var shown = 0;
-    ...        for (var i = 0; i < toasts.length; i++) {
-    ...            var r = toasts[i].getBoundingClientRect();
-    ...            if (r.width > 0 && r.height > 0) { shown++; }
-    ...        }
-    ...        return shown;
-    ...    })()
-    Should Be Equal As Integers    ${count}    0    msg=Toast still visible.
 
 # ── Recording / Debug ───────────────────────────────────────────────
 
