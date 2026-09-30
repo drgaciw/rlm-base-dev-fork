@@ -32,10 +32,9 @@ What is pinned:
 6. **Import order** - in every `tasks/*.py`, no module-level `tasks.*` import may follow a
    `cumulusci` import (`TestTasksImportOrder`). Once CumulusCI is loaded the `tasks` namespace
    package's `__path__` collapses, so the later import fails when the module is imported directly
-   (architect review A-C3); this broke the first push of this PR. `LEGACY_IMPORT_ORDER` is the exact
-   list of modules that already broke the rule before TP-13; a new violation AND a stale entry both
-   fail, so the list can only shrink. Follow-up TP-13b: fix the order in those modules; acceptance =
-   `LEGACY_IMPORT_ORDER` empty.
+   (architect review A-C3); this broke the first push of TP-13. `LEGACY_IMPORT_ORDER` was the exact
+   list of the 12 modules that already broke the rule before TP-13; TP-13b fixed them and the list
+   is now empty. A new violation AND a stale entry both fail, so it can only shrink.
 
 Run: `python tests/test_rlm_sf_cli.py`  (also collectable by pytest).
 """
@@ -147,28 +146,11 @@ INCREMENTAL = {
 
 _RESOLVER_NAMES = {"sf_executable", "_sf_executable"}
 
-# Modules that put a `tasks.*` import after a `cumulusci` import before TP-13. They work under the
-# CCI runtime and break only when imported directly (tests). Exact: a new violation and a stale
-# entry both fail. A test written for one of these must fix that module's import order first, and
-# the stale-entry failure then forces the removal from this dict. Follow-up: TP-13b.
-_LEGACY_REASON = "pre-existing; works under the CCI runtime, breaks direct import in tests (architect-review A-C3)"
-LEGACY_IMPORT_ORDER = {
-    name: _LEGACY_REASON
-    for name in (
-        "rlm_analytics",
-        "rlm_configure_core_pricing_setup",
-        "rlm_configure_product_discovery_settings",
-        "rlm_configure_revenue_settings",
-        "rlm_diff_ux",
-        "rlm_enable_constraints_settings",
-        "rlm_enable_document_builder_toggle",
-        "rlm_enable_timeline",
-        "rlm_expression_set_connect",
-        "rlm_reorder_app_launcher",
-        "rlm_retrieve_ux",
-        "rlm_writeback_ux",
-    )
-}
+# Empty: TP-13b fixed the 12 modules that put a `tasks.*` import after a `cumulusci` import before
+# TP-13. A new violation fails `test_no_new_import_order_violations`; the fix is to move the import
+# above the `try: from cumulusci...` block, not to list the module here. Kept as a name -> reason
+# mapping so `test_no_stale_legacy_entries` still guards any entry that is ever added.
+LEGACY_IMPORT_ORDER: dict = {}
 
 
 # --------------------------------------------------------------------------------------
@@ -642,6 +624,67 @@ class TestTasksImportOrder(unittest.TestCase):
         self.assertEqual(late("from tasks import x\n"), [])
         self.assertEqual(late("import cumulusci\nimport mytasks\nfrom tasksfoo import y\n"), [])
         self.assertEqual(late("import cumulusci_extras\nfrom tasks import x\n"), [])
+
+
+# Imports one task module in a FRESH interpreter with the `cumulusci` package made unimportable, which
+# is the case the `except ImportError` fallbacks exist for. The CumulusCI-installed half of the same
+# check lives in tests/test_tasks_import_with_cci.py (it needs cumulusci + requests, this tier has
+# neither). `requests` is stubbed only when absent: two of the modules import it at module level and
+# the import ORDER, not requests itself, is what is under test.
+_IMPORT_BLOCKED_CCI_CHILD = r"""
+import importlib, importlib.util, pathlib, sys, types
+root, module, mode = sys.argv[1:4]
+sys.path.insert(0, root)
+class _Block:
+    def find_spec(self, name, path=None, target=None):
+        if name == "cumulusci" or name.startswith("cumulusci."):
+            raise ImportError("cumulusci blocked by test")
+sys.meta_path.insert(0, _Block())
+try:
+    import requests  # noqa: F401
+except ImportError:
+    sys.modules["requests"] = types.ModuleType("requests")
+if mode == "pkg":
+    m = importlib.import_module("tasks." + module)
+else:
+    spec = importlib.util.spec_from_file_location("_p_" + module, pathlib.Path(root) / "tasks" / (module + ".py"))
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+if module in ("rlm_diff_ux", "rlm_writeback_ux"):
+    assert m.AssembleAndDeployUX is not None, "tasks.rlm_ux_assembly import was swallowed"
+"""
+
+# The 12 modules TP-13b fixed. Mirrored in tests/test_tasks_import_with_cci.py.
+_FIXED_IMPORT_ORDER_MODULES = (
+    "rlm_analytics",
+    "rlm_configure_core_pricing_setup",
+    "rlm_configure_product_discovery_settings",
+    "rlm_configure_revenue_settings",
+    "rlm_diff_ux",
+    "rlm_enable_constraints_settings",
+    "rlm_enable_document_builder_toggle",
+    "rlm_enable_timeline",
+    "rlm_expression_set_connect",
+    "rlm_reorder_app_launcher",
+    "rlm_retrieve_ux",
+    "rlm_writeback_ux",
+)
+
+
+class TestFixedModulesImportWithoutCumulusci(unittest.TestCase):
+    """The AST rule pins the order; this proves the outcome for the 12 modules TP-13b fixed."""
+
+    def test_each_module_imports_in_a_fresh_interpreter_without_cumulusci(self):
+        import subprocess
+
+        for mode in ("pkg", "file"):
+            for module in _FIXED_IMPORT_ORDER_MODULES:
+                with self.subTest(module=module, mode=mode):
+                    result = subprocess.run(
+                        [sys.executable, "-c", _IMPORT_BLOCKED_CCI_CHILD, str(ROOT), module, mode],
+                        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120,
+                    )
+                    self.assertEqual(result.returncode, 0, result.stderr.strip().splitlines()[-1:] or result.stdout)
 
 
 # --------------------------------------------------------------------------------------
