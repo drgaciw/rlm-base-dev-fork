@@ -110,7 +110,7 @@ runs:
 
     - name: Cache npm download cache
       if: inputs.sf == 'true'
-      uses: actions/cache@v5
+      uses: actions/cache@v6
       with:
         path: ~/.npm
         # The lockfile decides what is downloaded, Node's version decides which native/optional
