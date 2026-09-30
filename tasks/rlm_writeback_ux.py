@@ -27,18 +27,11 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-try:
-    from cumulusci.core.tasks import BaseTask
-    from cumulusci.core.exceptions import TaskOptionsError
-except ImportError:
-    BaseTask = object
-    TaskOptionsError = Exception
-
-try:
-    import yaml
-except ImportError:
-    yaml = None
-
+# Resolve `tasks.*` before the cumulusci import below: once CumulusCI is loaded the
+# `tasks` namespace package's __path__ collapses and a later `tasks.*` import fails when
+# this module is imported directly (tests) - and the fallback below would then hide it.
+# rlm_ux_assembly goes first: it loads rlm_ux_utils itself, so the second import is a
+# sys.modules hit rather than a fresh package lookup.
 try:
     from tasks.rlm_ux_assembly import (
         AssembleAndDeployUX,
@@ -68,6 +61,18 @@ except ImportError:
                 "Unable to import resolve_flexipage_sources from "
                 "'tasks.rlm_ux_utils' or 'rlm_ux_utils'."
             ) from _root_utils_import_error
+
+try:
+    from cumulusci.core.tasks import BaseTask
+    from cumulusci.core.exceptions import TaskOptionsError
+except ImportError:
+    BaseTask = object
+    TaskOptionsError = Exception
+
+try:
+    import yaml
+except ImportError:
+    yaml = None
 
 ET.register_namespace("", SF_NS)
 
