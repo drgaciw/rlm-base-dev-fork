@@ -114,7 +114,7 @@ Two distinct ramp mechanisms exist — do not confuse them:
 | Turn on **Advanced Detail Line Pricing** / sync context definitions (a compound prerequisite) | `.cursor/skills/context-service/SKILL.md` |
 | Resolve Account / Pricebook / Product2 / PricebookEntry ids | [Discovering ids](#discovering-ids) |
 | Build a non-ramp quote → order → asset | `scripts/build_quote_to_asset.py`; `.cursor/skills/txn-data-harness/SKILL.md` |
-| The v68 Connect endpoint catalog (place, clone, ramp-deal, amend/renew/cancel) | `docs/salesforce/264/dev-guide/index.md` (tracked 264 dev-guide index — use the `/connect/rev/...` payloads above). **Not** `postman/docs/transaction-management-apis-reference.md`: it is v66 (`/commerce/sales-transactions/...`), an incompatible contract |
+| The v68 Connect endpoint catalog (place, clone, ramp-deal, amend/renew/cancel) | `postman/docs/transaction-management-apis-reference.md` (re-extracted to 264/v68.0) or `docs/salesforce/264/dev-guide/index.md` |
 | A null `RampIdentifier` / stale context definitions | `.cursor/skills/context-service/SKILL.md` |
 
 ## The proven build sequence
@@ -136,7 +136,7 @@ preserved).
 
 It needs **all** of:
 
-1. **Revenue Settings → Advanced Detail Line Pricing = ON** — this repo now defaults it
+1. **Revenue Settings → Advanced Detail Line Pricing = ON** — this repo defaults it
    **ON** (`unpackaged/pre/1_settings/RevenueManagement.settings-meta.xml`,
    `enableAdvancedDetailLinePricing=true`; kept in sync across every scratch-def), so
    compound **is** available out of the box (the Compound option is hidden from the Ramp
@@ -165,10 +165,9 @@ It needs **all** of:
    From** or pricing fails for the *entire* ramp group. This is *engine* setup —
    author/inspect it via `.cursor/skills/expression-sets/SKILL.md` →
    [Compound ramp uplift](../expression-sets/SKILL.md#compound-ramp-uplift). The tracked
-   `RLM_DefaultPricingProcedure` **now carries this ramp-path compound `PriceRevision`**
-   (`IsCompoundUpliftEnabled=true`) directly — the ramp branch
-   (`Applyupliftstorampedsubscriptionsitemsduringamendment`, seq 2) was migrated from the
-   old `FormulaBasedPricing` `Uplift` BKM by metadata deploy, so it works out of the box
+   `RLM_DefaultPricingProcedure` carries this ramp-path compound `PriceRevision`
+   (`IsCompoundUpliftEnabled=true`) on the ramp branch
+   (`Applyupliftstorampedsubscriptionsitemsduringamendment`, seq 2), so it works out of the box
    with no procedure clone. (The 264 Help's "newly-created procedure required" caveat is a
    **UI-authoring** limitation — you can't toggle Enable Compound Uplift on an existing
    procedure in the builder; deploying the full expression set metadata bypasses it, which
@@ -257,13 +256,9 @@ Snapshot — re-verify with a `describe` on the target org. Writeable = createab
 `QuoteLineGroup.Type` enum: `CPQQuoteGroup`, `RampScheduleGroup`, `AssetSwap`,
 `AssetUpgrade`, `AssetDowngrade`.
 
-## A headless toolkit is in development
+## Toolkit
 
-A dependency-free `scripts/ramp_deals/` toolkit (schedule math, payload builders,
-status polling, read-back invariants) mirroring `scripts/expression_sets/` is being
-built on branch **`feat/ramp-deals-core`** (not yet merged to `264`). Until it
-lands, use the raw Connect calls above. When it merges, wire its CLIs into this
-skill's routing.
+There is no `scripts/ramp_deals/` toolkit on `main`; use the raw Connect calls above.
 
 ## Examples
 
@@ -320,8 +315,7 @@ would add a 3rd uplift, e.g. +2% → 397.13 (applied % 10.313).
   prerequisite; null-`RampIdentifier` fix): `.cursor/skills/context-service/SKILL.md`.
 - **v68 Connect endpoint catalog** (place, clone, ramp-deal, amend/renew/cancel):
   `docs/salesforce/264/dev-guide/index.md` (tracked 264 dev-guide — `/connect/rev/...`).
-  Do **not** use `postman/docs/transaction-management-apis-reference.md`: it is v66
-  (`/commerce/sales-transactions/...`), the legacy contract this skill supersedes.
+  `postman/docs/transaction-management-apis-reference.md` (264/v68.0) also covers these `/connect/rev/...` resources.
 - **Non-ramp quote→order→asset builder:** `scripts/build_quote_to_asset.py`;
   `.cursor/skills/txn-data-harness/SKILL.md`.
 - **RLM object/field model:** `.cursor/skills/revenue-cloud-data-model/SKILL.md`.

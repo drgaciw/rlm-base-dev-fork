@@ -15,9 +15,9 @@ Use the Salesforce Help portal snapshots at `docs/salesforce/{release}/help/` as
 
 For **developer-facing** material — standard object/field reference, Business APIs, Apex, Metadata/Tooling API types, invocable actions, and **Constraint Modeling Language (CML)** — use the companion **Developer Guide snapshot** at `docs/salesforce/{release}/dev-guide/` (the atlas Revenue Cloud Developer Guide). See [Developer Guide snapshot (atlas)](#developer-guide-snapshot-atlas) below. Rule of thumb: **Help = how an admin/seller uses a feature; Dev Guide = the objects, fields, APIs, and CML a developer builds against.**
 
-> **Branch note (264).** This branch targets Release 264 (Winter '27, API v68.0). **The Dev Guide corpora are captured at 264** — `docs/salesforce/264/dev-guide/` and `docs/salesforce/264/dev-guide-industries/`, both genuinely 264 content (prerelease disclaimer present on every article). **Help is now captured at 264 for ten areas** — `configurator`, `transaction_mgmt` (Contract Lifecycle Management folds into this task), `billing`, `pcm`, `dro`, `pricing`, `rating`, `usage`, `agents`, and `approvals` — spot-checked against their 262 twins (`docs/salesforce/264/help/`). For `dro`, articles shared with 262 came back byte-identical (expected — not every article changes release to release); readiness was instead confirmed by 29 articles that exist only at 264 (99 discovered vs 70 at 262), with real, substantive bodies (e.g. `ind.dro_time_aware_fulfillment_example_add.htm`) — net-new content is proof a stale-262-serving portal cannot produce. For `pricing`, all 110 262 articles are present plus 45 net-new (155 discovered), and a shared article's body text itself changed release to release (`ind.pricing_pricing_procedures.htm`: "Revenue Cloud" → "Revenue Management (formerly Revenue Cloud)", updated edition/license language) — a second, independent readiness signal alongside net-new ids. For `rating`, all 35 262 articles are present plus 35 net-new (70 discovered vs 35 at 262) — the same net-new-only signal as `dro`. For `usage`, discovery matched the 262 twin exactly (52 articles) and shared bodies differ (title rename to "Revenue Management", edition-text changes). For `agents`, 17 discovered vs 13 at 262 (4 net-new, an Approval Agent), plus edition-text diffs on shared ids. For `approvals`, 43 discovered vs 34 at 262, plus a title rename ("Revenue Management (formerly Revenue Cloud)") and net-new articles (e.g. approval delegation records). **`collections` was checked and found NOT ready** — discovery matched the 262 twin exactly (97 articles) but 96/97 shared bodies came back byte-identical with zero net-new ids, the portal's own tell that it is still serving 262 text for that area; the capture was discarded rather than committed (pack 145 rule). Re-run `-o mode discover` + a byte-diff spot-check on `collections` periodically until it shows the same net-new-or-changed-text signal the other areas did. Salesforce publishes 264 Help per-area on its own schedule (see todo pack 183 for the latest per-area readiness, following on from closed pack 145). For the Dev Guide, note that the unversioned atlas endpoint (`atlas.en-us.<deliverable>.meta`) keeps serving 262 even after 264 publishes — `mode: discover` alone will not pick up 264. The capture used an explicit `-o doc_version 264.0` override on `mode: capture` (see todo pack 156 for the full mechanism and why the versioned URL/meta-slug doesn't work as a direct API call). **Changing `doc_version` on a manifest that already has captured pages now requires `mode: refresh`** — `capture`/`all` raise `TaskOptionsError` instead of silently mislabeling old-version content as new (a plain `discover` run is exempt and never writes a version bump over captured pages that would trigger this on the next capture).
+> **Corpus status (264).** Dev Guide (`dev-guide/`, `dev-guide-industries/`) and Help for `configurator`, `transaction_mgmt`, `billing`, `pcm`, `dro`, `pricing`, `rating`, `usage`, `agents`, `approvals` are captured at 264. `collections` still serves 262 text — before capturing it, run `-o mode discover` and byte-diff shared bodies against 262; commit only when net-new or changed text appears. The unversioned atlas endpoint keeps serving 262, so dev-guide captures need `-o doc_version 264.0`; changing `doc_version` on a manifest with captured pages requires `mode: refresh`.
 >
-> **Help discovery now polls until the sidebar stabilizes and raises loudly on a thin walk** (pack 146). The portal's SPA hydrates the sidebar tree at variable speed — live probing showed the same page taking anywhere from ~3s to >6s, with roughly 1 in 4 single-read attempts at a fixed wait catching the tree mid-hydration. `_discover_articles` polls every `wait_ms` up to `discover_timeout_ms` (default 20s) until the prefix-matching count holds steady across two consecutive reads, then `_validate_discovery` raises `CommandException` if it still found zero matching articles, found fewer than the area's `expect_min_articles` option (wired for the ten captured areas above, at ~50% of their 262 twin's count — a floor that tolerates real content growth/shrinkage between releases, not a race), or hit `discover_timeout_ms` without ever seeing two consecutive equal reads — that last case raises even when the last read already clears the floor, because a still-growing count isn't reliably the full tree (PR #408 review round 3). **A passing `discover` on one of those ten areas is a real signal now; on the remaining `collections` task it exits 0 with no floor to check against, so still read the logged count and byte-diff spot-check before trusting a capture** (the Dev Guide tasks above have no `root_article_id`/prefix at all, so this discover-floor discussion doesn't apply to them — they're already captured via the `doc_version` mechanism):
+> Discovery polls until the sidebar count stabilizes and raises on zero kept articles, on a count below the area's `expect_min_articles`, or on a timeout without two equal reads. `collections` has no floor, so read the logged count there.
 >
 > ```bash
 > cci task run snapshot_pricing_help_264 -o mode discover     # run it plainly; keep the exit status
@@ -30,7 +30,7 @@ For **developer-facing** material — standard object/field reference, Business 
 >
 > **Do not pipe it through `grep`.** The pipeline would report `grep`'s status instead of the task's, so a failure *after* the count is logged — the manifest save, the index build — would read as success, and the traceback would be filtered away. If you want a filtered copy, keep both with `set -o pipefail` and `tee`.
 >
-> **Do not substitute the manifest's `stats.discovered` for that line** — it is cumulative, not per-run. `_merge_discovered` only ever adds, so an empty discovery leaves the prior articles untouched; `_compute_stats` then counts **every area at once** (262 reports 935, the sum of 11 areas), and the per-area figure under `areas[]` is likewise the running total for that area. A failed re-discovery therefore leaves both numbers positive and unchanged. On a first 264 run neither exists — `docs/salesforce/264/help/` is not there yet, so reading the manifest raises `FileNotFoundError`. The per-area `last_run_discovered` field (`{kept, before_prefix_filter}`) is the one non-cumulative signal in the manifest — it reflects only the most recent discovery run for that area.
+> **Do not substitute the manifest's `stats.discovered` for that line** — it is cumulative, not per-run. `_merge_discovered` only ever adds, so an empty discovery leaves the prior articles untouched; `_compute_stats` then counts **every area at once** (262 reports 935, the sum of 11 areas), and the per-area figure under `areas[]` is likewise the running total for that area. A failed re-discovery therefore leaves both numbers positive and unchanged. The per-area `last_run_discovered` field (`{kept, before_prefix_filter}`) is the one non-cumulative signal in the manifest — it reflects only the most recent discovery run for that area.
 >
 > **Never run two `snapshot_*_help_264` tasks concurrently against the same manifest** — every area shares one `docs/salesforce/{release}/help/manifest.json`, and each task loads it once into memory and periodically overwrites the file from that in-memory copy. Two processes running at once will lose whichever one saves last; a discover run's freshly-merged articles can vanish if a concurrent capture run's next periodic save clobbers the file with its own stale copy. Run these tasks one at a time.
 >
@@ -102,9 +102,9 @@ The **Revenue Cloud Developer Guide** lives in a different documentation system 
 **Capture / refresh.** Same modes as the help task (`discover` / `capture` / `all` / `refresh`). Run the whole guide or one section:
 
 ```bash
-cci task run snapshot_dev_guide_262                                   # whole guide
-cci task run snapshot_dev_guide_262 -o section "Constraint Modeling Language"   # one TOC section
-cci task run snapshot_dev_guide_262 -o mode refresh                  # re-capture all (after a release update)
+cci task run snapshot_dev_guide_264                                   # whole guide
+cci task run snapshot_dev_guide_264 -o section "Constraint Modeling Language"   # one TOC section
+cci task run snapshot_dev_guide_264 -o mode refresh                  # re-capture all (after a release update)
 ```
 
 Requires Playwright in the CCI venv (same inject as the help task); `markdownify` is an optional inject for best table/list fidelity. See the task docstring for setup.
@@ -116,8 +116,8 @@ RC builds on shared **Industries common platform services** that the RLM dev gui
 The full Industries Common Resources guide is ~1435 pages across 37 sections — most for *other* Industries clouds (Digital Lending, Document/Form Readers, Process Compliance, etc.). The snapshot is **scoped to the ~571 RC-relevant pages** (the nine sections' TOC subtrees) via the task's `sections` list; `follow_links` stays off so an out-of-scope cross-reference can't drag in unrelated sections:
 
 ```bash
-cci task run snapshot_industries_dev_guide_262                # the 9 RC-relevant sections
-cci task run snapshot_industries_dev_guide_262 -o mode refresh
+cci task run snapshot_industries_dev_guide_264                # the 9 RC-relevant sections
+cci task run snapshot_industries_dev_guide_264 -o mode refresh
 # widen/narrow by editing `sections` (comma-separated TOC titles or page_ids) in cumulusci.yml
 ```
 
@@ -149,31 +149,31 @@ does not have to rediscover it.
 
 ```bash
 # By literal term in body
-grep -rl "Billing Arrangement" docs/salesforce/262/help/articles/
+grep -rl "Billing Arrangement" docs/salesforce/264/help/articles/
 
 # By article title in manifest
 python3 -c "
 import json
-m = json.load(open('docs/salesforce/262/help/manifest.json'))
+m = json.load(open('docs/salesforce/264/help/manifest.json'))
 for a in m['articles']:
     if 'arrangement' in a['title'].lower():
         print(a['article_id'], '-', a['title'])
 "
 
 # By article ID prefix (all milestone-related)
-ls docs/salesforce/262/help/articles/ind.billing_milestone*.htm.md
+ls docs/salesforce/264/help/articles/ind.billing_milestone*.htm.md
 ```
 
 ### Reading an article cleanly (skip frontmatter)
 
 ```bash
 # Skip frontmatter, print body only
-awk '/^---$/{c++; next} c==2{print}' docs/salesforce/262/help/articles/ind.billing_invoice_batch_run.htm.md
+awk '/^---$/{c++; next} c==2{print}' docs/salesforce/264/help/articles/ind.billing_invoice_batch_run.htm.md
 ```
 
 ### Cross-release diff
 
-When 264 ships, run the matching snapshot task, then:
+After capturing a new release, diff it against the prior one:
 
 ```bash
 diff -u docs/salesforce/262/help/articles/ind.billing.htm.md \
@@ -194,16 +194,16 @@ Trailhead module work involves making product claims and citing Help articles in
 
 ## Refresh workflow
 
-When a new release ships (e.g., Salesforce announces 264 GA):
+When a new release ships (e.g. 266):
 
 1. **Add the release-specific task variants** in `cumulusci.yml`:
 
    ```yaml
-   snapshot_billing_help_264:
+   snapshot_billing_help_266:
        class_path: tasks.rlm_snapshot_help.SnapshotSalesforceHelp
        options:
-           release_version: "264"
-           release_name: "Winter '27"
+           release_version: "266"
+           release_name: "Spring '27"
            area: billing
            root_article_id: ind.billing.htm
            article_id_prefix: ind.billing
@@ -213,7 +213,7 @@ When a new release ships (e.g., Salesforce announces 264 GA):
 2. **Run discovery first** to see what's new:
 
    ```bash
-   cci task run snapshot_billing_help_264 -o mode discover
+   cci task run snapshot_billing_help_266 -o mode discover
    ```
 
    The discovery phase walks the sidebar and writes `manifest.json` with all discovered article IDs as `pending`. Compare against the previous release's manifest to see additions, removals, renames.
@@ -223,7 +223,7 @@ When a new release ships (e.g., Salesforce announces 264 GA):
 3. **Run full capture**:
 
    ```bash
-   cci task run snapshot_billing_help_264
+   cci task run snapshot_billing_help_266
    ```
 
    Captures every pending article in parallel (default concurrency 4). ~10-15 minutes for ~170 articles.
@@ -232,14 +232,14 @@ When a new release ships (e.g., Salesforce announces 264 GA):
 
    ```bash
    # File count matches manifest
-   ls docs/salesforce/264/help/articles/ | wc -l
-   python3 -c "import json; m=json.load(open('docs/salesforce/264/help/manifest.json')); print(sum(1 for a in m['articles'] if a.get('status')=='captured'))"
+   ls docs/salesforce/266/help/articles/ | wc -l
+   python3 -c "import json; m=json.load(open('docs/salesforce/266/help/manifest.json')); print(sum(1 for a in m['articles'] if a.get('status')=='captured'))"
 
    # No errors
-   python3 -c "import json; m=json.load(open('docs/salesforce/264/help/manifest.json')); print([a for a in m['articles'] if a.get('status')=='error'])"
+   python3 -c "import json; m=json.load(open('docs/salesforce/266/help/manifest.json')); print([a for a in m['articles'] if a.get('status')=='error'])"
 
    # No breadcrumb noise leaked through (should print 0)
-   grep -l "^You are here:" docs/salesforce/264/help/articles/*.md | wc -l
+   grep -l "^You are here:" docs/salesforce/266/help/articles/*.md | wc -l
    ```
 
 5. **Commit**. A single-area snapshot is typically 100–500 KB; the full multi-area snapshot for one release lands around 4–5 MB (the 262 snapshot is **~4.3 MB across 935 articles** — see the *Per-area snapshots* table below). Mark the directory as generated in `.gitattributes` (`docs/salesforce/*/help/** linguist-generated=true`) so GitHub auto-collapses the diff on refresh PRs.
@@ -287,13 +287,13 @@ The 7 subagents under **Agentforce for Revenue Management** operate inside speci
 
 ```bash
 # WRONG — misses ind.qocal_agentforce_quote_mgmt.htm and similar:
-grep -l "Quote Management" docs/salesforce/262/help/articles/ind.rev_agent_*.md
+grep -l "Quote Management" docs/salesforce/264/help/articles/ind.rev_agent_*.md
 
 # RIGHT — catches both topic-reference and how-to articles:
-grep -l "Quote Management" docs/salesforce/262/help/articles/*.md
+grep -l "Quote Management" docs/salesforce/264/help/articles/*.md
 ```
 
-To get full agent coverage you need: `snapshot_agents_help_262` (the dedicated area) **plus** every functional area's snapshot. Without the functional-area snapshots, you'll have agent topic descriptions but no how-to / use-case grounding.
+To get full agent coverage you need: `snapshot_agents_help_264` (the dedicated area) **plus** every functional area's snapshot. Without the functional-area snapshots, you'll have agent topic descriptions but no how-to / use-case grounding.
 
 **IMPORTANT — don't conflate adjacent domains.** Usage Management (`ind.um_*`) and Rate Management (`ind.rm_*`) are two distinct data-model domains and two distinct Help-portal areas. Pricing (`ind.pricing_*`) and Rate Management (`ind.rm_*`) are similarly distinct. Configurator (`ind.product_configurator_*`) is its own domain — easy to skip past because it has only 4 objects, but the Help portal area is real and covers configuration rules / flows that affect Quote/Order configuration. The `article_id_prefix` filter is a single startswith match, so capturing each requires **its own task variant**. Module 3 of the L2 Billing Trailhead mix straddles Usage + Rating, which is why `cumulusci.yml` defines `snapshot_usage_help_262` AND `snapshot_rating_help_262` separately.
 

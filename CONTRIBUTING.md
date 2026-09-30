@@ -80,7 +80,7 @@ carries the safety guards that cause the most review churn when missed:
 - Behavioral Robot Framework changes must be verified against a **live scratch
   org**; `robot --dryrun` is not verification.
 
-Task-specific guidance lives in the skill files indexed in `AGENTS.md`
+Task-specific guidance lives in the skill files indexed in [`.cursor/skills/README.md`](.cursor/skills/README.md)
 (`.cursor/skills/**` — plain markdown, readable by any tool or human).
 
 ## 6. Validate Before You Push

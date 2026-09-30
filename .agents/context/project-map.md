@@ -38,7 +38,7 @@
 | `scripts/erd/` | Schema and ERD tooling | Use for cross-release schema comparisons (260/262/264) and ERD generation. |
 | `scripts/soql/` | Reusable SOQL queries | Prefer checked-in query files for repeatable analysis. |
 | `tasks/` | Custom Python CCI tasks | Use `org_config.username` for `sf` CLI; reserve tokens for REST. |
-| `tests/` | Shell-based integration tests | Run relevant test scripts for changed behavior. |
+| `tests/` | Python test suites (top-level `tests/*.py` run directly; `tests/build_harness`, `tests/txn_data_harness` via pytest) | Run the suites covering changed behavior; see CONTRIBUTING.md §6. |
 | `robot/rlm-base/` | Robot Framework tests | Setup and E2E automation. |
 | `orgs/` | Scratch org definitions | Review for accidental churn before merge. |
 | `postman/` | RLM API collections | Manual/API testing artifacts. |
@@ -84,4 +84,4 @@ Tracked generated references currently recorded in project memory:
 3. Use `.agents/schemas/project-memory.schema.json` to validate memory edits.
 4. Inspect `git status --short` before and after changes.
 5. Run the smallest relevant validation command for the files you touched.
-6. Commit changes on the current branch and open a PR when code or documentation changes are made.
+6. Commit on a feature branch (never `main` or the active release branch — AGENTS.md DO NOT #6) and open a PR when code or documentation changes are made.

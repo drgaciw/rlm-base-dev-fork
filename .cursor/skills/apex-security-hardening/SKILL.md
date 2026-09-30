@@ -67,7 +67,7 @@ description: >-
 | Adding a new `@AuraEnabled`/`@InvocableMethod` controller | Yes — bake USER_MODE + perm-set in from the start |
 | Reviewing a PR that touches controllers/permission sets | Yes — pair with `audit-review/SKILL.md` |
 | Placing new Apex / deciding force-app vs unpackaged | No — see `repo-integration/SKILL.md` |
-| force-app profile rules (classAccesses-only) | See `AGENTS.md` "Profile/object rules" |
+| force-app profile rules (classAccesses-only) | See `AGENTS.md` DO NOT #2 → `.claude/rules/protected-metadata.md` |
 
 ## The hardening pass (step by step)
 
@@ -96,9 +96,9 @@ non-permissionable standard fields (Name, lookups, Quantity, address components)
 covered by object access:
 
 ```python
-import json, os, subprocess
+import json, os, shutil, subprocess
 ORG = os.environ.get("SF_TARGET_ORG", "rlm-base__beta")  # SF CLI alias/username (not the CCI alias)
-d = json.loads(subprocess.run(["sf","sobject","describe","-s","Quote","--target-org",ORG,"--json"],
+d = json.loads(subprocess.run([shutil.which("sf") or "sf","sobject","describe","-s","Quote","--target-org",ORG,"--json"],
                                capture_output=True, text=True, check=True).stdout)
 perm = {fld['name'] for fld in d['result']['fields'] if fld.get('permissionable')}
 ```
@@ -153,3 +153,4 @@ lack the license entirely, producing false negatives.
 - Read-back query → org object/field perms == the perm-set file (no silent drops).
 - `sf apex run test` → green (necessary, not sufficient — admin context).
 - Persona walk or `System.runAs` → the perm set is actually sufficient at runtime.
+- CI's *Apex findings vs baseline* step (pr-checks `Lint (changed files)`) fails on any new PMD Security/ErrorProne finding not in `config/code-analyzer-baseline.json`. A moved or renamed class needs the baseline regenerated in the same PR (`docs/guides/ci-runbook.md` §3).

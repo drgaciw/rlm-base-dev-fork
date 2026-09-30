@@ -10,7 +10,7 @@ description: >-
 
 > How to process automated PR reviews (Codex, Copilot) and run the deep
 > pre-merge audit, through the lens that matters for this repo: **the release
-> branch → `main` promotion (now `264` → `main`) is mirrored to an internal
+> branch → `main` promotion (the active release branch is `repository.active_work_branch` in `.agents/context/project-memory.json`) is mirrored to an internal
 > Salesforce repo and passes through Salesforce audit agents.** The goal is to
 > minimize audit passes — so every
 > finding is handled as a *class*, not a one-line patch, and verified before it
@@ -33,7 +33,7 @@ description: >-
    lines/files. Fix once; reply to each thread.
 5. **One cohesive follow-up commit** per review round; re-run deploy + tests; never
    stage local-only flag flips in `cumulusci.yml` (legitimate task/flow edits are
-   committed per `AGENTS.md` "`cumulusci.yml` and CCI tasks") or internal-reference docs.
+   committed per [merge-and-review-procedures.md](merge-and-review-procedures.md#cumulusciyml-and-cci-tasks)) or internal-reference docs.
 6. **Reply in-thread, react, and resolve.** Document the resolution (and the commit SHA)
    on each thread; 👍 valid comments; then **resolve the thread** (GraphQL — REST can't).
    **Every review round ends with zero unresolved threads** — that is the audit trail.
@@ -64,11 +64,11 @@ mandatory checklist remains in `AGENTS.md`.
 | Situation | Use this skill? |
 |-----------|-----------------|
 | A Codex/Copilot review posted on a PR | Yes — triage, verify, sweep, fix, reply |
-| The deep pre-merge audit of a branch before `264 → main` | Yes — drive it by finding-class |
+| The deep pre-merge audit of a branch before the release branch → `main` | Yes — drive it by finding-class |
 | A single trivial nit with no class | Fix inline; reply; skip the full ceremony |
 | Authoring the actual CRUD/FLS fixes | Pair with `apex-security-hardening/SKILL.md` |
 
-## Release Audit (release branch → `main` → Salesforce Labs; now `264` → `main`)
+## Release Audit (release branch → `main` → Salesforce Labs)
 
 When a branch is being prepared to merge to `main`, it is **mirrored to an internal
 Salesforce repo and run through Salesforce audit agents** before release to devs,
@@ -182,8 +182,7 @@ synthesize.** Patterns that paid off here:
 
 Before merging a long-running feature branch, verify that files changed on the
 branch do not silently overwrite newer versions that landed on `main` after the
-branch diverged. This is the "swept-in file" risk mentioned in AGENTS.md
-§"Merges and unintended diffs".
+branch diverged. This is the "swept-in file" risk in [merge-and-review-procedures.md → *Merges and unintended diffs*](merge-and-review-procedures.md#merges-and-unintended-diffs).
 
 ### Step −1 — Confirm the branch owns every commit on it (cheapest check; run before anything else)
 
@@ -251,7 +250,7 @@ substituted:
 Three things that are **not** findings. A parent branch that truly merged (a merge
 commit, not squash or rebase): its commits are literal ancestors of the base, so
 they are not in this branch's diff and there is nothing to strip. An open PR whose
-head is **already contained in the base** — the release integration PR (`264` →
+head is **already contained in the base** — the release integration PR (release branch →
 `main`) has the base branch itself as its head, and treating that as a stack flags
 every branch that is up to date with base, which would reward being stale. And a
 **fork's** PR, whose head is not in this checkout.
@@ -351,7 +350,7 @@ Classify each as:
 | `tasks/` | Bug fixes on main regressed by branch's older task version |
 | `unpackaged/post_ux/` | Auto-generated; any manual edit on either side is wrong — run `assemble_and_deploy_ux` post-merge |
 | `docs/` + `.cursor/skills/` | Doc-consistency changes on main (task renames, flag table updates) lost if branch has older versions |
-| `orgs/` | Scratch def pins; branch may carry a stale instance pin (see feedback_scratch_org_instance) |
+| `orgs/` | Scratch def pins; a branch may carry a stale `instance` pin in `orgs/**/*.json` — keep main's unless the change is intentional |
 
 ### Step 4 — For each "main wins" file
 

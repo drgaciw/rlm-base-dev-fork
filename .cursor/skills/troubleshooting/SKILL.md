@@ -45,16 +45,16 @@ CCI output, then jump to the relevant section below.
 | 1 (prepare_core) | PSLs, PSGs, context defs, deploy_pre | [deploy-and-permissions.md](deploy-and-permissions.md) |
 | 2–3 | Decision tables, expression sets | [`decision-tables/SKILL.md`](../decision-tables/SKILL.md), [pricing-and-config-errors.md](pricing-and-config-errors.md) |
 | 5 (deploy_full) | Metadata deploy (force-app) | [deploy-and-permissions.md](deploy-and-permissions.md) |
-| 9–11 | Product/pricing data load | [data-loading.md](data-loading.md) |
-| 12 (prepare_docgen) | DocGen | [pricing-and-config-errors.md](pricing-and-config-errors.md) |
-| 13 (prepare_dro) | DRO data load | [data-loading.md](data-loading.md) |
-| 14–15 | Tax/billing data + activation | [data-loading.md](data-loading.md) |
-| 18 (prepare_rating) | Rating/rates data + activation | [pricing-and-config-errors.md](pricing-and-config-errors.md) |
+| 8–9 (prepare_product_data, prepare_pricing_data) | Product/pricing data load | [data-loading.md](data-loading.md) |
+| 10 (prepare_docgen) | DocGen | [pricing-and-config-errors.md](pricing-and-config-errors.md) |
+| 11 (prepare_dro) | DRO data load | [data-loading.md](data-loading.md) |
+| 12–13 (prepare_tax, prepare_billing) | Tax/billing data + activation | [data-loading.md](data-loading.md) |
+| 17 (prepare_rating) | Rating/rates data + activation | [pricing-and-config-errors.md](pricing-and-config-errors.md) |
 | *(post-build, runtime)* | Recording/rating usage, commitments, drawdown | [`usage-consumption/SKILL.md`](../usage-consumption/SKILL.md) |
-| 22 (prepare_prm) | PRM community + data | [deploy-and-permissions.md](deploy-and-permissions.md) |
-| 24 (prepare_constraints) | Constraints + CML import | [pricing-and-config-errors.md](pricing-and-config-errors.md) |
+| 21 (prepare_prm) | PRM community + data | [deploy-and-permissions.md](deploy-and-permissions.md) |
+| 23 (prepare_constraints) | Constraints + CML import | [pricing-and-config-errors.md](pricing-and-config-errors.md) |
 | 29 (prepare_ux) | UX assembly + deploy | [pricing-and-config-errors.md](pricing-and-config-errors.md) |
-| 30 | Decision table refresh | [`decision-tables/SKILL.md`](../decision-tables/SKILL.md) |
+| 32 (refresh_all_decision_tables) | Decision table refresh | [`decision-tables/SKILL.md`](../decision-tables/SKILL.md) |
 
 ## Sub-Files
 

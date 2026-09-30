@@ -1023,7 +1023,7 @@ Note: `name` takes the ODT **record Id** (0jI prefix), not the API Name.
 | Template locked for edits | Active status | Deactivate (`IsActive: false, Status: Draft`) first |
 | Specific token blank | Field not in Extract or Transform | Trace: is field queried? Is it mapped through both ODTs? |
 | Repeating section empty | Formula item missing or wrong ResultPath | Check formula at `OutputCreationSequence: 0` |
-| Formula produces no output | Unsupported function (FormulaConverted is null) | Check `FormulaConverted` field — if null, the function isn't supported. See Formula Function Catalog below |
+| Formula produces no output | Unsupported function (FormulaConverted is null) | Check `FormulaConverted` field — if null, the function isn't supported. See Formula Function Catalog above |
 | ODT Name rejected on create | Contains underscores or spaces | Use camelCase only — alphanumeric, no special chars |
 | More array entries than expected | Field mappings at mixed hierarchy depths | Run `docgen_odt_inspect_hierarchy.py` — all mappings for same output array must be at uniform depth |
 | Array is singleton (object, not list) | OutputFieldName at root level | Nest under parent: use `Root:ArrayName` not just `ArrayName` |

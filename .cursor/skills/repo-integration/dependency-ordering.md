@@ -9,9 +9,10 @@ control order):
 
 | Dir | Deploys | Why First |
 |-----|---------|-----------|
-| `1_objects/` | Custom fields | Fields must exist before PSGs/DTs that reference them |
+| `1_settings/` | Org settings (EmailTemplate, Order, Quote, RevenueManagement) | Features enabled before dependent metadata |
 | `2_settings/` | Org settings | Features must be enabled before metadata that uses them |
 | `3_permissionsetgroups/` | PSGs | PSG metadata deploys here; references PSLs from `force-app/` |
+| `4_tax/` | Tax adapter Apex classes (`RLM_*TaxService`, Avalara adapter) | Referenced by tax setup |
 | `5_decisiontables/` | Decision table definitions | Must exist before expression sets or flows reference them |
 
 ### Profile strip-and-build
@@ -34,9 +35,9 @@ paths are forceignored.
 | Depends On | Must Deploy First | Reason |
 |-----------|-------------------|--------|
 | Custom fields | `unpackaged/pre/` or `force-app` | Referenced by flows, LWC, Apex |
-| Expression sets | `force-app/expressionSetDefinition/` | Referenced by pricing/rating procedures |
+| Expression sets | `force-app/main/default/expressionSetDefinition/` | Referenced by pricing/rating procedures |
 | Decision tables | `unpackaged/pre/5_decisiontables/` | Referenced by pricing/rating flows |
-| Permission sets | `force-app/permissionsets/` | Must exist before assignment |
+| Permission sets | `force-app/main/default/permissionsets/` | Must exist before assignment |
 | Context definitions | Extended at runtime | Created by `extend_context_*` tasks |
 | Flexipages/compact layouts | `templates/` → `unpackaged/post_ux/` | Referenced by actionOverrides |
 

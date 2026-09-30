@@ -222,7 +222,7 @@ pandoc docs/enablement/260/260-salesforce-pricing-hands-on.md \
 
 This skill plus the contents of `docs/enablement/`, `docs/salesforce/`, and `datasets/sfdmu/qb/` are everything an agent needs to pick up the work mid-cycle on any workstation. Workflow:
 
-1. New session on any workstation: agent reads `AGENTS.md` → finds this skill in the index → reads this `SKILL.md` → reads the relevant per-release feature index.
+1. New session on any workstation: agent reads `AGENTS.md` → `.cursor/skills/README.md` finds this skill → reads this `SKILL.md` → reads the relevant per-release feature index.
 2. Agent inspects current state: `docs/enablement/coverage-matrix.md` and the `status:` field in each area file's frontmatter.
 3. Agent picks up next pending area or continues whatever was in progress.
 

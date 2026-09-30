@@ -49,7 +49,7 @@ touches `qb-rating`, `qb-rates`, or `qb-pricing` data.
 | `overrides_derived_from_base` | A non-base **Override tier value** that does not match its derived value — these are money and are converted, but were unchecked by the two rules above |
 | `period_ordering_descending` | `billing >= rating > accumulation` violated |
 | `counts_match_readme` | Plan README file-tree counts drifting from the CSVs |
-| `docs_state_the_real_count` | This page and `AGENTS.md` advertising a number of invariants that is no longer true — it counts itself, so adding a check means updating both |
+| `docs_state_the_real_count` | This page and the parent `SKILL.md` advertising a number of invariants that is no longer true — it counts itself, so adding a check means updating both |
 
 Retired at 264: `accumulation_refs_aligned` compared the accumulation policy named on
 `UsageResource` against the one named on ProductUsageResourcePolicy. Release 264 removed
