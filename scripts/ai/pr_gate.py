@@ -701,6 +701,7 @@ STDLIB_SUITES = [
     "tests/test_robot_sleep_ratchet.py",
     "tests/test_snapshot_dev_guide.py",
     "tests/test_snapshot_help.py",
+    "tests/test_test_health.py",
     "tests/test_validate_keys_targets.py",
     "tests/test_workflow_lint.py",
 ]
