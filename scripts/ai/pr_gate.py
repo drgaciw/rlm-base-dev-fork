@@ -441,7 +441,10 @@ CHECKS = [
                   ".zizmor.yml", "docs/guides/ci-runbook.md",
                   "AGENTS.md", "CLAUDE.md", "README.md", ".gitnexusrc",
                   # tests/test_coverage_ratchet.py asserts the committed floor file is well-formed.
-                  "coverage-floor.json"],
+                  "coverage-floor.json",
+                  # TP-10b: tests/test_check_help_corpus_text_artifacts.py asserts its glob still
+                  # matches the committed Help snapshot layout.
+                  "docs/salesforce/"],
         deps=[], gating=True,
     ),
     dict(
@@ -678,6 +681,8 @@ STDLIB_SUITES = [
     "tests/test_agent_launch_checks.py",
     "tests/test_agents_common.py",
     "tests/test_build_billing_ui_module.py",
+    "tests/test_bump_api_version.py",
+    "tests/test_check_help_corpus_text_artifacts.py",
     "tests/test_context_apply.py",
     "tests/test_context_delete.py",
     "tests/test_context_payload.py",
@@ -692,15 +697,19 @@ STDLIB_SUITES = [
     "tests/test_fix_scratch_identity.py",
     "tests/test_gitnexus_guard.py",
     "tests/test_post_process_extraction.py",
+    "tests/test_pr_review.py",
     "tests/test_protect_generated_hook.py",
     "tests/test_qb_multicurrency_data.py",
+    "tests/test_query_erd.py",
     "tests/test_renewal_bucket_planner.py",
     "tests/test_rlm_apex_file.py",
     "tests/test_rlm_robot_e2e.py",
     "tests/test_rlm_sf_cli.py",
     "tests/test_robot_sleep_ratchet.py",
+    "tests/test_skill_manifest.py",
     "tests/test_snapshot_dev_guide.py",
     "tests/test_snapshot_help.py",
+    "tests/test_validate_expression_set.py",
     "tests/test_validate_keys_targets.py",
     "tests/test_workflow_lint.py",
 ]

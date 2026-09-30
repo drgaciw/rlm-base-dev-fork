@@ -1,15 +1,15 @@
 {
   "_comment": "Per-package coverage floors (TP-10). scripts/lint/coverage_ratchet.py fails a PR whose measured coverage is below a floor, or that lowers a floor already on the base branch. Raising floors is a manual 'measure' then 'update' run, never automatic in CI. 'target' is the plan's goal (test-plan-2026-09.md 4.1) and does not gate.",
-  "reason": "Initial floors: Linux CI measured baseline (PR #26, run 36611881385: scripts/ai 56.89%, tasks 19.63%; branch mode, whole gate), rounded down to one decimal. To justify lowering a floor, add a line that starts with the marker documented in scripts/lint/coverage_ratchet.py, followed by the reason.",
+  "reason": "Initial floors: Linux CI measured baseline (PR #26, run 36611881385: scripts/ai 56.89%, tasks 19.63%; branch mode, whole gate), rounded down to one decimal. Raised at TP-10's merge to the measured scripts/ai 57.1 / tasks 22.7. TP-10b (tests for the untested gate scripts) raised scripts/ai to 81.5: a local lower-bound measurement on Windows without cumulusci/textual gave 82.29% (5 scripts that were at 0% now 95-100%, skill_manifest.py 97%); the floor is set below it as a margin and is to be raised to the Linux CI figure once the PR's coverage job reports it. tasks stays at the CI-measured 22.7 (a local run without cumulusci measures less and must not lower it). To justify lowering a floor, add a line that starts with the marker documented in scripts/lint/coverage_ratchet.py, followed by the reason.",
   "version": 1,
   "metric": "branch-combined",
   "packages": {
     "scripts/ai": {
-      "floor": 56.8,
+      "floor": 81.5,
       "target": 85.0
     },
     "tasks": {
-      "floor": 19.6,
+      "floor": 22.7,
       "target": 60.0
     }
   }
