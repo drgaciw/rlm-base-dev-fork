@@ -692,6 +692,7 @@ STDLIB_SUITES = [
     "tests/test_agent_launch_checks.py",
     "tests/test_agents_common.py",
     "tests/test_build_billing_ui_module.py",
+    "tests/test_ci_scripts.py",
     "tests/test_context_apply.py",
     "tests/test_context_delete.py",
     "tests/test_context_payload.py",

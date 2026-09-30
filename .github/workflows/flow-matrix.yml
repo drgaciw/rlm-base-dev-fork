@@ -176,83 +176,7 @@ jobs:
           OUTCOME_BUILD: ${{ steps.build.outcome }}
           OUTCOME_APEX: ${{ steps.apex.outcome }}
         run: |
-          python - <<'PY'
-          import glob
-          import os
-          import xml.etree.ElementTree as ET
-
-
-          def junit_counts(path):
-              total = failed = skipped = 0
-              for case in ET.parse(path).getroot().iter("testcase"):
-                  total += 1
-                  if case.find("failure") is not None or case.find("error") is not None:
-                      failed += 1
-                  elif case.find("skipped") is not None:
-                      skipped += 1
-              return total, failed, skipped
-
-
-          shape = os.environ["SHAPE"]
-          flags = (
-              "`pde=true`, `billing_ui=false` (runtime override by `scripts/build_pde_dev_r1.sh`)"
-              if shape == "tfid-pde"
-              else "committed defaults"
-          )
-          apex_counts = ("-", "-", "-")
-          files = glob.glob("test-results/apex/*.xml")
-          if files:
-              total = failed = skipped = 0
-              for f in files:
-                  try:
-                      t, fl, sk = junit_counts(f)
-                  except ET.ParseError:
-                      continue
-                  total, failed, skipped = total + t, failed + fl, skipped + sk
-              apex_counts = (total, failed, skipped)
-
-          stages = [
-              ("Validate setup", "OUTCOME_VALIDATE", ("-", "-", "-")),
-              ("Build (`prepare_rlm_org`)", "OUTCOME_BUILD", ("-", "-", "-")),
-              ("Apex tests (`run_tests`)", "OUTCOME_APEX", apex_counts),
-          ]
-          lines = [
-              f"## Flow matrix: {shape}",
-              "",
-              f"- Scratch alias: `{os.environ['ORG_ALIAS']}` (deleted at the end of the job)",
-              f"- Flags: {flags}",
-              "",
-              "| Stage | Outcome | Tests | Failed | Skipped |",
-              "|---|---|---|---|---|",
-          ]
-          failed_stages = []
-          not_run = []
-          for label, env, counts in stages:
-              outcome = os.environ.get(env, "") or "skipped"
-              if outcome == "skipped":
-                  not_run.append(label)
-              elif outcome != "success":
-                  failed_stages.append(label)
-              lines.append(f"| {label} | {outcome} | {counts[0]} | {counts[1]} | {counts[2]} |")
-          if failed_stages:
-              result = "FAIL: " + ", ".join(failed_stages)
-          elif not_run:
-              result = "INCOMPLETE (not run: " + ", ".join(not_run) + ")"
-          else:
-              result = "PASS"
-          lines += [
-              "",
-              f"Result: **{result}**",
-              "",
-              "No automatic retry: a failed stage is reported as failed.",
-          ]
-          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as fh:
-              fh.write("\n".join(lines) + "\n")
-          # Any stage that is not a success (failed or not run) fails the leg.
-          if failed_stages or not_run:
-              print("::error::Flow matrix leg " + shape + " not successful: " + result)
-              raise SystemExit(1)
-          PY
+          python scripts/ci/summary.py leg
 
       - name: Delete scratch org
         if: always()
@@ -272,9 +196,15 @@ jobs:
     timeout-minutes: 10
     permissions:
       actions: read # list this run's jobs through the Actions API to find the failed legs
-      contents: read # least-privilege default; the job never checks out the repository
+      contents: read # least-privilege default; the job checks out only scripts/ci (no credentials persisted)
       issues: write # open or comment on the "Flow matrix failure: <shape>" issue and create its label
     steps:
+      - name: Checkout summary scripts
+        uses: actions/checkout@v7
+        with:
+          sparse-checkout: scripts/ci
+          persist-credentials: false
+
       - name: Open or update failure issues
         env:
           GH_TOKEN: ${{ github.token }}
@@ -284,61 +214,4 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           SHA: ${{ github.sha }}
         run: |
-          python - <<'PY'
-          import json
-          import os
-          import re
-          import subprocess
-
-
-          def gh(*args, check=True):
-              return subprocess.run(
-                  ["gh", *args], check=check, capture_output=True, text=True, encoding="utf-8"
-              ).stdout
-
-
-          repo = os.environ["REPO"]
-          jobs_raw = gh(
-              "api", "--paginate",
-              f"repos/{repo}/actions/runs/{os.environ['RUN_ID']}/attempts/{os.environ['RUN_ATTEMPT']}/jobs",
-              "--jq", '.jobs[] | select(.name | startswith("flow-matrix ("))',
-          )
-          failed = []
-          for line in jobs_raw.splitlines():
-              job = json.loads(line)
-              m = re.fullmatch(r"flow-matrix \((.+)\)", job["name"])
-              if m and job.get("conclusion") in ("failure", "timed_out"):
-                  steps = [s["name"] for s in job.get("steps", []) if s.get("conclusion") == "failure"]
-                  failed.append((m.group(1), job.get("html_url", os.environ["RUN_URL"]), steps))
-
-          summary = ["## Flow matrix failures", ""]
-          if not failed:
-              summary.append("No failed legs found in the Actions API (nothing to report).")
-          gh("label", "create", "flow-matrix", "--repo", repo, "--color", "d93f0b",
-             "--description", "Weekly CCI flow-matrix failure", check=False)
-          for shape, url, steps in failed:
-              title = f"Flow matrix failure: {shape}"
-              body = (
-                  f"The weekly flow matrix leg for shape `{shape}` failed.\n\n"
-                  f"- Run: {os.environ['RUN_URL']} (attempt {os.environ['RUN_ATTEMPT']})\n"
-                  f"- Leg job: {url}\n"
-                  f"- Commit: {os.environ['SHA']}\n"
-                  f"- Failed step(s): {', '.join(steps) if steps else 'see the job log'}\n\n"
-                  "See the leg's job summary and the `flow-matrix-" + shape + "-*` artifact. "
-                  "No automatic retry was attempted."
-              )
-              existing = json.loads(gh(
-                  "issue", "list", "--repo", repo, "--state", "open", "--label", "flow-matrix",
-                  "--limit", "100", "--json", "number,title",
-              ) or "[]")
-              match = next((i["number"] for i in existing if i["title"] == title), None)
-              if match is not None:
-                  gh("issue", "comment", str(match), "--repo", repo, "--body", body)
-                  summary.append(f"- `{shape}`: commented on #{match}")
-              else:
-                  out = gh("issue", "create", "--repo", repo, "--title", title,
-                           "--label", "flow-matrix", "--body", body).strip()
-                  summary.append(f"- `{shape}`: opened {out}")
-          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as fh:
-              fh.write("\n".join(summary) + "\n")
-          PY
+          python scripts/ci/summary.py report
