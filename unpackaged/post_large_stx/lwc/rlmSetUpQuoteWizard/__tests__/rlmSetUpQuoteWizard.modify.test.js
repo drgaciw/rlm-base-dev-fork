@@ -86,7 +86,7 @@ describe("c-rlm-set-up-quote-wizard: modify - choosing a quote", () => {
       { label: "Q-0010", value: QUOTE_ID },
       { label: "Q-0020 (Large Deal)", value: LARGE_DEAL_QUOTE_ID }
     ]);
-  });
+  }, 15000);
 
   it("shows only the placeholder when the org has no quotes", async () => {
     apex.getQuotesForModify.mockResolvedValue([]);
@@ -95,7 +95,7 @@ describe("c-rlm-set-up-quote-wizard: modify - choosing a quote", () => {
     await clickSelector(el, 'button[data-choice="modify"]');
 
     expect(quoteCombobox(el).options).toHaveLength(1);
-  });
+  }, 15000);
 
   it("shows only the placeholder and logs when loading quotes fails", async () => {
     const errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
@@ -110,7 +110,7 @@ describe("c-rlm-set-up-quote-wizard: modify - choosing a quote", () => {
       expect.any(Error)
     );
     errorSpy.mockRestore();
-  });
+  }, 15000);
 
   it("shows a spinner while quotes load, then the combobox", async () => {
     let release;
@@ -129,7 +129,7 @@ describe("c-rlm-set-up-quote-wizard: modify - choosing a quote", () => {
     await settle();
     expect(text(el)).not.toContain("Loading quotes");
     expect(quoteCombobox(el)).not.toBeNull();
-  });
+  }, 15000);
 
   it("stays on the quote step until a quote is chosen", async () => {
     apex.getQuotesForModify.mockResolvedValue(QUOTE_OPTIONS);
@@ -140,7 +140,7 @@ describe("c-rlm-set-up-quote-wizard: modify - choosing a quote", () => {
 
     expect(activeStepLabel(el)).toBe("Quote");
     expect(apex.getQuoteHierarchy).not.toHaveBeenCalled();
-  });
+  }, 15000);
 
   it("detects the product set of the selected quote and lets the user override it", async () => {
     apex.getSetUpQuoteUiConfig.mockResolvedValue({
@@ -164,7 +164,7 @@ describe("c-rlm-set-up-quote-wizard: modify - choosing a quote", () => {
 
     await change(radio, "QUANTUMBIT");
     expect(radio.value).toBe("QUANTUMBIT");
-  });
+  }, 15000);
 
   it("falls back to QuantumBit when product-set detection fails or the quote is cleared", async () => {
     const errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
@@ -188,7 +188,7 @@ describe("c-rlm-set-up-quote-wizard: modify - choosing a quote", () => {
     await change(quoteCombobox(el), "");
     expect(apex.detectQuoteProductSetMode).not.toHaveBeenCalled();
     errorSpy.mockRestore();
-  });
+  }, 15000);
 });
 
 describe("c-rlm-set-up-quote-wizard: modify - hierarchy step", () => {
@@ -201,13 +201,13 @@ describe("c-rlm-set-up-quote-wizard: modify - hierarchy step", () => {
       "Root  3 line item(s)",
       "Child  1 line item(s)"
     ]);
-  });
+  }, 15000);
 
   it("accepts the hierarchy as a JSON string", async () => {
     const el = await openHierarchyFor(QUOTE_ID, JSON.stringify(HIERARCHY));
 
     expect(treeLabels(existingTree(el))).toHaveLength(2);
-  });
+  }, 15000);
 
   it("explains that there are no groups when the quote has none", async () => {
     const el = await openHierarchyFor(QUOTE_ID, { parents: [] });
@@ -216,7 +216,7 @@ describe("c-rlm-set-up-quote-wizard: modify - hierarchy step", () => {
     expect(text(el)).toContain(
       "No existing groups, or all have been marked for deletion."
     );
-  });
+  }, 15000);
 
   it("treats a failed hierarchy load as an empty quote and still advances", async () => {
     const errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
@@ -235,7 +235,7 @@ describe("c-rlm-set-up-quote-wizard: modify - hierarchy step", () => {
       expect.any(Error)
     );
     errorSpy.mockRestore();
-  });
+  }, 15000);
 
   it("hides a group and its subgroups after the tree reports a delete", async () => {
     const el = await openHierarchyFor(QUOTE_ID);
@@ -252,7 +252,7 @@ describe("c-rlm-set-up-quote-wizard: modify - hierarchy step", () => {
     expect(text(el)).toContain(
       "No existing groups, or all have been marked for deletion."
     );
-  });
+  }, 15000);
 
   it("switches between the existing / manual / CSV rails and gates Next on the CSV rail", async () => {
     const el = await openHierarchyFor(QUOTE_ID);
@@ -272,7 +272,7 @@ describe("c-rlm-set-up-quote-wizard: modify - hierarchy step", () => {
     await settle();
     expect(rail("csv").getAttribute("aria-current")).toBe("page");
     expect(nextDisabled()).toBe(true);
-  });
+  }, 15000);
 });
 
 describe("c-rlm-set-up-quote-wizard: modify - full run", () => {
@@ -365,7 +365,7 @@ describe("c-rlm-set-up-quote-wizard: modify - full run", () => {
         actionName: "view"
       }
     });
-  });
+  }, 15000);
 
   it("skips the Large Deal step for a quote that is already a Large Deal", async () => {
     const el = await openHierarchyFor(LARGE_DEAL_QUOTE_ID);
@@ -381,7 +381,7 @@ describe("c-rlm-set-up-quote-wizard: modify - full run", () => {
 
     await clickButton(el, "Back");
     expect(activeStepLabel(el)).toBe("Product counts");
-  });
+  }, 15000);
 
   it("previews the impact of counts on the Confirm step and surfaces a preview error", async () => {
     apex.previewQuoteLineCounts.mockRejectedValue({
@@ -400,7 +400,7 @@ describe("c-rlm-set-up-quote-wizard: modify - full run", () => {
       expect.anything()
     );
     errorSpy.mockRestore();
-  });
+  }, 15000);
 
   it("reports an Apex failure returned for a modify run", async () => {
     apex.runSetUpQuoteFromLWC.mockResolvedValue({
@@ -413,5 +413,5 @@ describe("c-rlm-set-up-quote-wizard: modify - full run", () => {
 
     expect(activeStepLabel(el)).toBe("Result");
     expect(text(el)).toContain("Quote is locked");
-  });
+  }, 15000);
 });

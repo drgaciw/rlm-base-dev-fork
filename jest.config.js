@@ -88,12 +88,18 @@ module.exports = {
     // never lowered. See docs/references/test-plan-2026-09.md (TP-07, TP-07b,
     // section 4.3).
     coverageThreshold: {
-        // Jest subtracts every per-path entry below from `global`, so
-        // `global` = the REMAINING 46 bundles only (measured
-        // 40.04/27.36/46.42/40.37, rounded down). The ALL-FILES figure is
-        // 60.91/47.93/64.45/62.59 (stmts/branches/fns/lines). Do NOT "fix"
-        // `global` to the all-files number: it would fail the gate. Each
-        // partition is ratcheted up from its own measured value.
+        // Two figures, deliberately labelled. Jest subtracts every per-path
+        // entry below from `global`, so:
+        //   - ALL-FILES measured (what the TP-07b acceptance criterion of
+        //     >= 40/30/45/40 is judged against): 60.91/47.93/64.45/62.59
+        //     (stmts/branches/fns/lines).
+        //   - REMAINING-BUNDLES measured (the 46 bundles without a per-path
+        //     entry; this is what `global` is checked against):
+        //     40.04/27.36/46.42/40.37, rounded down to 40/27/46/40. That is why
+        //     global.branches is 27, not 30 or 47.
+        // Do NOT "fix" `global` to the all-files number: it would fail the
+        // gate. Architect ruling A, 2026-09-29. Each partition is ratcheted up
+        // from its own measured value, never lowered.
         global: { statements: 40, branches: 27, functions: 46, lines: 40 },
         // Per-bundle floors (TP-07b): measured values rounded down, so a
         // regression concentrated in one of these bundles cannot hide in the

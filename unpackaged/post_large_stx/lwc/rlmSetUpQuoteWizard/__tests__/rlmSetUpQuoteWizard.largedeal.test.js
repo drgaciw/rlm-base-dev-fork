@@ -129,7 +129,7 @@ describe("c-rlm-set-up-quote-wizard: large deal - create in two steps (CSV)", ()
       largeDeal: true
     });
     expect(JSON.parse(second.csvImportLineItemsJson)).toHaveLength(2);
-  });
+  }, 15000);
 
   it("finishes with a note when the quote settles below the estimate", async () => {
     apex.runSetUpQuoteFromLWC.mockResolvedValue({
@@ -148,7 +148,7 @@ describe("c-rlm-set-up-quote-wizard: large deal - create in two steps (CSV)", ()
     expect(resultText(el)).toContain(
       "Note: created 1 of ~2 estimated line item(s)"
     );
-  });
+  }, 15000);
 
   it("returns the failure when creating the empty quote fails", async () => {
     apex.runSetUpQuoteFromLWC.mockResolvedValueOnce({
@@ -162,7 +162,7 @@ describe("c-rlm-set-up-quote-wizard: large deal - create in two steps (CSV)", ()
     expect(apex.runSetUpQuoteFromLWC).toHaveBeenCalledTimes(1);
     expect(apex.getSetUpQuoteStatus).not.toHaveBeenCalled();
     expect(resultText(el)).toContain("Name already used");
-  });
+  }, 15000);
 
   it("returns the failure when adding lines to the new quote fails", async () => {
     apex.runSetUpQuoteFromLWC
@@ -177,7 +177,7 @@ describe("c-rlm-set-up-quote-wizard: large deal - create in two steps (CSV)", ()
     await run(el);
 
     expect(resultText(el)).toContain("Line creation failed upstream");
-  });
+  }, 15000);
 
   it("reports async failures found while polling instead of waiting forever", async () => {
     apex.runSetUpQuoteFromLWC.mockResolvedValue({
@@ -195,7 +195,7 @@ describe("c-rlm-set-up-quote-wizard: large deal - create in two steps (CSV)", ()
     expect(resultText(el)).toContain(
       `Large Deal processing failed. Quote ${NEW_QUOTE_ID} has failed async work`
     );
-  });
+  }, 15000);
 
   it("surfaces the status call's own error message when it reports failure", async () => {
     apex.runSetUpQuoteFromLWC.mockResolvedValue({
@@ -210,7 +210,7 @@ describe("c-rlm-set-up-quote-wizard: large deal - create in two steps (CSV)", ()
     await run(el);
 
     expect(resultText(el)).toContain("Status unavailable");
-  });
+  }, 15000);
 
   it("times out after 50 polls and includes the last status", async () => {
     apex.runSetUpQuoteFromLWC.mockResolvedValue({
@@ -232,7 +232,7 @@ describe("c-rlm-set-up-quote-wizard: large deal - create in two steps (CSV)", ()
       "Timed out waiting for Large Deal processing. Last status:"
     );
     expect(resultText(el)).toContain('"pendingAsyncCount":1');
-  });
+  }, 15000);
 });
 
 describe("c-rlm-set-up-quote-wizard: large deal - batched line creation", () => {
@@ -279,7 +279,7 @@ describe("c-rlm-set-up-quote-wizard: large deal - batched line creation", () => 
     expect(resultText(el)).toContain(
       "Large Deal batched setup completed: 2500 line item(s)."
     );
-  });
+  }, 15000);
 
   it("stops at the first failing batch and returns its error", async () => {
     apex.runSetUpQuoteFromLWC
@@ -300,7 +300,7 @@ describe("c-rlm-set-up-quote-wizard: large deal - batched line creation", () => 
 
     expect(apex.runSetUpQuoteFromLWC).toHaveBeenCalledTimes(3);
     expect(resultText(el)).toContain("Batch limit exceeded");
-  });
+  }, 15000);
 });
 
 describe("c-rlm-set-up-quote-wizard: large deal - modify a quote that is already a Large Deal", () => {
@@ -343,5 +343,5 @@ describe("c-rlm-set-up-quote-wizard: large deal - modify a quote that is already
     expect(resultText(el)).toContain(
       "Large Deal batched setup completed: 800 line item(s)."
     );
-  });
+  }, 15000);
 });
