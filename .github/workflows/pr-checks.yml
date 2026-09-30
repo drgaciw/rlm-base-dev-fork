@@ -421,7 +421,7 @@ jobs:
         id: apex
         run: |
           set -euo pipefail
-          if grep -qE '\.(cls|trigger)$' changed_files.txt; then
+          if grep -qE '(\.(cls|trigger)$|^code-analyzer\.yml$|^config/code-analyzer-baseline\.json$|^scripts/lint/finding_baseline\.py$|^\.github/workflows/pr-checks\.yml$)' changed_files.txt; then
             echo "changed=true" >> "$GITHUB_OUTPUT"
           else
             echo "changed=false" >> "$GITHUB_OUTPUT"
@@ -550,7 +550,7 @@ jobs:
         run: |
           set -euo pipefail
           if git diff --name-only "${BASE_SHA}" "${HEAD_SHA}" \
-              | grep -E '^((force-app|unpackaged)/.*/lwc/|jest\.config\.js$|package(-lock)?\.json$|sfdx-project\.json$|\.github/workflows/pr-checks\.yml$)' \
+              | grep -E '^((force-app|unpackaged)/.*/lwc/|jest/|jest\.config\.js$|package(-lock)?\.json$|sfdx-project\.json$|\.github/workflows/pr-checks\.yml$)' \
               > /dev/null; then
             echo "run=true" >> "$GITHUB_OUTPUT"
           else

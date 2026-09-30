@@ -442,9 +442,10 @@ CHECKS = [
         triggers=["tasks/", "scripts/", "tests/", "datasets/", "cumulusci.yml",
                   "force-app/", "unpackaged/", "robot/",
                   ".agents/", ".claude/", ".cursor/", "docs/references/",
-                  # tests/test_finding_baseline.py pins the Apex gate (TP-06): the Lint step, its
-                  # Code Analyzer config and the committed baseline it compares against.
-                  ".github/workflows/pr-checks.yml", "code-analyzer.yml", "config/code-analyzer-baseline.json",
+                  # tests/test_finding_baseline.py pins the Apex gate (TP-06): the Lint step (in
+                  # .github/workflows/pr-checks.yml, selected by the .github/workflows/ prefix
+                  # below), its Code Analyzer config and the committed baseline it compares against.
+                  "code-analyzer.yml", "config/code-analyzer-baseline.json",
                   # tests/test_workflow_lint.py (TP-11) reads the Lint job's pins, the zizmor
                   # config and baseline, and the runbook that documents them.
                   ".github/workflows/", ".github/zizmor-baseline.json",
