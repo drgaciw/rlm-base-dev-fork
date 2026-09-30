@@ -245,7 +245,7 @@ jobs:
         env:
           SF_TEMP_SHOW_SECRETS: "true"
         run: |
-          cci org scratch "$SCRATCH_CONFIG" "$ORG_ALIAS" --default
+          cci org scratch "$SCRATCH_CONFIG" "$ORG_ALIAS" --default --days 1
 
       - name: Run prepare_rlm_org
         env:
@@ -536,4 +536,4 @@ jobs:
         env:
           SF_TEMP_SHOW_SECRETS: "true" # CCI reads org info to delete the scratch
         run: |
-          cci org scratch_delete "$ORG_ALIAS" || true
+          cci org scratch_delete "$ORG_ALIAS" || echo "::warning::Could not delete scratch org ${ORG_ALIAS} (it may never have been created); check the Dev Hub for a leaked org."

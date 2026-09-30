@@ -171,9 +171,9 @@ jobs:
             # The /build-pde path: provisions ORG_ALIAS from the tfid-pde shape, applies the
             # runtime-only overrides pde=true + billing_ui=false to cumulusci.yml, runs
             # prepare_rlm_org and restores cumulusci.yml on exit (scripts/build_pde_dev_r1.sh).
-            ORG="$ORG_ALIAS" SHAPE=tfid-pde FLOW=prepare_rlm_org scripts/build_pde_dev_r1.sh
+            ORG="$ORG_ALIAS" SHAPE=tfid-pde FLOW=prepare_rlm_org DAYS=1 scripts/build_pde_dev_r1.sh
           else
-            cci org scratch "$SHAPE" "$ORG_ALIAS"
+            cci org scratch "$SHAPE" "$ORG_ALIAS" --days 1
             cci flow run prepare_rlm_org --org "$ORG_ALIAS"
           fi
 

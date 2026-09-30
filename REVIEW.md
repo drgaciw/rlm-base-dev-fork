@@ -105,8 +105,9 @@ exactly one `timeout`?* `tests/test_rest_contracts.py` is the template; a new
 
 **`sf` argv that breaks on Windows.** `subprocess.run(["sf", ...])` with `shell=False`
 does not consult PATHEXT, so a bare `"sf"` raises `FileNotFoundError` where the CLI is
-`sf.cmd` (A-C2). Resolve the executable with `shutil.which("sf") or "sf"`
-(`tasks/rlm_sfdmu.py::_sf_executable`) and never reach for `shell=True`. A helper that
+`sf.cmd` (A-C2). Resolve the executable with `tasks/rlm_sf_cli.py::sf_executable`
+(import-order ratchet: `tests/test_rlm_sf_cli.py` `TestTasksImportOrder`) and never reach for
+`shell=True`. A helper that
 takes argv from its callers (`run_sf_json`) is not a fix point unless it resolves the
 executable itself. `tests/test_subprocess_contracts.py` pins the reference module and lists
 the modules still bare (`KNOWN_GAPS`, emptied by TP-13); a new bare `"sf"` fails it.

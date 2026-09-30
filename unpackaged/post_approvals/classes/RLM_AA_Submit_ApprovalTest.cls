@@ -1,10 +1,13 @@
 @isTest
 private class RLM_AA_Submit_ApprovalTest {
 
+    // Well-formed (valid checksum) Id that needs no DML; the hand-written 0Q0...AAA had a bad checksum.
+    private static final String RECORD_ID = String.valueOf(RLM_TestDataFactory.wellFormedId(Account.SObjectType, 1));
+
     private static RLM_AA_Submit_Approval.svcParameter params(String flowName) {
         RLM_AA_Submit_Approval.svcParameter p = new RLM_AA_Submit_Approval.svcParameter();
         p.flowName = flowName;
-        p.recordId = '0Q0000000000001AAA';
+        p.recordId = RECORD_ID;
         p.approvalLevel = 'Level1';
         p.comments = 'please approve';
         return p;
@@ -15,7 +18,7 @@ private class RLM_AA_Submit_ApprovalTest {
         RLM_AA_Submit_Approval.svcParameter p = params('Some_Flow');
 
         System.assertEquals('Some_Flow', p.flowName);
-        System.assertEquals('0Q0000000000001AAA', p.recordId);
+        System.assertEquals(RECORD_ID, p.recordId);
         System.assertEquals('Level1', p.approvalLevel);
         System.assertEquals('please approve', p.comments);
     }
