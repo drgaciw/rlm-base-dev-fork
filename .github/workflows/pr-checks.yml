@@ -317,7 +317,7 @@ jobs:
         id: workflows
         run: |
           set -euo pipefail
-          if grep -qE '^(\.github/workflows/.+\.ya?ml|\.zizmor\.yml|\.github/zizmor-baseline\.json|scripts/lint/finding_baseline\.py)$' changed_files.txt; then
+          if grep -qE '^(\.github/(workflows|actions)/.+\.ya?ml|\.zizmor\.yml|\.github/zizmor-baseline\.json|scripts/lint/finding_baseline\.py)$' changed_files.txt; then
             echo "changed=true" >> "$GITHUB_OUTPUT"
           else
             echo "changed=false" >> "$GITHUB_OUTPUT"
@@ -371,7 +371,7 @@ jobs:
           set -euo pipefail
           zizmor --version
           zizmor --pedantic --offline --config .zizmor.yml --no-exit-codes --format json \
-            .github/workflows/ > "${RUNNER_TEMP}/zizmor.json"
+            .github/workflows/ .github/actions/ > "${RUNNER_TEMP}/zizmor.json"
           python scripts/lint/finding_baseline.py --name zizmor-finding \
             --baseline .github/zizmor-baseline.json --format zizmor "${RUNNER_TEMP}/zizmor.json"
 
@@ -427,21 +427,30 @@ jobs:
             echo "changed=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Install Salesforce Code Analyzer
-        if: steps.apex.outputs.changed == 'true'
-        env:
-          # Exact pin. A new version can change rules and messages: bump it in its own PR and
-          # regenerate config/code-analyzer-baseline.json (procedure: the "Apex findings vs
-          # baseline" step below).
-          CODE_ANALYZER_VERSION: "5.16.0"
+      # A PR that changes the pinned toolchain (config/sf-cli, tool-versions.env, the action itself)
+      # installs it here even when no Apex changed, so a lockfile that no longer installs, or that
+      # disagrees with tool-versions.env, fails on the PR that caused it and not on the next
+      # nightly. Dependabot's npm PRs for /config/sf-cli land in exactly this case.
+      - name: Detect toolchain changes
+        id: toolchain
         run: |
           set -euo pipefail
-          # The sf CLI version is the repo-wide pin; Java comes from the runner image (17+ needed).
-          sf_version="$(grep -E '^SF_CLI_VERSION=' config/tool-versions.env | cut -d= -f2)"
-          npm install --global "@salesforce/cli@${sf_version}"
-          sf plugins install "code-analyzer@${CODE_ANALYZER_VERSION}"
-          sf --version
-          sf plugins | grep -E 'code-analyzer'
+          if grep -qE '^(config/sf-cli/|config/tool-versions\.env$|\.github/actions/setup-toolchain/)' changed_files.txt; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # The sf CLI and the Code Analyzer plugin come from the locked config/sf-cli install; both
+      # versions are pinned in config/tool-versions.env (bump the analyzer in its own PR and
+      # regenerate config/code-analyzer-baseline.json, procedure: the "Apex findings vs baseline"
+      # step below). Java comes from the runner image (17+ needed).
+      - name: Set up sf CLI and Code Analyzer
+        if: steps.apex.outputs.changed == 'true' || steps.toolchain.outputs.changed == 'true'
+        uses: ./.github/actions/setup-toolchain
+        with:
+          sf: "true"
+          code-analyzer: "true"
 
       - name: Apex Security/ErrorProne findings
         if: steps.apex.outputs.changed == 'true'

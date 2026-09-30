@@ -95,124 +95,16 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Load pinned tool versions
-        # $GITHUB_ENV requires every non-blank line to be NAME=VALUE — a
-        # straight `cat` of config/tool-versions.env fails on its first line
-        # (a `#` comment), so comments/blanks are filtered out first.
-        run: grep -E '^[A-Za-z_][A-Za-z0-9_]*=' config/tool-versions.env >> "$GITHUB_ENV"
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
+      - name: Set up toolchain
+        # Python + CumulusCI + Robot and the locked sf CLI / SFDMU install, all versions from
+        # config/tool-versions.env: .github/actions/setup-toolchain.
+        uses: ./.github/actions/setup-toolchain
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
-          cache: "pip"
-          cache-dependency-path: |
-            config/tool-versions.env
-            robot/requirements.txt
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v7
-        with:
-          # Pinned to an exact 24.x minor (config/tool-versions.env). node-version
-          # "24" floats to "latest 24.x", which moved 24.16.0 → 24.17.0; on 24.17.0
-          # the npm-installed sf CLI exits 13 on `sf org login` ("Detected
-          # unsettled top-level await" in the CLI entrypoint). 24.16.0 is the
-          # last-known-good — Prepare RLM Org succeeded on it 2026-06-11 (run
-          # 27314890121). Re-float once a newer 24.x or sf CLI release restores
-          # compatibility (tracked alongside check-cci-token-fix.yml).
-          node-version: ${{ env.NODE_VERSION }}
-
-      - name: Cache npm download cache
-        uses: actions/cache@v5
-        with:
-          path: ~/.npm
-          key: npm-cache-${{ runner.os }}-node24
-
-      - name: Install sf CLI and SFDMU plugin
-        run: |
-          # Versions pinned in config/tool-versions.env. sf CLI: 2.147.7 (was
-          # 2.127.2, pinned 2026-06) because the 264 build reaches
-          # `prepare_agents` → `sf agent activate`, part of the authoring-bundle
-          # path this release moved to; 2.127.2 predates that work and failed
-          # there while 2.147.7 completes the same flow locally. Keep this
-          # within one or two minors of what developers run, since the agent
-          # commands are moving.
-          npm install -g "@salesforce/cli@${SF_CLI_VERSION}"
-          yes | sf plugins install "sfdmu@${SFDMU_VERSION}"
-          sf --version
-          sf plugins
-
-      - name: Install CumulusCI and dependencies
-        run: |
-          python -m venv .venv
-          .venv/bin/pip install --upgrade pip "setuptools>=75.4,<77"
-          .venv/bin/pip install "cumulusci==${CUMULUSCI_VERSION}"
-          .venv/bin/pip install -r robot/requirements.txt
-          echo "$(pwd)/.venv/bin" >> $GITHUB_PATH
-          .venv/bin/cci version
-
-      # F2 guard (docs/references/test-plan-2026-09.md, TP-02). cumulusci==4.8.1 declares
-      # `selenium<4` and `robotframework-seleniumlibrary<6`; robot/requirements.txt needs
-      # selenium>=4.49 / SeleniumLibrary>=6.9. One resolve of both is ResolutionImpossible, so the
-      # step above installs them in two pip calls and the *final environment* is what matters. A
-      # "fix the pip warning" change that re-resolves them together would downgrade selenium to
-      # 3.x and break every Robot suite while this job's other steps still passed. This step fails
-      # on that, and on any pip-check finding beyond the two known CumulusCI conflicts.
-      - name: Assert robot stack overrides CumulusCI selenium pin
-        run: |
-          python - <<'PY'
-          import importlib.metadata as md
-          import re
-          import subprocess
-          import sys
-
-          import selenium
-          import SeleniumLibrary
-
-          selenium_version = selenium.__version__
-          selenium_library_version = SeleniumLibrary.__version__
-          print(f"selenium {selenium_version}, SeleniumLibrary {selenium_library_version}")
-          failures = []
-          if selenium_version.split(".")[0] != "4":
-              failures.append(f"selenium major must be 4, found {selenium_version} "
-                              "(CumulusCI's selenium<4 pin won the resolve)")
-          if tuple(int(part) for part in re.findall(r"\d+", selenium_library_version)[:3]) < (6, 9, 0):
-              failures.append(f"SeleniumLibrary must be >= 6.9.0, found {selenium_library_version}")
-          # The distribution metadata must agree with the imported modules, so a stale
-          # or shadowed copy on sys.path cannot satisfy the import check alone.
-          for dist, imported in (("selenium", selenium_version),
-                                 ("robotframework-seleniumlibrary", selenium_library_version)):
-              if md.version(dist) != imported:
-                  failures.append(f"{dist} metadata {md.version(dist)} != imported {imported}")
-
-          # The only conflicts pip check may report: the two CumulusCI 4.8.1 upper bounds the
-          # robot stack deliberately overrides. Anything else is a real broken requirement.
-          allowed = re.compile(
-              r"^cumulusci \S+ has requirement (selenium|robotframework-seleniumlibrary)<\d[\d.]*, "
-              r"but you have \1 \S+\.$")
-          check = subprocess.run([sys.executable, "-m", "pip", "check"],
-                                 capture_output=True, text=True, encoding="utf-8", check=False)
-          print(f"pip check (exit {check.returncode}):")
-          print(check.stdout.rstrip() or "(no output)")
-          if check.returncode != 0:
-              lines = [line.strip() for line in check.stdout.splitlines() if line.strip()]
-              unexpected = [line for line in lines if not allowed.match(line)]
-              if not lines:
-                  failures.append(f"pip check exited {check.returncode} with no output: "
-                                  f"{check.stderr!r}")
-              elif unexpected:
-                  failures.append("pip check reported conflicts beyond the allow-listed "
-                                  "CumulusCI selenium pins:\n  " + "\n  ".join(unexpected))
-
-          if failures:
-              for failure in failures:
-                  print(f"::error::{failure}")
-              sys.exit(1)
-          if check.returncode == 0:
-              print("::notice::CumulusCI no longer pins selenium<4 or SeleniumLibrary<6; "
-                    "drop this allow-list and the requirements-file comments (F2 resolved)")
-          print("robot stack OK: selenium 4.x and SeleniumLibrary >= 6.9 with only the known CumulusCI conflicts")
-          PY
+          python: "true"
+          cci: "true"
+          robot: "true"
+          sf: "true"
+          sfdmu: "true"
 
       - name: Verify environment
         run: |
