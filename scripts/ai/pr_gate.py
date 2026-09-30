@@ -449,6 +449,9 @@ CHECKS = [
                   # config and baseline, and the runbook that documents them.
                   ".github/workflows/", ".github/zizmor-baseline.json",
                   ".zizmor.yml", "docs/guides/ci-runbook.md",
+                  # TP-14: the setup-toolchain action (test_workflow_lint.py baselines findings in
+                  # it) and the CODE_ANALYZER_VERSION pin that test_finding_baseline.py asserts.
+                  ".github/actions/", "config/tool-versions.env",
                   "AGENTS.md", "CLAUDE.md", "README.md", ".gitnexusrc",
                   # tests/test_coverage_ratchet.py asserts the committed floor file is well-formed.
                   "coverage-floor.json"],
