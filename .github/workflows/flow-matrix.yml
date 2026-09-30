@@ -58,6 +58,7 @@ env:
 
 jobs:
   plan:
+    name: Plan shapes
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -292,14 +293,15 @@ jobs:
     # Opens (or comments on) one issue per failed shape. Separate job on purpose: it holds
     # issues: write but never sees the devhub environment or its secrets. Only real
     # failures report; a manually cancelled run does not open issues.
+    name: Report failed shapes
     needs: [plan, flow-matrix]
     if: ${{ always() && needs.flow-matrix.result == 'failure' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
-      actions: read
-      contents: read
-      issues: write
+      actions: read # list this run's jobs through the Actions API to find the failed legs
+      contents: read # least-privilege default; the job never checks out the repository
+      issues: write # open or comment on the "Flow matrix failure: <shape>" issue and create its label
     steps:
       - name: Open or update failure issues
         env:

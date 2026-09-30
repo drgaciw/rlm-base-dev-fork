@@ -94,6 +94,26 @@ extend-select = ["PLW1514"]
 "tests/txn_data_harness/conftest.py" = ["E402"]
 "tests/txn_data_harness/test_product_currency.py" = ["E702"]
 
+[tool.coverage.run]
+# TP-10 (docs/references/test-plan-2026-09.md section 4.1): branch coverage over the T1+T2 Python
+# suites, measured by running the whole gate under coverage. `pr_gate.py` starts every suite as a
+# `python tests/x.py` / `python -m pytest` child process, so `patch = ["subprocess"]` (coverage
+# 7.10+) is what makes those children count; `parallel` gives each process its own data file for
+# `coverage combine`. `source` lists exactly the two packages that carry a floor in
+# coverage-floor.json, so a never-imported module reports 0% instead of vanishing.
+# scripts/lint/coverage_ratchet.py is the only reader of the result.
+branch = true
+parallel = true
+# Under coverage/, already gitignored for the LWC Jest reports, so a local run leaves the tree clean.
+data_file = "coverage/.coverage"
+relative_files = true
+source = ["scripts/ai", "tasks"]
+patch = ["subprocess"]
+
+[tool.coverage.report]
+show_missing = false
+skip_empty = true
+
 [tool.build_harness]
 # Harness/TUI uses enum.StrEnum (Python 3.11+).
 requires_python = ">=3.11"

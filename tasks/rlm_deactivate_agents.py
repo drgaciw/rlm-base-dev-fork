@@ -22,12 +22,14 @@ rather than a failure.
 """
 from pathlib import Path
 
+# Before the CCI try/except: see the same-package import note in tasks/rlm_sfdmu.py.
+from tasks.rlm_agents_common import discover_agent_bundles, run_sf_json
+
 try:
     from cumulusci.tasks.salesforce import BaseSalesforceTask
 except ImportError:
     BaseSalesforceTask = object
 
-from tasks.rlm_agents_common import discover_agent_bundles, run_sf_json
 
 DEFAULT_BUNDLES_PATH = "unpackaged/post_agents/aiAuthoringBundles"
 

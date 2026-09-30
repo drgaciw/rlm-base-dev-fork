@@ -432,7 +432,16 @@ CHECKS = [
         triggers=["tasks/", "scripts/", "tests/", "datasets/", "cumulusci.yml",
                   "force-app/", "unpackaged/", "robot/",
                   ".agents/", ".claude/", ".cursor/", "docs/references/",
-                  "AGENTS.md", "CLAUDE.md", "README.md", ".gitnexusrc"],
+                  # tests/test_finding_baseline.py pins the Apex gate (TP-06): the Lint step, its
+                  # Code Analyzer config and the committed baseline it compares against.
+                  ".github/workflows/pr-checks.yml", "code-analyzer.yml", "config/code-analyzer-baseline.json",
+                  # tests/test_workflow_lint.py (TP-11) reads the Lint job's pins, the zizmor
+                  # config and baseline, and the runbook that documents them.
+                  ".github/workflows/", ".github/zizmor-baseline.json",
+                  ".zizmor.yml", "docs/guides/ci-runbook.md",
+                  "AGENTS.md", "CLAUDE.md", "README.md", ".gitnexusrc",
+                  # tests/test_coverage_ratchet.py asserts the committed floor file is well-formed.
+                  "coverage-floor.json"],
         deps=[], gating=True,
     ),
     dict(
@@ -674,6 +683,7 @@ STDLIB_SUITES = [
     "tests/test_context_payload.py",
     "tests/test_context_plan_validator.py",
     "tests/test_context_runtime.py",
+    "tests/test_coverage_ratchet.py",
     "tests/test_decision_tables_client.py",
     "tests/test_decision_tables_toolkit.py",
     "tests/test_df_workshop_replay.py",
@@ -687,10 +697,12 @@ STDLIB_SUITES = [
     "tests/test_renewal_bucket_planner.py",
     "tests/test_rlm_apex_file.py",
     "tests/test_rlm_robot_e2e.py",
+    "tests/test_rlm_sf_cli.py",
     "tests/test_robot_sleep_ratchet.py",
     "tests/test_snapshot_dev_guide.py",
     "tests/test_snapshot_help.py",
     "tests/test_validate_keys_targets.py",
+    "tests/test_workflow_lint.py",
 ]
 
 # Offline like the list above, but they reach a `tasks/` module that imports `requests`, so the

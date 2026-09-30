@@ -11,6 +11,8 @@ and the other checked ``result.success``.
 import json
 import subprocess
 
+from tasks.rlm_sf_cli import sf_executable
+
 try:
     from cumulusci.core.exceptions import CommandException
 except ImportError:
@@ -77,7 +79,13 @@ def run_sf_json(cmd, *, timeout, label, cwd=None):
     message so the failure is diagnosable rather than silently swallowed.
 
     ``label`` is the human-readable command name used in log/error messages.
+
+    A literal ``"sf"`` in ``cmd[0]`` is resolved here via ``sf_executable()`` so
+    callers stay Windows-safe (``sf.cmd``) without each repeating the lookup;
+    ``cmd`` itself is not mutated.
     """
+    if cmd and cmd[0] == "sf":
+        cmd = [sf_executable(), *cmd[1:]]
     try:
         result = subprocess.run(
             cmd,
