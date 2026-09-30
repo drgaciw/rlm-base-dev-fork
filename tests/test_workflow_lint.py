@@ -41,9 +41,9 @@ def test_baseline_file():
     check("committed zizmor baseline is sorted and free of duplicates", keys == sorted(set(keys)))
     check("every entry has a count >= 1 and a reason",
           all(isinstance(e["count"], int) and e["count"] >= 1 and e["reason"].strip() for e in entries))
-    check("every baselined file exists under .github/workflows",
-          all(e["file"].startswith(".github/workflows/") and (REPO_ROOT / e["file"]).is_file()
-              for e in entries))
+    check("every baselined file exists under .github/workflows or .github/actions",
+          all(e["file"].startswith((".github/workflows/", ".github/actions/"))
+              and (REPO_ROOT / e["file"]).is_file() for e in entries))
     check("every excessive-permissions and adhoc-packages entry is labelled SECURITY in its reason",
           all("SECURITY" in e["reason"] for e in entries
               if e["rule"] in ("excessive-permissions", "adhoc-packages")))

@@ -103,44 +103,16 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Load pinned tool versions
-        run: grep -E '^[A-Za-z_][A-Za-z0-9_]*=' config/tool-versions.env >> "$GITHUB_ENV"
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
+      - name: Set up toolchain
+        # Python + CumulusCI + Robot and the locked sf CLI / SFDMU install, all versions from
+        # config/tool-versions.env: .github/actions/setup-toolchain.
+        uses: ./.github/actions/setup-toolchain
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
-          cache: "pip"
-          cache-dependency-path: |
-            config/tool-versions.env
-            robot/requirements.txt
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v7
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-
-      - name: Cache npm download cache
-        uses: actions/cache@v5
-        with:
-          path: ~/.npm
-          key: npm-cache-${{ runner.os }}-node24
-
-      - name: Install sf CLI and SFDMU plugin
-        run: |
-          npm install -g "@salesforce/cli@${SF_CLI_VERSION}"
-          yes | sf plugins install "sfdmu@${SFDMU_VERSION}"
-          sf --version
-          sf plugins
-
-      - name: Install CumulusCI and dependencies
-        run: |
-          python -m venv .venv
-          .venv/bin/pip install --upgrade pip "setuptools>=75.4,<77"
-          .venv/bin/pip install "cumulusci==${CUMULUSCI_VERSION}"
-          .venv/bin/pip install -r robot/requirements.txt
-          echo "$(pwd)/.venv/bin" >> "$GITHUB_PATH"
-          .venv/bin/cci version
+          python: "true"
+          cci: "true"
+          robot: "true"
+          sf: "true"
+          sfdmu: "true"
 
       - name: Validate setup
         id: validate_setup

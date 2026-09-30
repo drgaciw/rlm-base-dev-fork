@@ -4,8 +4,12 @@ updates:
   # commit SHA (see config/tool-versions.env and the workflow files for the
   # `# vX.Y.Z` comment convention) still get PRs here — Dependabot bumps the
   # SHA and updates the trailing version comment.
+  # The local composite action's own `uses:` (.github/actions/setup-toolchain) is
+  # covered by the second directory.
   - package-ecosystem: "github-actions"
-    directory: "/"
+    directories:
+      - "/"
+      - "/.github/actions/*"
     schedule:
       interval: "weekly"
 
@@ -15,7 +19,7 @@ updates:
   # declares no [project] dependencies on purpose (see its header comment),
   # so a "/" directory entry here would be a no-op. ruff's pin
   # (.github/workflows/pr-checks.yml, .pre-commit-config.yaml) and
-  # CumulusCI/sf CLI/SFDMU (config/tool-versions.env) are bumped manually.
+  # CumulusCI (config/tool-versions.env) is bumped manually.
   - package-ecosystem: "pip"
     directory: "/robot"
     schedule:
@@ -24,5 +28,16 @@ updates:
   # LWC toolchain (package.json: eslint, prettier, sfdx-lwc-jest).
   - package-ecosystem: "npm"
     directory: "/"
+    schedule:
+      interval: "weekly"
+
+  # CI's locked Salesforce CLI toolchain (config/sf-cli: @salesforce/cli, sfdmu,
+  # @salesforce/plugin-code-analyzer), installed with `npm ci` by
+  # .github/actions/setup-toolchain. A bump here also needs the matching pin in
+  # config/tool-versions.env (SF_CLI_VERSION / SFDMU_VERSION / CODE_ANALYZER_VERSION):
+  # the action fails on any disagreement, so push that one-line change to the
+  # Dependabot branch. See "CI toolchain" in docs/guides/ci-runbook.md.
+  - package-ecosystem: "npm"
+    directory: "/config/sf-cli"
     schedule:
       interval: "weekly"
