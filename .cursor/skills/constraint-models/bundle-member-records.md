@@ -51,11 +51,11 @@ apply.
 SFDMU plan's PRC rows:
 
 1. **Legacy Id → composite key**, built from the **constraint dir's own**
-   `ProductRelatedComponent.csv` (`tasks/rlm_cml.py:842-854`), as
+   `ProductRelatedComponent.csv` (`_build_legacy_maps` in `tasks/rlm_cml.py`), as
    `ParentProduct.Name | ChildProduct.Name | ChildProductClassification.Name |
    ProductRelationshipType.Name | Sequence`.
 2. **Composite key → real Id**, matched against `ProductRelatedComponent` records
-   **queried from the target org** (`tasks/rlm_cml.py:868-892`).
+   **queried from the target org** (`_resolve_prc_composite_map` in `tasks/rlm_cml.py`).
 
 `dataset_dirs` contributes only candidate *names* — products, classifications and PRC
 parents — and those merely scope the org lookups, here as

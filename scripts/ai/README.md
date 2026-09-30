@@ -341,7 +341,7 @@ at either place, dropping `stacked` from the failure condition, disabling the
 containment or fork guard, and either removing the fetch or letting it fail
 silently each fail the suite.
 
-**Used by:** `AGENTS.md` §"Merges and unintended diffs",
+**Used by:** `.cursor/skills/audit-review/merge-and-review-procedures.md` §"Merges and unintended diffs",
 `.cursor/skills/audit-review/SKILL.md` §"Step −1"
 
 ### `pr_gate.py`
@@ -608,7 +608,7 @@ machine where six of the thirty-four (`doc_build_steps`, `extend_stdctx_recovery
 blocked on optional dependencies and so contribute nothing, which is worth naming rather than
 leaving the reader to assume all thirty-four ran: with those installed the number is higher.
 
-Verified by `tests/test_pr_gate.py` (779 checks, throwaway repos, no network — hermetic for all but
+Verified by `tests/test_pr_gate.py` (780 checks, throwaway repos, no network — hermetic for all but
 one, the fixture that runs the real gate and so selects the real `skill_manifest` check, which
 resolves sibling repos by absolute path and therefore fails in a detached worktree), which
 drives the verdict rather than the helpers. Every mutation below is confirmed to fail the

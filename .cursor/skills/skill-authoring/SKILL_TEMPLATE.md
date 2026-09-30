@@ -70,5 +70,5 @@ python scripts/ai/analyze_agent_tooling.py check
 Also see `doc-consistency/SKILL.md` for the change-surface map, and
 `skill-authoring/SKILL.md` § "Registration Checklist" for where a *new*
 top-level skill or sub-file must be registered (`.cursor/skills/README.md`,
-`AGENTS.md`, native discovery links via `scripts/ai/link_skills.py --fix`,
+native discovery links via `scripts/ai/link_skills.py --fix`,
 and `.claude/skill-manifest.yml` if cross-repo/PMOS discoverable).

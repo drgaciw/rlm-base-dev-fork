@@ -63,6 +63,8 @@ edits and resource files with no behavioral change. When you cannot run a live
 org, state that explicitly and mark the change **unverified** (PR label
 `blocked: needs-live-verification`) — never present a dryrun as verification.
 
+Without a local org, a same-repo PR can get a live run by applying the `ci:prepare-org` label: it builds a scratch org and runs the Robot setup-verify and e2e stages (`.github/workflows/prepare-rlm-org.yml`). A green run there counts as live verification.
+
 ---
 
 ## Two Purposes: Setup vs E2E
@@ -71,7 +73,7 @@ org, state that explicitly and mark the change **unverified** (PR label
 |--------|------------|-----------|
 | Location | `tests/setup/` | `tests/e2e/` |
 | Purpose | Configure org settings (no API equivalent) | Validate business workflows |
-| When they run | Mid-flow in `prepare_rlm_org` | On demand after provisioning |
+| When they run | Mid-flow in `prepare_rlm_org` | On demand, plus nightly / `ci:prepare-org` label / dispatch in `prepare-rlm-org.yml` (one rerun of failures; pass-after-rerun is reported flaky) |
 | Idempotent? | Yes — detects state before toggling | Yes — resets account first |
 | Headed? | Headless by default | Headless default, headed for debug |
 | Asserts logic? | No — only asserts control was set | Yes — verifies records/assets |
@@ -111,10 +113,8 @@ not to copy generic Selenium), read
 
 ### Running tests
 
-⚠ **`robot_e2e` and `robot_e2e_debug` REJECT `--org`** (`Error: No such option: --org`,
-issue #320). They run against the **CCI default org** — set it first with
-`cci org default <alias>`. Verified 2026-07-28; the previous version of this block showed
-`--org beta` on all three lines, none of which could ever have run.
+⚠ **`robot_e2e` and `robot_e2e_debug` reject `--org`** (`Error: No such option: --org`).
+They run against the **CCI default org** — set it first with `cci org default <alias>`.
 
 ⚠ Their **feature flags come from `cumulusci.yml` defaults, not from the org** — a TSO org
 still gets `TSO:false`. Only `QB` is consumed by the suites today.
@@ -125,6 +125,8 @@ cci task run robot_e2e                                   # headless
 cci task run robot_e2e_debug                             # headed + CDP port 9222
 cci task run robot_e2e_debug -o pause_for_recording true  # with pauses
 ```
+
+**Quarantine:** a repeat-flaky test is tagged `flaky` **and** registered in `robot/QUARANTINE.md` in the same PR (owner, issue, root-cause label, `expires` ≤ 14 days). `tests/test_rlm_robot_e2e.py` fails a tag without a row or a row without a tag. Tagged tests run in the non-blocking quarantine step.
 
 ---
 

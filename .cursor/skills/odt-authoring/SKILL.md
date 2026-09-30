@@ -78,28 +78,10 @@ python scripts/docgen/docgen_odt_inspect_hierarchy.py RLMQuoteProposalExtract --
 
 ## Examples
 
-### Minimal Extract ODT (2 objects, 1 field mapping each)
+### Minimal Extract ODT spec
 
-```json
-{
-  "name": "MyExtract",
-  "type": "Extract",
-  "items": [
-    {
-      "type": "object_query",
-      "inputObjectName": "Quote",
-      "inputObjectQuerySequence": 1,
-      "outputFieldName": "Quote",
-      "outputObjectName": "Quote",
-      "inputFieldName": "Id",
-      "filterGroup": "Id = ':recordId'"
-    },
-    {
-      "type": "field_mapping",
-      "inputFieldName": "Quote:Name",
-      "outputFieldName": "QuoteName",
-      "outputObjectName": "Quote"
-    }
-  ]
-}
+Generate the canonical starter spec rather than hand-writing one — it is the format `docgen_odt_create.py` reads:
+
+```bash
+python scripts/docgen/docgen_odt_create.py --example extract > my_extract_spec.json
 ```

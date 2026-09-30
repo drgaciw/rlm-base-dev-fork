@@ -11,7 +11,7 @@
 | `RateAdjustmentByTier` | Tiered adjustment on a rate card entry | RateCardEntryId, ProductId, ProductSellingModelId, RateCardId, LowerBound, UpperBound |
 | `RateAdjustmentByAttribute` | Attribute-based adjustment on a rate card entry | RateCardEntryId, RateCardId |
 | `PriceBookRateCard` | Junction: PriceBook ↔ RateCard | PriceBookId, RateCardId, RateCardType |
-| `RatingFrequencyPolicy` | Controls rating frequency per product/resource | RatingPeriod, ProductId, UsageResourceId |
+| `RatingFrequencyPolicy` | Rating frequency; bound to a product/resource via `ProductUsageResourcePolicy.RatingFrequencyPolicyId` (its own ProductId/UsageResourceId were removed in 264) | RatingPeriod, RatingDelayDuration |
 
 ## Supporting Objects
 

@@ -134,7 +134,7 @@ images and substitutes the placeholder markers with real Slack file IDs.
    - Per-bundle SKU lists
    - Pricing-feature wiring (Software Maintenance derivation, API quantity
      auto-add, etc.)
-   - Constraint models (QuantumBitComplete, Server2)
+   - Constraint models (active: QuantumBitBundle, Server2)
 3a. **Read `.agents/artifacts/qb-canvas-{prior_release}-source.md`** — extract
     the 6-persona inventory (name + role + bio). This is intentionally a
     second source today; see Quick Rule 4 for the migration note. If the
@@ -165,7 +165,7 @@ images and substitutes the placeholder markers with real Slack file IDs.
 
 ## Section reference (the canonical demo flow)
 
-The canvas covers 10 main sections. Generation must keep them in this order:
+The canvas covers 11 main sections. Generation must keep them in this order:
 
 | # | Section | Source | Talk-track persona |
 |---|---|---|---|
@@ -217,7 +217,7 @@ backs up the prior file to `.bak.{timestamp}` first).
 
 ## Cross-repo consumption (Phase 6.3+ — **OPT-IN, not active today**)
 
-> **Today (2026-05-24):** This skill does NOT invoke PMOS. PMOS is read-only
+> This skill does NOT invoke PMOS. PMOS is read-only
 > from the Foundations side and the cross-repo manifest exists only in
 > Foundations. PMOS adoption is Sandy's call (see
 > `.agents/artifacts/pmos-side-manifest-draft.md` for the proposal handed to

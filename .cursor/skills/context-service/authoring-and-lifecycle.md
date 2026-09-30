@@ -43,9 +43,7 @@ one nearly every additive plan in this repo targets:
 ### Which do I add?
 
 - **New value on an entity that is already a node → add an *attribute* (+ tag +
-  mapping).** This is the overwhelmingly common case. Example: the **RampMode**
-  plan adds `RampMode__c` to the *existing* `SalesTransactionItem` node — **no new
-  node**. You almost never add a node to Sales Transaction; its entity hierarchy
+  mapping).** This is the overwhelmingly common case. Example: the **ConstraintEngineNodeStatus** plan adds `ConstraintEngineNodeStatus__c` to the *existing* `SalesTransactionItem` node — **no new node**. You almost never add a node to Sales Transaction; its entity hierarchy
   already models the whole quote/order/agreement/asset/contract surface.
 - **New entity / hierarchy level not yet modeled → add a *node*** (nested via
   `parentNodeName` for a child), **then** its attributes + tags + node/attribute
@@ -55,9 +53,7 @@ one nearly every additive plan in this repo targets:
 - **Make an existing attribute referenceable by an engine → add a *tag*** on it.
   An untagged attribute is invisible to expression sets / docgen.
 - **Populate an attribute from org data → add a *mapping rule*** — **one per lens
-  (mapping) you want it hydrated in.** RampMode adds `RampMode__c` twice: to
-  `QuoteEntitiesMapping` → `QuoteLineItem.RLM_RampMode__c` **and** to
-  `OrderEntitiesMapping` → `OrderItem.RLM_RampMode__c`. Same attribute, two
+  (mapping) you want it hydrated in.** ConstraintEngineNodeStatus adds `ConstraintEngineNodeStatus__c` twice: to `QuoteEntitiesMapping` → `QuoteLineItem.RLM_ConstraintEngineNodeStatus__c` **and** to `OrderEntitiesMapping` → `OrderItem.RLM_ConstraintEngineNodeStatus__c`. Same attribute, two
   lenses, because a quote line and an order line are different SObjects.
 
 ### Combinations — what yields *working* functionality
@@ -70,7 +66,7 @@ The blocks are independent, so a partial combo is the usual reason a change
 | Attribute only | Inert — declared, but never hydrated and not referenceable |
 | Attribute + mapping, **no tag** | Hydrated into the cache but **unreachable** by the expression set (no name to bind) |
 | Attribute + tag, **no mapping** | Referenceable but **never populated** from data (runtime-input only) |
-| **Attribute + tag + mapping (× each lens)** | ✅ Working recipe for *"surface a new field to pricing / docgen"* — what **RampMode** does |
+| **Attribute + tag + mapping (× each lens)** | ✅ Working recipe for *"surface a new field to pricing / docgen"* — what **ConstraintEngineNodeStatus** does |
 | **Node + its attributes + tags + node-mapping + attribute-mappings** | ✅ Working recipe for *"model a new (child) entity"* — what **DocGen's `Line`** does |
 
 **On the parent-child linkage:** the node **hierarchy** itself lives in Layer 1
@@ -99,7 +95,7 @@ Management, Rating Discovery, Contracts, Contracts Extraction. Three do **not**
 set the flag and will hard-fail if their base is missing:
 `extend_context_sales_transaction` and `extend_context_product_discovery` (both
 foundational — always present, so the flag is unnecessary) and
-`extend_context_asset` (`cumulusci.yml:698`). The Asset omission is an
+`extend_context_asset`. The Asset omission is an
 **asymmetry**: Asset availability varies by edition, so if an Asset extend fails
 on a lean edition, that is the likely cause — add `allow_skip_if_unavailable:
 true` there to match the others, or gate the task with a `when:` edition guard.
@@ -112,11 +108,11 @@ The typical order when standing up context configuration on an org:
 
 1. **`extend_context_*`** (live, Connect/SObject REST) — establish the extended
    layer on each standard base first. Run via the **`extend_context_definitions`**
-   flow (`cumulusci.yml:3794`).
+   flow (`extend_context_definitions` in `cumulusci.yml`).
 2. **`apply_context_*` / `manage_context_definition`** (live) — apply this repo's
    additive plans (attributes, mappings, tags, traversal hydration) onto those
-   bases. These are standalone tasks, not currently bundled into a flow.
-3. **`deploy_context_definitions`** (MDAPI, `cumulusci.yml:925`) — deploy the
+   bases. These run inside their feature flows (`prepare_docgen`, `prepare_billing`, `prepare_prm`, `deploy_post_prm_pricing`, `prepare_constraints`) and can also be run standalone.
+3. **`deploy_context_definitions`** (MDAPI task in `cumulusci.yml`) — deploy the
    file-based `.contextDefinition` metadata under
    `force-app/main/default/contextDefinitions/`. Also a **standalone task**, not
    in a flow. Note: activation state and default-mapping designation are **not

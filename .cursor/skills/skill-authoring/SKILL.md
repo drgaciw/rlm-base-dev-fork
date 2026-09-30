@@ -20,9 +20,8 @@ agent that can read repository files.
 1. **Prefer a skill for detailed, repeatable procedure** — create or update a
    skill when the guidance is task-specific, multi-step, example-heavy, or only
    relevant after an agent has chosen that task.
-2. **Keep `AGENTS.md` for universal routing and safety** — update `AGENTS.md`
-   when every agent must see the rule before selecting a skill, or when adding a
-   skill/sub-file to the repository-wide index.
+2. **Keep `AGENTS.md` for universal safety and project-wide conventions** — update it
+   only when every agent must see a rule before selecting a skill.
 3. **New top-level skills should include** Quick Rules, DO NOT, Entry Conditions,
    Examples, and Validation Checks sections. Quick Rules is present in every
    skill today and DO NOT in most; existing skills are migrated to add Entry
@@ -31,7 +30,7 @@ agent that can read repository files.
    context bloat, has variant-specific detail, or contains references that only
    some tasks need.
 5. **Register new skills everywhere agents discover them** — update
-   `.cursor/skills/README.md`, `AGENTS.md`, and `.claude/skill-manifest.yml`;
+   `.cursor/skills/README.md` (Skill Router) and `.claude/skill-manifest.yml`;
    add matching directory links in `.agents/skills/` and `.claude/skills/`;
    update `.github/copilot-instructions.md` only when Copilot's entry-point
    guidance changes.
@@ -145,9 +144,6 @@ skill, including:
 
 - Safety-critical DO NOT rules.
 - Repository-wide conventions.
-- Skill router entries for new top-level skills.
-- Skill sub-file discovery rows for broadly useful sub-files.
-- File-specific rule inventory updates.
 - Entry-point changes that affect all tools.
 
 ### Update an existing skill instead of creating a new one when it fits
@@ -320,8 +316,8 @@ Do **not** update `AGENTS.md` for a new sub-file (the parent `SKILL.md` owns
 that) or a new Cursor rule (`.cursor/skills/README.md` owns that).
 
 Keep `AGENTS.md` concise. It routes agents and defines global rules; detailed
-procedures belong in owning skills. This repository's working ceiling is
-**25,000 bytes**, measured with `wc -c AGENTS.md`. This is a repository target,
+procedures belong in owning skills. This repository's ceiling is
+**12,288 bytes** (`AGENTS_MAX_BYTES` in `scripts/ai/analyze_agent_tooling.py`, enforced by `analyze_agent_tooling.py check`). This is a repository target,
 not a universal model context limit. Codex's default `project_doc_max_bytes`
 is **32 KiB (32,768 bytes)** for the combined project instruction chain;
 nested instruction files also consume that budget. Other clients have their
@@ -354,8 +350,8 @@ Update it only when:
 - Copilot needs a new quick-start step to discover or consume skills.
 - The rule/skill layout changes in a way that affects Copilot users.
 
-Do not mirror every skill row here; Copilot should read `AGENTS.md` for the
-canonical index.
+Do not mirror every skill row here; Copilot should read `AGENTS.md`, which points to
+`.cursor/skills/README.md`, the canonical index.
 
 ---
 

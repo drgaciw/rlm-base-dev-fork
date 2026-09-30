@@ -122,7 +122,7 @@ strip-and-build, data dependencies, activation patterns), read
 `.cursor/skills/repo-integration/dependency-ordering.md`.
 
 Key rules:
-- `unpackaged/pre/` numbered subdirs deploy in order (1→2→3→5)
+- `unpackaged/pre/` numbered subdirs deploy in order (1→2→3→4→5)
 - `force-app/` deploys as one bundle at step 5
 - `force-app/` profiles are classAccesses-only (full profile at step 29)
 - Products (PCM) → pricing → billing → tax → rating → rates

@@ -21,7 +21,7 @@ review-loop fixes ("fix stale description", "update README task name",
 4. **If you changed feature flags** (added, removed, renamed, changed default) — verify the generated `feature-flags.md` was regenerated (rule 1), and update affected setup or operations guidance in `docs/guides/`.
 5. **If you changed a Python task class** (`tasks/*.py`) — check the task's `description` in `cumulusci.yml`, the generated CCI task reference, and any `docs/` guide that names it.
 6. **If you changed Robot test suites or resources** — check `robot-testing/SKILL.md` tables (Setup tasks / E2E tasks) and `docs/guides/org-operations.md` troubleshooting.
-7. **If you created a new skill or sub-file** — follow `.cursor/skills/skill-authoring/SKILL.md`: add top-level skills to `AGENTS.md`, `.cursor/skills/README.md`, and `.claude/skill-manifest.yml` when cross-repo discoverability applies; register sub-files in the parent `SKILL.md`, which is their only registry — `AGENTS.md` carries no second-level index.
+7. **If you created a new skill or sub-file** — follow `.cursor/skills/skill-authoring/SKILL.md`: add top-level skills to `.cursor/skills/README.md` and `.claude/skill-manifest.yml` when cross-repo discoverability applies (not `AGENTS.md`); register sub-files in the parent `SKILL.md`, which is their only registry — `AGENTS.md` carries no second-level index.
 8. **Quick verification** — run `python scripts/ai/generate_cci_reference.py` and then `git diff` to confirm only intended changes appear. Run `python scripts/validate_sfdmu_v5_datasets.py` — expect **0 Critical, 0 High** on a clean tree (the `mfg/en-US/mfg-multicurrency` plan that used to fail this check was removed, pack 110) and treat any Critical or High as new.
 
 ## DO NOT
@@ -43,7 +43,9 @@ The core lookup: **when X changes, verify Y**.
 | `tasks/*.py` (class, options, description) | `cumulusci.yml` description, generated task reference, relevant `docs/` guide |
 | `datasets/sfdmu/**/export.json` or CSVs | Plan `README.md` in same directory, then `check_plan_readme_consistency.py` (README ↔ plan) **and** the SFDMU v5 validator (plan compliance) |
 | Feature flag add/rename/default change | Generated `feature-flags.md`, `AGENTS.md` edition flags, affected `docs/guides/` guidance |
-| `robot/**` (new suite, renamed keyword) | `robot-testing/SKILL.md` task tables, `patterns.md`, `docs/guides/org-operations.md` troubleshooting |
+| `robot/**` (new suite, renamed keyword) | `robot-testing/SKILL.md` task tables, `patterns.md`, `docs/guides/org-operations.md` troubleshooting; lower `BASELINE` in `tests/test_robot_sleep_ratchet.py` when a `Sleep` is removed; `robot/QUARANTINE.md` when a `flaky` tag changes |
+| `.github/workflows/**`, `.github/actions/**`, `config/tool-versions.env` | `docs/guides/ci-runbook.md` (the matching section) |
+| `coverage-floor.json`, `config/code-analyzer-baseline.json`, `.github/zizmor-baseline.json` | `docs/guides/ci-runbook.md` §3-4, §7 (staleness policy) |
 | `templates/` or UX assembly logic | `ux-assembly-retrieve.md`, `docs/features/dynamic-ux-assembly.md` |
 | New `.cursor/skills/` file | Parent `SKILL.md` sub-file list (the only registry), and `.cursor/skills/README.md` Skill Router for a new *top-level* skill |
 | `orgs/*.json` (scratch org definitions) | `docs/guides/org-operations.md` Quick Start if it names specific configs |

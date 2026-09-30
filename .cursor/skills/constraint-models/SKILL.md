@@ -45,7 +45,7 @@ Sets generally — constraint models are Expression Sets with `UsageType=Constra
    so fix the cause and run it again.
 7. **Exactly one model per family may be active** — for QuantumBit that means
    `QuantumBitBundle` *or* `Complete` *or* `PCM`, currently Bundle. Unrelated models
-   (`Server2`, and the mfg models when they land) are active alongside it, so **discover
+   (`Server2`, and any mfg models once a flow imports them) are active alongside it, so **discover
    what is active before deactivating anything** rather than reading a name out of a
    document. See [Discovering what you are working with](#discovering-what-you-are-working-with).
 
@@ -163,7 +163,7 @@ placeholder Id only has to be internally consistent, and mnemonic ones are conve
 
 ### What this repo ships today
 
-Concrete instances, correct as of Release 262 — **verify with the queries above rather
+Concrete instances — **verify with the queries above rather
 than trusting this table**, which is a snapshot and will age:
 
 | Model | Data dir | Reference `.cml` | Activated by `prepare_constraints`? |
@@ -182,8 +182,7 @@ deactivating anything.
 (`Server2` lives under `datasets/constraints/qb/` for historical reasons; the directory it
 sits in does not make it a QuantumBit model.)
 
-Manufacturing adds `datasets/constraints/mfg/…` when that series lands, which is exactly
-why the discovery queries matter more than this table.
+`datasets/constraints/mfg/` (`fuelCell`, `genSet`) ships model data and blobs, but no flow imports them yet — which is exactly why the discovery queries matter more than this table.
 
 ---
 
