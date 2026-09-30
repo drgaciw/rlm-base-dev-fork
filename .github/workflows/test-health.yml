@@ -216,7 +216,7 @@ jobs:
       issues: write # open or comment on the rolling issue
     steps:
       - name: Download reports
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           pattern: test-health-*
           merge-multiple: true
