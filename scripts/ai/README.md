@@ -1523,6 +1523,28 @@ check on `main`, `264` and `release/*` (repository settings, applied separately 
 
 ---
 
+### `test_health.py`
+
+Test-health reporting and quarantine automation (TP-12, `docs/references/test-plan-2026-09.md`
+section 6 and the flaky-test policy in section 7). Stdlib only. Run weekly by
+`.github/workflows/test-health.yml`, not by the PR gate, so an expiring quarantine entry never
+blocks an unrelated PR; `tests/test_test_health.py` (in `STDLIB_SUITES`) checks the script and the
+shape of the committed registers on every PR.
+
+```bash
+python scripts/ai/test_health.py check-quarantine   # merged table; exit 1 expired, 2 invalid
+python scripts/ai/test_health.py report --artifacts DIR [--runs runs.json]
+python scripts/ai/test_health.py zizmor-audit --findings zizmor.json   # non-gating drift audit
+```
+
+`check-quarantine` reads `robot/QUARANTINE.md` (TP-08's table, read-only) and
+`tests/quarantine/registry.json` (python, apex, lwc, flow) into one record type and prints one table
+sorted by `expires`. An unparseable register, an unknown or missing key, a non-ISO date, a window
+over 14 days or a duplicate id is exit 2, never "no entries". Format:
+[`tests/quarantine/README.md`](../../tests/quarantine/README.md).
+
+---
+
 ## Dependencies
 
 - **Python 3.10+** for these scripts (the schema-diff and skill-manifest

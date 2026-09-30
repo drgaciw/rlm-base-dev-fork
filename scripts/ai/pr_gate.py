@@ -709,6 +709,7 @@ STDLIB_SUITES = [
     "tests/test_skill_manifest.py",
     "tests/test_snapshot_dev_guide.py",
     "tests/test_snapshot_help.py",
+    "tests/test_test_health.py",
     "tests/test_validate_expression_set.py",
     "tests/test_validate_keys_targets.py",
     "tests/test_workflow_lint.py",

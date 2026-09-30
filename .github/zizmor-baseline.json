@@ -6,14 +6,14 @@
       "file": ".github/workflows/flow-matrix.yml",
       "message": "ad-hoc installation of packages",
       "count": 1,
-      "reason": "SECURITY-ADJACENT: `npm install -g @salesforce/cli@${SF_CLI_VERSION}` and the sfdmu plugin are version-pinned but have no lockfile (same pattern as prepare-rlm-org.yml); flow-matrix.yml is TP-09's file, not changed here."
+      "reason": "SECURITY-ADJACENT: `npm install -g @salesforce/cli@${SF_CLI_VERSION}` in flow-matrix.yml. Pin source: SF_CLI_VERSION in config/tool-versions.env. Residual risk: transitive dependencies of @salesforce/cli are not locked. zizmor only accepts a committed package.json + lockfile installed with `npm ci`; prepare-rlm-org.yml has the same pattern, so all three workflows are fixed together by TP-14 shared locked sf CLI install."
     },
     {
       "rule": "adhoc-packages",
       "file": ".github/workflows/pr-checks.yml",
       "message": "ad-hoc installation of packages",
       "count": 1,
-      "reason": "SECURITY-ADJACENT: TP-06's `Install Salesforce Code Analyzer` step runs `npm install --global @salesforce/cli@<SF_CLI_VERSION from config/tool-versions.env>` (version-pinned, no lockfile), the same pattern as prepare-rlm-org.yml and flow-matrix.yml. Not changed here."
+      "reason": "SECURITY-ADJACENT: the `Install Salesforce Code Analyzer` step's `npm install --global @salesforce/cli@${sf_version}`. Pin source: SF_CLI_VERSION in config/tool-versions.env; the code-analyzer plugin is pinned separately by CODE_ANALYZER_VERSION in that step. Residual risk: transitive dependencies of @salesforce/cli are not locked. zizmor only accepts a committed package.json + lockfile installed with `npm ci`; prepare-rlm-org.yml has the same pattern, so all three workflows are fixed together by TP-14 shared locked sf CLI install."
     },
     {
       "rule": "adhoc-packages",
@@ -49,13 +49,6 @@
       "message": "workflow or action definition without a name",
       "count": 1,
       "reason": "Pedantic style: workflow/job has no `name:`. Baselined."
-    },
-    {
-      "rule": "anonymous-definition",
-      "file": ".github/workflows/flow-matrix.yml",
-      "message": "workflow or action definition without a name",
-      "count": 2,
-      "reason": "Pedantic style: workflow/job has no `name:`. Baselined (TP-09's file, not changed here)."
     },
     {
       "rule": "anonymous-definition",
@@ -126,13 +119,6 @@
       "message": "permissions without explanatory comments",
       "count": 1,
       "reason": "Pedantic style: permission scope has no explanatory comment. Baselined; add a comment when touching the file."
-    },
-    {
-      "rule": "undocumented-permissions",
-      "file": ".github/workflows/flow-matrix.yml",
-      "message": "permissions without explanatory comments",
-      "count": 1,
-      "reason": "Pedantic style: permission scope has no explanatory comment. Baselined (TP-09's file, not changed here)."
     },
     {
       "rule": "undocumented-permissions",
