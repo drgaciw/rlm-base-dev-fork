@@ -421,7 +421,7 @@ jobs:
         id: apex
         run: |
           set -euo pipefail
-          if grep -qE '(\.(cls|trigger)$|^code-analyzer\.yml$|^config/code-analyzer-baseline\.json$|^scripts/lint/finding_baseline\.py$|^\.github/workflows/pr-checks\.yml$)' changed_files.txt; then
+          if grep -qE '(\.(cls|trigger)$|^code-analyzer\.yml$|^config/code-analyzer-baseline\.json$|^scripts/lint/finding_baseline\.py$|^\.github/workflows/pr-checks\.yml$|^config/sf-cli/|^config/tool-versions\.env$)' changed_files.txt; then
             echo "changed=true" >> "$GITHUB_OUTPUT"
           else
             echo "changed=false" >> "$GITHUB_OUTPUT"
