@@ -25,7 +25,6 @@ Reset Account
     Reset Test Account    ${ACCOUNT_ID}
     # Verify account page reloaded
     Navigate To Account    ${ACCOUNT_ID}
-    Sleep    3s    reason=Allow page to load after reset
     Capture Step Screenshot    account_after_reset
     Log    Reset Account completed successfully.
 

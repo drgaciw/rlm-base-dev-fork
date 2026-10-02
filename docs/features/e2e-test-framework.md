@@ -178,8 +178,23 @@ a separate non-blocking step. `tests/test_rlm_robot_e2e.py` checks that tags and
 
 `tests/test_robot_sleep_ratchet.py` pins the number of fixed `Sleep` waits per file under
 `robot/`; it fails when a count goes up and asks you to lower the pin when one goes down.
-The target is zero, replaced with condition waits once a live scratch org can prove each
-replacement.
+The e2e path (`E2ECommon.robot`, `tests/e2e/*`) is at zero: a new `Sleep` there fails the
+ratchet. The setup suites and `SetupToggles.robot` are still pinned (target zero once the
+nightly has a stable history).
+
+E2E waits are conditions, not durations:
+
+- **Strict** waits assert a positive signal and fail on timeout: `Wait Until Keyword Succeeds`,
+  `Wait Until Element ...`, REST polls (`Wait For Related Record Via API`,
+  `Wait For Quote Line For Product`), an enabled-button check (`Save Modal` and
+  `Advance Through Flow Screens` skip disabled buttons), a selected tab, a dialog that opened,
+  changed or closed (`Get Dialog Signature`, `Wait For Dialog To Change`).
+- **Best-effort** waits (`Wait Until Page Is Settled`, `Wait For Action Dialog`,
+  `Wait For Dialog To Change`) are for clicks that expose no DOM signal of their own. On
+  timeout they log `SETTLE_TIMEOUT caller=<keyword> waited=<t>` as a WARN and continue; the
+  e2e stage summary counts those lines per caller. They are never an assertion, so every use
+  must be followed (or preceded, at the end of a keyword) by a strict wait; the ratchet test
+  enforces that and keeps the helpers out of the setup suites.
 
 ## Architecture Decisions
 

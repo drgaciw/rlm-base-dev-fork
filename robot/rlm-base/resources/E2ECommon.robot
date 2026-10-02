@@ -17,7 +17,7 @@ ${ORG_ALIAS}                ${EMPTY}
 ${HEADED}                   false
 ${PAUSE_FOR_RECORDING}      false
 ${PAGE_LOAD_TIMEOUT}        30s
-${LIGHTNING_RENDER_WAIT}    3s
+${SETTLE_TIMEOUT}          15s
 ${SCREENSHOT_COUNTER}       ${0}
 
 *** Keywords ***
@@ -63,6 +63,180 @@ Close Browser For E2E
     [Documentation]    Closes the browser session.
     Close Browser
 
+# ── Condition Waits (TP-08b: replace fixed Sleeps) ──────────────────
+# Strict waits (Wait Until Keyword Succeeds, Wait Until Element ..., REST polls) assert a
+# positive signal and fail the test on timeout. The helpers below are BEST-EFFORT: on timeout
+# they log a structured WARN `SETTLE_TIMEOUT` line naming the calling keyword and the timeout
+# (counted in the e2e stage summary) and continue. Every best-effort wait must be anchored by a
+# strict wait or assertion before the next click/input -- tests/test_robot_sleep_ratchet.py
+# enforces that.
+# E2E path only: never use these from tests/setup/* or SetupToggles.robot.
+
+Wait Until Page Is Settled
+    [Documentation]    Best-effort settle for clicks that expose no DOM signal of their own.
+    ...    Returns once the document is complete, no Lightning spinner is visible and the DOM
+    ...    (shadow roots included) has kept the same node count and text length for
+    ...    stable_polls consecutive 500 ms polls. Capped at timeout; on timeout it logs the
+    ...    structured WARN SETTLE_TIMEOUT and continues.
+    ...
+    ...    ⚠ This is NOT an assertion. It cannot see a page that has not started to change
+    ...    yet, so anchor every use with a strict wait or assertion before the next click.
+    [Arguments]    ${caller}=unknown    ${timeout}=${SETTLE_TIMEOUT}    ${stable_polls}=${2}
+    Execute JavaScript    window.__e2eSettle = {sig: null, stable: 0};
+    _Wait Best Effort    ${caller}    ${timeout}    500ms    _Page Should Be Settled    ${stable_polls}
+
+_Wait Best Effort
+    [Documentation]    Internal keyword — polls a condition keyword; on timeout logs the
+    ...    structured SETTLE_TIMEOUT WARN and returns FAIL instead of failing the test.
+    [Arguments]    ${caller}    ${timeout}    ${interval}    ${keyword}    @{args}
+    ${status}    ${msg}=    Run Keyword And Ignore Error
+    ...    Wait Until Keyword Succeeds    ${timeout}    ${interval}    ${keyword}    @{args}
+    IF    "${status}" == "FAIL"
+        Log    SETTLE_TIMEOUT caller=${caller} waited=${timeout}    WARN
+        Log    Last probe result: ${msg}
+    END
+    RETURN    ${status}
+
+_Page Should Be Settled
+    [Documentation]    Internal keyword — one settle probe; fails until the page is quiet.
+    ...    Counts nodes and text length only (no serialisation), so it stays cheap on big pages.
+    [Arguments]    ${stable_polls}
+    ${state}=    Execute JavaScript
+    ...    return (function(need){
+    ...        function visible(el) {
+    ...            var r = el.getBoundingClientRect();
+    ...            if (r.width === 0 || r.height === 0) { return false; }
+    ...            var cs = getComputedStyle(el);
+    ...            return cs.visibility !== 'hidden' && cs.display !== 'none';
+    ...        }
+    ...        function walk(root, acc, depth) {
+    ...            if (depth > 40) { return; }
+    ...            var kids = root.childNodes;
+    ...            for (var i = 0; i < kids.length; i++) {
+    ...                var c = kids[i];
+    ...                if (c.nodeType === 3) { acc.t += c.data.length; }
+    ...                else if (c.nodeType === 1) {
+    ...                    acc.n++;
+    ...                    var cl = c.classList;
+    ...                    if (c.tagName === 'LIGHTNING-SPINNER' || (cl && (cl.contains('slds-spinner') || cl.contains('slds-spinner_container') || cl.contains('forceLoadingSpinner')))) {
+    ...                        if (visible(c)) { acc.spin++; }
+    ...                    }
+    ...                    if (c.shadowRoot) { walk(c.shadowRoot, acc, depth + 1); }
+    ...                    walk(c, acc, depth + 1);
+    ...                }
+    ...            }
+    ...        }
+    ...        var st = window.__e2eSettle || (window.__e2eSettle = {sig: null, stable: 0});
+    ...        if (document.readyState !== 'complete') { st.sig = null; st.stable = 0; return 'loading'; }
+    ...        var acc = {n: 0, t: 0, spin: 0};
+    ...        walk(document, acc, 0);
+    ...        if (acc.spin > 0) { st.sig = null; st.stable = 0; return 'spinner'; }
+    ...        var sig = acc.n + ':' + acc.t;
+    ...        if (sig === st.sig) { st.stable++; } else { st.sig = sig; st.stable = 0; }
+    ...        return st.stable >= need ? 'settled' : 'changing';
+    ...    })(arguments[0])
+    ...    ARGUMENTS    ${stable_polls}
+    Should Be Equal    ${state}    settled    msg=Page not settled yet (${state}).
+
+Get Dialog Signature
+    [Documentation]    Returns 'none' when no dialog or flow is open, otherwise a short hash of
+    ...    the dialog text (shadow roots included). Compare the value taken before an action with
+    ...    a later one to see that the dialog advanced, changed or closed, without depending on
+    ...    any product-specific selector.
+    ${sig}=    Execute JavaScript
+    ...    return (function(){
+    ...        function deepAll(root, sel, out, depth) {
+    ...            if (depth > 25) return out;
+    ...            var els = root.querySelectorAll(sel);
+    ...            for (var i = 0; i < els.length; i++) { out.push(els[i]); }
+    ...            var all = root.querySelectorAll('*');
+    ...            for (var j = 0; j < all.length; j++) {
+    ...                if (all[j].shadowRoot) { deepAll(all[j].shadowRoot, sel, out, depth + 1); }
+    ...            }
+    ...            return out;
+    ...        }
+    ...        function deepText(node, depth) {
+    ...            if (depth > 25) return '';
+    ...            var t = '';
+    ...            var kids = node.childNodes;
+    ...            for (var i = 0; i < kids.length; i++) {
+    ...                var c = kids[i];
+    ...                if (c.nodeType === 3) { t += c.textContent + ' '; }
+    ...                else if (c.nodeType === 1 && c.tagName !== 'STYLE' && c.tagName !== 'SCRIPT') {
+    ...                    if (c.shadowRoot) { t += deepText(c.shadowRoot, depth + 1); }
+    ...                    t += deepText(c, depth + 1);
+    ...                }
+    ...            }
+    ...            return t;
+    ...        }
+    ...        var dialogs = deepAll(document, 'flowruntime-flow, section.slds-modal, div.modal-container, lightning-modal', [], 0);
+    ...        if (dialogs.length === 0) { return 'none'; }
+    ...        var text = '';
+    ...        for (var d = 0; d < dialogs.length; d++) { text += deepText(dialogs[d], 0) + '|'; }
+    ...        var out = '';
+    ...        var prevWasSpace = false;
+    ...        for (var k = 0; k < text.length; k++) {
+    ...            var code = text.charCodeAt(k);
+    ...            var isSpace = (code === 32 || code === 9 || code === 10 || code === 13);
+    ...            if (isSpace) {
+    ...                if (!prevWasSpace && out.length > 0) { out += ' '; }
+    ...                prevWasSpace = true;
+    ...            } else {
+    ...                out += text.charAt(k);
+    ...                prevWasSpace = false;
+    ...            }
+    ...        }
+    ...        var h = 5381;
+    ...        for (var m = 0; m < out.length; m++) { h = ((h << 5) + h + out.charCodeAt(m)) | 0; }
+    ...        return 'sig:' + dialogs.length + ':' + out.length + ':' + h;
+    ...    })()
+    RETURN    ${sig}
+
+_Dialog Signature Should Differ From
+    [Arguments]    ${before}
+    ${now}=    Get Dialog Signature
+    Should Not Be Equal    ${now}    ${before}    msg=Dialog has not changed yet.
+
+_Dialog Should Be Open
+    ${now}=    Get Dialog Signature
+    Should Not Be Equal    ${now}    none    msg=No dialog or flow is open yet.
+
+Wait For Dialog To Change
+    [Documentation]    Best-effort: after clicking inside a dialog or flow, waits until its content
+    ...    differs from the signature taken BEFORE the click (next screen, or closed), then settles.
+    ...    With no dialog before the click it only settles.
+    [Arguments]    ${before}    ${caller}=Wait For Dialog To Change    ${timeout}=15s
+    IF    "${before}" != "none"
+        _Wait Best Effort    ${caller}:dialog-changed    ${timeout}    500ms    _Dialog Signature Should Differ From    ${before}
+    END
+    Wait Until Page Is Settled    caller=${caller}
+
+Wait For Action Dialog
+    [Documentation]    Best-effort: after triggering a QuickAction/flow, waits until a dialog or flow
+    ...    is open, then settles. The caller's next keyword waits strictly for its own controls.
+    [Arguments]    ${caller}=Wait For Action Dialog    ${timeout}=20s
+    _Wait Best Effort    ${caller}:dialog-open    ${timeout}    500ms    _Dialog Should Be Open
+    Wait Until Page Is Settled    caller=${caller}
+
+_Location Should Be Lightning
+    [Documentation]    Internal keyword — true once the frontdoor redirect has landed on a
+    ...    /lightning/ page. Reads the path in JS so a failure message never contains the
+    ...    session-bearing URL.
+    ${ok}=    Execute JavaScript    return window.location.pathname.indexOf('/lightning/') === 0 ? 'yes' : 'no';
+    Should Be Equal    ${ok}    yes    msg=Browser is not on a /lightning/ page yet.
+
+Wait For Quote Line For Product
+    [Documentation]    Polls the REST API until the Quote has a line for the named product. This is
+    ...    the positive signal that an add-product or configurator commit really persisted.
+    [Arguments]    ${quote_id}    ${product_name}    ${timeout}=60s    ${interval}=3s
+    SalesforceAPI.Validate Salesforce Id    ${quote_id}
+    ${product_id}=    SalesforceAPI.Find Product By Name    ${product_name}
+    SalesforceAPI.Validate Salesforce Id    ${product_id}
+    ${line_id}=    Wait For Related Record Via API
+    ...    SELECT Id FROM QuoteLineItem WHERE QuoteId = '${quote_id}' AND Product2Id = '${product_id}' LIMIT 1
+    ...    ${timeout}    ${interval}
+    RETURN    ${line_id}
+
 # ── Navigation ───────────────────────────────────────────────────────
 
 Get Authenticated Url
@@ -97,7 +271,8 @@ Navigate To App
     Go To    ${url}
     Set Log Level    ${prev_level}
     Wait Until Page Contains Element    css:body    timeout=${PAGE_LOAD_TIMEOUT}
-    Sleep    ${LIGHTNING_RENDER_WAIT}    reason=Allow app to load
+    Wait Until Keyword Succeeds    ${PAGE_LOAD_TIMEOUT}    500ms    _Location Should Be Lightning
+    Wait Until Page Is Settled    caller=Navigate To App
     Log    Navigated to app: ${app_name}
 
 Navigate To Record
@@ -110,7 +285,8 @@ Navigate To Record
     Go To    ${url}
     Set Log Level    ${prev_level}
     Wait Until Page Contains Element    css:body    timeout=${PAGE_LOAD_TIMEOUT}
-    Sleep    ${LIGHTNING_RENDER_WAIT}    reason=Allow Lightning to finish rendering
+    Wait Until Keyword Succeeds    ${PAGE_LOAD_TIMEOUT}    500ms    _Location Should Be Lightning
+    Wait Until Page Is Settled    caller=Navigate To Record
 
 Navigate To Account
     [Documentation]    Navigates to an Account record page.
@@ -142,7 +318,8 @@ Click Record Page Tab
     IF    ${found}
         Scroll Element Into View    ${tab}
         Click Element    ${tab}
-        Sleep    2s    reason=Allow tab content to render
+        Wait Until Keyword Succeeds    10s    500ms    _Record Tab Should Be Selected    ${tab_label}
+        Wait Until Page Is Settled    caller=Click Record Page Tab
         RETURN
     END
     # Fallback: shadow DOM traversal
@@ -177,7 +354,34 @@ Click Record Page Tab
         Capture Step Screenshot    tab_not_found_${tab_label}
         Fail    msg=Tab "${tab_label}" not found on record page.
     END
-    Sleep    2s    reason=Allow tab content to render
+    Wait Until Keyword Succeeds    10s    500ms    _Record Tab Should Be Selected    ${tab_label}
+    Wait Until Page Is Settled    caller=Click Record Page Tab
+
+_Record Tab Should Be Selected
+    [Documentation]    Internal keyword — passes once the tab with this label reports
+    ...    aria-selected=true (shadow DOM traversed).
+    [Arguments]    ${tab_label}
+    ${result}=    Execute JavaScript
+    ...    return (function(label){
+    ...        function deepAll(root, sel, out, depth) {
+    ...            if (depth > 25) return out;
+    ...            var els = root.querySelectorAll(sel);
+    ...            for (var i = 0; i < els.length; i++) { out.push(els[i]); }
+    ...            var all = root.querySelectorAll('*');
+    ...            for (var j = 0; j < all.length; j++) {
+    ...                if (all[j].shadowRoot) { deepAll(all[j].shadowRoot, sel, out, depth + 1); }
+    ...            }
+    ...            return out;
+    ...        }
+    ...        var tabs = deepAll(document, 'a[role="tab"]', [], 0);
+    ...        for (var i = 0; i < tabs.length; i++) {
+    ...            var same = tabs[i].getAttribute('data-label') === label || (tabs[i].textContent || '').trim() === label;
+    ...            if (same && tabs[i].getAttribute('aria-selected') === 'true') { return 'selected'; }
+    ...        }
+    ...        return 'not_selected';
+    ...    })(arguments[0])
+    ...    ARGUMENTS    ${tab_label}
+    Should Be Equal    ${result}    selected    msg=Tab "${tab_label}" is not selected yet.
 
 # ── QuickAction / Highlights Panel ──────────────────────────────────
 
@@ -192,7 +396,7 @@ Click Highlights Panel Action
     IF    ${found}
         Scroll Element Into View    ${btn}
         Click Element    ${btn}
-        Sleep    2s    reason=Allow action modal/flow to open
+        Wait For Action Dialog    caller=Click Highlights Panel Action
         RETURN
     END
     # Try overflow menu
@@ -200,11 +404,10 @@ Click Highlights Panel Action
     ${more_found}=    Run Keyword And Return Status    Wait Until Element Is Visible    ${more_btn}    timeout=5s
     IF    ${more_found}
         Click Element    ${more_btn}
-        Sleep    1s    reason=Allow dropdown to render
         ${menu_item}=    Set Variable    xpath=//lightning-menu-item[contains(@data-target-selection-name,'${action_label}') or .//span[normalize-space(.)='${action_label}']] | //a[@title='${action_label}']
         Wait Until Element Is Visible    ${menu_item}    timeout=10s
         Click Element    ${menu_item}
-        Sleep    2s    reason=Allow action modal/flow to open
+        Wait For Action Dialog    caller=Click Highlights Panel Action
         RETURN
     END
     # Fallback: shadow DOM JS traversal for LWC action buttons
@@ -250,16 +453,15 @@ Click Highlights Panel Action
     ...    ARGUMENTS    ${action_label}
     Log    Highlights Panel JS result: ${js_result}
     IF    "${js_result}" == "clicked_direct" or "${js_result}" == "clicked_broad"
-        Sleep    2s    reason=Allow action modal/flow to open
+        Wait For Action Dialog    caller=Click Highlights Panel Action
         RETURN
     END
     IF    "${js_result}" == "opened_overflow"
-        Sleep    1s    reason=Allow dropdown to render
         ${menu_item}=    Set Variable    xpath=//lightning-menu-item[contains(@data-target-selection-name,'${action_label}') or .//span[normalize-space(.)='${action_label}']] | //a[@title='${action_label}']
         ${menu_found}=    Run Keyword And Return Status    Wait Until Element Is Visible    ${menu_item}    timeout=10s
         IF    ${menu_found}
             Click Element    ${menu_item}
-            Sleep    2s    reason=Allow action modal/flow to open
+            Wait For Action Dialog    caller=Click Highlights Panel Action
             RETURN
         END
     END
@@ -271,7 +473,7 @@ Wait For Modal
     [Arguments]    ${timeout}=15s
     ${modal}=    Set Variable    xpath=//div[contains(@class,'modal-container') or contains(@class,'slds-modal')] | //section[contains(@class,'slds-modal')]
     Wait Until Element Is Visible    ${modal}    timeout=${timeout}
-    Sleep    1s    reason=Allow modal content to render
+    Wait Until Page Is Settled    caller=Wait For Modal
 
 Fill Modal Field
     [Documentation]    Fills a field in a modal dialog by field label.
@@ -284,7 +486,7 @@ Fill Modal Field
         Click Element    ${input}
         Press Keys    ${input}    CTRL+a    DELETE
         Input Text    ${input}    ${value}
-        Sleep    0.5s
+        Wait Until Keyword Succeeds    5s    250ms    Textfield Value Should Be    ${input}    ${value}
         RETURN
     END
     # Try textarea
@@ -306,7 +508,7 @@ Select Modal Picklist Value
     ${is_native}=    Run Keyword And Return Status    Wait Until Element Is Visible    ${native_select}    timeout=5s
     IF    ${is_native}
         Select From List By Label    ${native_select}    ${value}
-        Sleep    1s    reason=Allow selection to apply
+        Wait Until Keyword Succeeds    5s    250ms    List Selection Should Be    ${native_select}    ${value}
         RETURN
     END
     # Strategy 2: Lightning combobox (role=combobox)
@@ -314,11 +516,10 @@ Select Modal Picklist Value
     ${is_combobox}=    Run Keyword And Return Status    Wait Until Element Is Visible    ${combobox}    timeout=5s
     IF    ${is_combobox}
         Click Element    ${combobox}
-        Sleep    1s    reason=Allow dropdown to populate
         ${option}=    Set Variable    xpath=(//*[@role='option' and contains(normalize-space(.), '${value}')])[1]
         Wait Until Element Is Visible    ${option}    timeout=10s
         Click Element    ${option}
-        Sleep    1s    reason=Allow selection to apply
+        Wait Until Page Is Settled    caller=Select Modal Picklist Value
         RETURN
     END
     # Strategy 3: Aura <a> picklist trigger
@@ -326,11 +527,10 @@ Select Modal Picklist Value
     ${is_aura}=    Run Keyword And Return Status    Wait Until Element Is Visible    ${aura_picklist}    timeout=5s
     IF    ${is_aura}
         Click Element    ${aura_picklist}
-        Sleep    1s    reason=Allow dropdown to populate
         ${aura_option}=    Set Variable    xpath=(//a[@role='menuitemcheckbox' and normalize-space(.)='${value}'] | //li[contains(@class,'uiMenuItem')]//a[normalize-space(.)='${value}'])[1]
         Wait Until Element Is Visible    ${aura_option}    timeout=10s
         Click Element    ${aura_option}
-        Sleep    1s    reason=Allow selection to apply
+        Wait Until Page Is Settled    caller=Select Modal Picklist Value
         RETURN
     END
     Capture Step Screenshot    picklist_not_found_${field_label}
@@ -345,12 +545,12 @@ Select Lookup Value
     Wait Until Element Is Visible    ${input}    timeout=10s
     Click Element    ${input}
     Input Text    ${input}    ${value}
-    Sleep    2s    reason=Allow lookup results to populate
+    Wait Until Page Is Settled    caller=Select Lookup Value
     # Click the matching result — lookup results appear as role=option or in a listbox
     ${result}=    Set Variable    xpath=(//*[@role='option' and contains(normalize-space(.), '${value}')] | //a[contains(@class,'lookup') and contains(normalize-space(.), '${value}')] | //div[contains(@class,'lookup')]//span[contains(normalize-space(.), '${value}')] | //li[contains(@class,'lookup')]//a[contains(normalize-space(.), '${value}')])[1]
     Wait Until Element Is Visible    ${result}    timeout=10s
     Click Element    ${result}
-    Sleep    1s    reason=Allow selection to apply
+    Wait Until Page Is Settled    caller=Select Lookup Value
 
 Save Modal
     [Documentation]    Clicks the Save button in a modal dialog via JavaScript.
@@ -358,8 +558,16 @@ Save Modal
     ...    Flow navigation bars, and LWC modals. Retries up to 30s for the
     ...    button to appear (flow screens can be slow to render).
     [Arguments]    ${button_label}=Save
-    Wait Until Keyword Succeeds    30s    3s    _Click Save Button Via JS    ${button_label}
-    Sleep    3s    reason=Allow save to complete
+    ${before}=    Wait Until Keyword Succeeds    30s    3s    _Click Save Button Tracking Dialog    ${button_label}
+    Wait For Dialog To Change    ${before}    caller=Save Modal
+
+_Click Save Button Tracking Dialog
+    [Documentation]    Internal keyword — records the dialog signature immediately before the
+    ...    click that succeeds, so the caller can wait for that dialog to change or close.
+    [Arguments]    ${button_label}
+    ${before}=    Get Dialog Signature
+    _Click Save Button Via JS    ${button_label}
+    RETURN    ${before}
 
 _Click Save Button Via JS
     [Documentation]    Internal keyword — attempts to find and click a save button via JS.
@@ -380,11 +588,12 @@ _Click Save Button Via JS
     ...            }
     ...            return btns;
     ...        }
+    ...        function usable(b) { return !b.disabled && b.getAttribute('aria-disabled') !== 'true'; }
     ...        /* 1. Aura QuickAction footer — no shadow DOM */
     ...        var btn = document.querySelector('button.cuf-publisherShareButton');
     ...        if (btn) {
     ...            var t = btn.textContent.trim();
-    ...            if (t === label || t.indexOf(label) >= 0) { btn.click(); return 'clicked_aura_footer:' + t; }
+    ...            if ((t === label || t.indexOf(label) >= 0) && usable(btn)) { btn.click(); return 'clicked_aura_footer:' + t; }
     ...        }
     ...        /* 2. Flow navigation bar — traverse shadow roots */
     ...        var flowEl = document.querySelector('flowruntime-flow');
@@ -396,14 +605,14 @@ _Click Save Button Via JS
     ...                var navBtns = findAllButtons(navRoot);
     ...                for (var i = 0; i < navBtns.length; i++) {
     ...                    var t = navBtns[i].textContent.trim();
-    ...                    if (t === label || t.indexOf(label) >= 0) { navBtns[i].click(); return 'clicked_flow_nav_shadow:' + t; }
+    ...                    if ((t === label || t.indexOf(label) >= 0) && usable(navBtns[i])) { navBtns[i].click(); return 'clicked_flow_nav_shadow:' + t; }
     ...                }
     ...            }
     ...            /* Also try all buttons in the flow element via shadow traversal */
     ...            var flowBtns = findAllButtons(root);
     ...            for (var i = 0; i < flowBtns.length; i++) {
     ...                var t = flowBtns[i].textContent.trim();
-    ...                if (t === label || t.indexOf(label) >= 0) { flowBtns[i].click(); return 'clicked_flow_shadow:' + t; }
+    ...                if ((t === label || t.indexOf(label) >= 0) && usable(flowBtns[i])) { flowBtns[i].click(); return 'clicked_flow_shadow:' + t; }
     ...            }
     ...        }
     ...        /* 3. slds-modal footer */
@@ -412,14 +621,14 @@ _Click Save Button Via JS
     ...            var fBtns = findAllButtons(footer);
     ...            for (var i = 0; i < fBtns.length; i++) {
     ...                var t = fBtns[i].textContent.trim();
-    ...                if (t === label || t.indexOf(label) >= 0) { fBtns[i].click(); return 'clicked_modal_footer:' + t; }
+    ...                if ((t === label || t.indexOf(label) >= 0) && usable(fBtns[i])) { fBtns[i].click(); return 'clicked_modal_footer:' + t; }
     ...            }
     ...        }
     ...        /* 4. Broad search — all buttons including shadow DOM */
     ...        var allBtns = findAllButtons(document);
     ...        for (var j = 0; j < allBtns.length; j++) {
     ...            var t = allBtns[j].textContent.trim();
-    ...            if ((t === label || t.indexOf(label) >= 0) && allBtns[j].offsetParent !== null) {
+    ...            if ((t === label || t.indexOf(label) >= 0) && allBtns[j].offsetParent !== null && usable(allBtns[j])) {
     ...                allBtns[j].click(); return 'clicked_visible_shadow:' + t;
     ...            }
     ...        }
@@ -429,7 +638,7 @@ _Click Save Button Via JS
     Log    Save Modal JS result: ${result}
     IF    "${result}" == "not_found"
         Capture Step Screenshot    save_button_not_found
-        Fail    msg=${button_label} button not found in modal via JavaScript (will retry).
+        Fail    msg=${button_label} button not found (or still disabled) in modal via JavaScript (will retry).
     END
 
 Advance Through Flow Screens
@@ -441,63 +650,23 @@ Advance Through Flow Screens
     [Arguments]    ${max_screens}=${10}
     FOR    ${i}    IN RANGE    ${max_screens}
         Capture Step Screenshot    flow_screen_${i}
-        # Look for any actionable flow button via JavaScript (traverses shadow DOM)
-        ${btn_result}=    Execute JavaScript
-        ...    return (function(){
-        ...        var labels = ['Next', 'Finish', 'Done', 'Create Order', 'Create Orders', 'Submit', 'Save', 'Confirm'];
-        ...        function findAllButtons(root) {
-        ...            var btns = [];
-        ...            var all = root.querySelectorAll('*');
-        ...            for (var i = 0; i < all.length; i++) {
-        ...                if (all[i].tagName === 'BUTTON') btns.push(all[i]);
-        ...                if (all[i].shadowRoot) btns = btns.concat(findAllButtons(all[i].shadowRoot));
-        ...            }
-        ...            return btns;
-        ...        }
-        ...        /* 1. Flow navigation bar buttons (with shadow DOM traversal) */
-        ...        var flowEl = document.querySelector('flowruntime-flow');
-        ...        if (flowEl) {
-        ...            var fRoot = flowEl.shadowRoot || flowEl;
-        ...            var navBar = fRoot.querySelector('flowruntime-navigation-bar');
-        ...            if (navBar) {
-        ...                var navRoot = navBar.shadowRoot || navBar;
-        ...                var navBtns = findAllButtons(navRoot);
-        ...                for (var i = 0; i < navBtns.length; i++) {
-        ...                    var txt = navBtns[i].textContent.trim();
-        ...                    for (var j = 0; j < labels.length; j++) {
-        ...                        if (txt === labels[j]) { navBtns[i].click(); return 'clicked:' + txt; }
-        ...                    }
-        ...                }
-        ...            }
-        ...        }
-        ...        /* 2. Modal footer buttons (with shadow DOM traversal) */
-        ...        var footer = document.querySelector('footer.slds-modal__footer');
-        ...        if (footer) {
-        ...            var fBtns = findAllButtons(footer);
-        ...            for (var i = 0; i < fBtns.length; i++) {
-        ...                var txt = fBtns[i].textContent.trim();
-        ...                for (var j = 0; j < labels.length; j++) {
-        ...                    if (txt === labels[j]) { fBtns[i].click(); return 'clicked:' + txt; }
-        ...                }
-        ...            }
-        ...        }
-        ...        /* 3. Broad search — all buttons including shadow DOM */
-        ...        var allBtns = findAllButtons(document);
-        ...        for (var i = 0; i < allBtns.length; i++) {
-        ...            if (allBtns[i].offsetParent === null) continue;
-        ...            var txt = allBtns[i].textContent.trim();
-        ...            for (var j = 0; j < labels.length; j++) {
-        ...                if (txt === labels[j]) { allBtns[i].click(); return 'clicked:' + txt; }
-        ...            }
-        ...        }
-        ...        return 'no_button_found';
-        ...    })()
+        ${pair}=    _Click Flow Action Button
+        ${btn_result}=    Set Variable    ${pair}[0]
+        ${before}=    Set Variable    ${pair}[1]
+        IF    "${btn_result}" == "no_button_found" and ("${before}" != "none" or ${i} == 0)
+            ${status}    ${retried}=    Run Keyword And Ignore Error
+            ...    Wait Until Keyword Succeeds    15s    1s    _Click Flow Action Button Or Fail
+            IF    "${status}" == "PASS"
+                ${btn_result}=    Set Variable    ${retried}[0]
+                ${before}=    Set Variable    ${retried}[1]
+            END
+        END
         Log    Flow screen ${i}: ${btn_result}
         IF    "${btn_result}" == "no_button_found"
             Log    No more flow buttons found after ${i} screens.
             RETURN
         END
-        Sleep    5s    reason=Allow flow screen to advance
+        Wait For Dialog To Change    ${before}    caller=Advance Through Flow Screens    timeout=30s
         # Check if flow/modal has closed (we're back on the record page)
         ${flow_still_open}=    Run Keyword And Return Status    Page Should Contain Element
         ...    xpath=//flowruntime-flow | //div[contains(@class,'modal-container')] | //section[contains(@class,'slds-modal')]
@@ -513,6 +682,72 @@ Advance Through Flow Screens
         Fail    msg=Flow did not complete after ${max_screens} screens. The flow may have more screens than expected or may be stuck. Increase max_screens or investigate the flow state.
     END
 
+_Click Flow Action Button
+    [Documentation]    Internal keyword — clicks the first enabled flow/modal action button
+    ...    (Next, Finish, Done, ...). Returns a two-item list: the JS result
+    ...    ('clicked:<label>' or 'no_button_found') and the dialog signature taken just before
+    ...    the attempt, so the caller can wait for that dialog to change.
+    ${before}=    Get Dialog Signature
+    ${btn_result}=    Execute JavaScript
+    ...    return (function(){
+    ...        var labels = ['Next', 'Finish', 'Done', 'Create Order', 'Create Orders', 'Submit', 'Save', 'Confirm'];
+    ...        function findAllButtons(root) {
+    ...            var btns = [];
+    ...            var all = root.querySelectorAll('*');
+    ...            for (var i = 0; i < all.length; i++) {
+    ...                if (all[i].tagName === 'BUTTON') btns.push(all[i]);
+    ...                if (all[i].shadowRoot) btns = btns.concat(findAllButtons(all[i].shadowRoot));
+    ...            }
+    ...            return btns;
+    ...        }
+    ...        function usable(b) { return !b.disabled && b.getAttribute('aria-disabled') !== 'true'; }
+    ...        /* 1. Flow navigation bar buttons (with shadow DOM traversal) */
+    ...        var flowEl = document.querySelector('flowruntime-flow');
+    ...        if (flowEl) {
+    ...            var fRoot = flowEl.shadowRoot || flowEl;
+    ...            var navBar = fRoot.querySelector('flowruntime-navigation-bar');
+    ...            if (navBar) {
+    ...                var navRoot = navBar.shadowRoot || navBar;
+    ...                var navBtns = findAllButtons(navRoot);
+    ...                for (var i = 0; i < navBtns.length; i++) {
+    ...                    var txt = navBtns[i].textContent.trim();
+    ...                    for (var j = 0; j < labels.length; j++) {
+    ...                        if (txt === labels[j] && usable(navBtns[i])) { navBtns[i].click(); return 'clicked:' + txt; }
+    ...                    }
+    ...                }
+    ...            }
+    ...        }
+    ...        /* 2. Modal footer buttons (with shadow DOM traversal) */
+    ...        var footer = document.querySelector('footer.slds-modal__footer');
+    ...        if (footer) {
+    ...            var fBtns = findAllButtons(footer);
+    ...            for (var i = 0; i < fBtns.length; i++) {
+    ...                var txt = fBtns[i].textContent.trim();
+    ...                for (var j = 0; j < labels.length; j++) {
+    ...                    if (txt === labels[j] && usable(fBtns[i])) { fBtns[i].click(); return 'clicked:' + txt; }
+    ...                }
+    ...            }
+    ...        }
+    ...        /* 3. Broad search — all buttons including shadow DOM */
+    ...        var allBtns = findAllButtons(document);
+    ...        for (var i = 0; i < allBtns.length; i++) {
+    ...            if (allBtns[i].offsetParent === null) continue;
+    ...            var txt = allBtns[i].textContent.trim();
+    ...            for (var j = 0; j < labels.length; j++) {
+    ...                if (txt === labels[j] && usable(allBtns[i])) { allBtns[i].click(); return 'clicked:' + txt; }
+    ...            }
+    ...        }
+    ...        return 'no_button_found';
+    ...    })()
+    ${pair}=    Create List    ${btn_result}    ${before}
+    RETURN    ${pair}
+
+_Click Flow Action Button Or Fail
+    [Documentation]    Internal keyword — retry wrapper: fails until an enabled button exists.
+    ${pair}=    _Click Flow Action Button
+    Should Not Be Equal    ${pair}[0]    no_button_found    msg=No enabled flow button yet (will retry).
+    RETURN    ${pair}
+
 # ── Create Order ───────────────────────────────────────────────────
 
 Select Order Creation Method
@@ -521,7 +756,6 @@ Select Order Creation Method
     ...    The picker uses radio inputs inside runtime_rca-order-creation-method-picker
     ...    which is nested in shadow DOM.
     Wait Until Keyword Succeeds    15s    3s    _Select Single Order Radio Via JS
-    Sleep    2s    reason=Allow selection to register
     # Click Finish to advance past the picker screen
     Save Modal    Finish
 
@@ -551,7 +785,7 @@ _Select Single Order Radio Via JS
     ...        var radios = deepQueryAll(document, 'input[value="CreateSingleOrder"]');
     ...        for (var i = 0; i < radios.length; i++) {
     ...            radios[i].click();
-    ...            return 'selected';
+    ...            return radios[i].checked ? 'selected' : 'click_did_not_take';
     ...        }
     ...        /* Fallback: find the visual picker div with data-id="single-order" */
     ...        var pickers = deepQueryAll(document, 'div[data-id="single-order"]');
@@ -564,9 +798,9 @@ _Select Single Order Radio Via JS
     ...        return 'not_found';
     ...    })()
     Log    Select Order Creation Method JS result: ${result}
-    IF    "${result}" == "not_found"
+    IF    "${result}" == "not_found" or "${result}" == "click_did_not_take"
         Capture Step Screenshot    order_method_not_found
-        Fail    msg=Create Single Order radio not found (will retry).
+        Fail    msg=Create Single Order radio not found or not checked (${result}) (will retry).
     END
 
 # ── Browse Catalogs ────────────────────────────────────────────────
@@ -576,10 +810,53 @@ Click Browse Catalogs
     ...    Traverses shadow DOM to find the button (name="BrowseCatalog").
     ...    If a "Choose Price Book" modal appears, saves it with Standard Price Book.
     Wait Until Keyword Succeeds    30s    3s    _Click Browse Catalogs Via JS
-    Sleep    3s    reason=Allow Browse Catalogs or Price Book modal to load
+    _Wait Best Effort    Click Browse Catalogs:surface-rendered    30s    1s    _Browse Catalogs Surface Should Be Rendered
     # Handle Choose Price Book modal if it appears (retry to allow modal to render)
     Wait Until Keyword Succeeds    15s    2s    _Dismiss Price Book Modal If Present
-    Sleep    5s    reason=Allow Browse Catalogs to load
+    _Wait Best Effort    Click Browse Catalogs:catalogs-shown    30s    1s    _Browse Catalogs Surface Should Show Catalogs
+    Wait Until Page Is Settled    caller=Click Browse Catalogs
+
+_Browse Catalogs Surface State
+    [Documentation]    Internal keyword — 'price_book_modal' while the Choose Price Book modal is up,
+    ...    'catalogs' once the catalog picker, a catalog heading or the product search input is
+    ...    rendered, otherwise 'unknown'. Same signals as _Detect Catalog Picker State, name-agnostic.
+    ${state}=    Execute JavaScript
+    ...    return (function(){
+    ...        function deepAll(root, sel, out, depth) {
+    ...            if (depth > 25) return out;
+    ...            var els = root.querySelectorAll(sel);
+    ...            for (var i = 0; i < els.length; i++) { out.push(els[i]); }
+    ...            var all = root.querySelectorAll('*');
+    ...            for (var j = 0; j < all.length; j++) {
+    ...                if (all[j].shadowRoot) { deepAll(all[j].shadowRoot, sel, out, depth + 1); }
+    ...            }
+    ...            return out;
+    ...        }
+    ...        var h1s = deepAll(document, 'h1', [], 0);
+    ...        for (var i = 0; i < h1s.length; i++) {
+    ...            if (h1s[i].textContent.trim().indexOf('Price Book') >= 0) { return 'price_book_modal'; }
+    ...        }
+    ...        var heads = deepAll(document, 'h1,h2', [], 0);
+    ...        for (var k = 0; k < heads.length; k++) {
+    ...            if (heads[k].textContent.trim().indexOf('Catalog: ') === 0) { return 'catalogs'; }
+    ...        }
+    ...        if (deepAll(document, 'tr[data-row-key-value]', [], 0).length > 0) { return 'catalogs'; }
+    ...        if (deepAll(document, 'input[name="enter-search"]', [], 0).length > 0) { return 'catalogs'; }
+    ...        return 'unknown';
+    ...    })()
+    RETURN    ${state}
+
+_Browse Catalogs Surface Should Be Rendered
+    ${state}=    _Browse Catalogs Surface State
+    Should Not Be Equal    ${state}    unknown    msg=Browse Catalogs has not rendered yet.
+
+_Browse Catalogs Surface Should Show Catalogs
+    ${state}=    _Browse Catalogs Surface State
+    Should Be Equal    ${state}    catalogs    msg=Browse Catalogs is not showing catalogs yet (${state}).
+
+_Price Book Modal Should Be Gone
+    ${state}=    _Browse Catalogs Surface State
+    Should Not Be Equal    ${state}    price_book_modal    msg=Choose Price Book modal is still open.
 
 _Dismiss Price Book Modal If Present
     [Documentation]    If a "Choose Price Book" modal appears, clicks Save.
@@ -657,7 +934,7 @@ _Dismiss Price Book Modal If Present
     IF    "${result}" == "modal_found_but_save_not_clicked"
         Fail    msg=Price Book modal found but Save button could not be clicked (will retry).
     END
-    Sleep    3s    reason=Allow Price Book selection to process
+    Wait Until Keyword Succeeds    15s    500ms    _Price Book Modal Should Be Gone
 
 _Click Browse Catalogs Via JS
     [Documentation]    Internal keyword — finds and clicks Browse Catalogs via JS with shadow DOM traversal.
@@ -706,21 +983,25 @@ Select Catalog By Name
     ...    slow-rendering direct-browse heading would fall through to the legacy picker wait,
     ...    which can never succeed because no datatable exists in that build.
     [Arguments]    ${catalog_name}
-    ${state}=    Set Variable    unknown
-    FOR    ${i}    IN RANGE    10
-        ${state}=    _Detect Catalog Picker State    ${catalog_name}
-        IF    "${state}" != "unknown"    BREAK
-        Sleep    3s    reason=Allow Browse Catalogs modal to finish rendering before checking state
-    END
+    ${status}    ${detected}=    Run Keyword And Ignore Error
+    ...    Wait Until Keyword Succeeds    30s    1s    _Catalog Picker State Should Be Known    ${catalog_name}
+    ${state}=    Set Variable If    "${status}" == "PASS"    ${detected}    unknown
     IF    "${state}" == "already_browsing"
         Log    Catalog picker skipped — Browse Catalogs opened directly into "${catalog_name}" (Default Catalog configured).
         RETURN
     END
     Wait Until Keyword Succeeds    30s    3s    _Dismiss Or Select Catalog    ${catalog_name}
-    Sleep    2s    reason=Allow selection to register
-    # Click Next in the flow navigation bar
+    # Click Next in the flow navigation bar (Save Modal skips a disabled button until the selection
+    # registers, then waits for the dialog to advance)
     Save Modal    Next
-    Sleep    5s    reason=Allow catalog selection to process
+
+_Catalog Picker State Should Be Known
+    [Documentation]    Internal keyword — fails while neither the direct-browse heading nor the
+    ...    picker datatable has rendered; returns the state once one has.
+    [Arguments]    ${catalog_name}
+    ${state}=    _Detect Catalog Picker State    ${catalog_name}
+    Should Not Be Equal    ${state}    unknown    msg=Catalog picker state still unknown.
+    RETURN    ${state}
 
 _Detect Catalog Picker State
     [Documentation]    Internal keyword — checks, in one pass, whether Browse Catalogs opened
@@ -827,7 +1108,8 @@ Search Product In Catalog
     [Arguments]    ${product_name}
     # Wait for the product catalog search input to appear (indicates catalog has loaded)
     Wait Until Keyword Succeeds    30s    3s    _Find Product Search Input
-    Sleep    2s    reason=Allow catalog products to fully render
+    Wait Until Page Is Settled    caller=Search Product In Catalog
+    ${rows_before}=    Get Product Rows Signature
     # Set search value via native setter (triggers LWC reactivity)
     ${input_set}=    Execute JavaScript
     ...    return (function(name){
@@ -863,7 +1145,29 @@ Search Product In Catalog
     END
     # Press Enter via Selenium (more reliable than JS KeyboardEvent for LWC)
     _Press Enter On Search Input
-    Sleep    5s    reason=Allow search results to load
+    _Wait Best Effort    Search Product In Catalog:results-changed    10s    500ms    _Product Rows Signature Should Differ From    ${rows_before}
+    Wait Until Page Is Settled    caller=Search Product In Catalog
+
+Get Product Rows Signature
+    [Documentation]    Returns the product row count plus a short hash of their leading text, so
+    ...    a search can be seen to have re-rendered the result list.
+    ${sig}=    Execute JavaScript
+    ...    return (function(){
+    ...        var rows = document.querySelectorAll('runtime_industries_cpq-product-row');
+    ...        var h = 5381;
+    ...        for (var i = 0; i < rows.length; i++) {
+    ...            var root = rows[i].shadowRoot || rows[i];
+    ...            var t = (root.textContent || '').slice(0, 80);
+    ...            for (var k = 0; k < t.length; k++) { h = ((h << 5) + h + t.charCodeAt(k)) | 0; }
+    ...        }
+    ...        return 'rows:' + rows.length + ':' + h;
+    ...    })()
+    RETURN    ${sig}
+
+_Product Rows Signature Should Differ From
+    [Arguments]    ${before}
+    ${now}=    Get Product Rows Signature
+    Should Not Be Equal    ${now}    ${before}    msg=Product list has not changed yet.
 
 _Press Enter On Search Input
     [Documentation]    Internal keyword — sends Enter key to the product search input via Selenium.
@@ -941,7 +1245,7 @@ Add Product By Name
     ...    its "Add" button. The product must be visible in the current search results.
     [Arguments]    ${product_name}
     Wait Until Keyword Succeeds    30s    3s    _Click Add Button For Product    ${product_name}
-    Sleep    3s    reason=Allow product to be added
+    Wait Until Page Is Settled    caller=Add Product By Name
 
 _Click Add Button For Product
     [Documentation]    Internal keyword — finds the product row and clicks its Add button via JS.
@@ -1010,20 +1314,21 @@ Click Save Quote In Catalog
     ...    (NOT the enablement wait below) before falling back to auto-save/Close — a button
     ...    that is present but slow to enable must still get the full enablement wait, not be
     ...    mistaken for an absent one and have its modal closed unsaved.
-    ${present}=    Set Variable    no
-    FOR    ${i}    IN RANGE    5
-        ${present}=    _Save Quote Button Present
-        IF    "${present}" == "yes"    BREAK
-        Sleep    1s    reason=Allow Browse Catalogs modal to finish rendering before checking state
-    END
+    ${status}    ${ignored}=    Run Keyword And Ignore Error
+    ...    Wait Until Keyword Succeeds    5s    1s    _Save Quote Button Should Be Present
+    ${present}=    Set Variable If    "${status}" == "PASS"    yes    no
+    ${before}=    Get Dialog Signature
     IF    "${present}" == "yes"
         Wait Until Keyword Succeeds    30s    2s    _Click Save Quote Via JS
-        Sleep    5s    reason=Allow quote to save and modal to close
     ELSE
         Log    Save Quote button not present — Browse Catalogs auto-saves; closing modal instead.
         Wait Until Keyword Succeeds    30s    3s    _Click Close Browse Catalogs Modal
-        Sleep    3s    reason=Allow modal to close and quote to reflect the addition
     END
+    Wait For Dialog To Change    ${before}    caller=Click Save Quote In Catalog    timeout=30s
+
+_Save Quote Button Should Be Present
+    ${present}=    _Save Quote Button Present
+    Should Be Equal    ${present}    yes    msg=Save Quote button not present yet.
 
 _Save Quote Button Present
     [Documentation]    Internal keyword — quick, non-retrying check for whether the Save Quote
@@ -1135,7 +1440,7 @@ Configure Bundle Line
     ...    `configurator_tab_retry.png` in a results folder does NOT mean the run failed.
     [Arguments]    ${quote_id}    ${line_name}    ${option_name}    ${tab_label}=${EMPTY}
     Navigate To Quote    ${quote_id}
-    Sleep    3s    reason=Let the ag-Grid line-items grid finish rendering before we inspect it
+    Wait Until Page Is Settled    caller=Configure Bundle Line
     Capture Step Screenshot    before_line_action_open
     Wait Until Keyword Succeeds    60s    3s    _Open Line Action Menu    ${line_name}
     Capture Step Screenshot    after_line_action_open
@@ -1146,8 +1451,10 @@ Configure Bundle Line
     END
     Wait Until Keyword Succeeds    60s    3s    _Select Configurator Option    ${option_name}
     Capture Step Screenshot    configurator_option_selected
+    ${before}=    Get Dialog Signature
     Wait Until Keyword Succeeds    30s    3s    _Commit Configurator
-    Sleep    8s    reason=Allow the configuration to commit and the quote to reprice
+    Wait For Dialog To Change    ${before}    caller=Configure Bundle Line    timeout=60s
+    Wait For Quote Line For Product    ${quote_id}    ${option_name}
     Capture Step Screenshot    configurator_saved
 
 _Open Line Action Menu
@@ -1228,7 +1535,6 @@ _Open Line Action Menu
     ${row_element}=    Execute JavaScript    return window.__e2eRow
     Execute JavaScript    arguments[0].scrollIntoView({block: 'center', inline: 'center'});    ARGUMENTS    ${row_element}
     Mouse Over    ${row_element}
-    Sleep    0.3s    reason=Let the CSS :hover transition reveal the row-action icon (it is visibility:hidden until hover)
     ${result}=    Execute JavaScript
     ...    return (function(){
     ...        function deepAll(root, sel, out, depth) {
@@ -1302,6 +1608,7 @@ _Open Line Action Menu
     ...    return JSON.stringify({tag: el.tagName, rect: [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)], display: cs.display, visibility: cs.visibility, pointerEvents: cs.pointerEvents, opacity: cs.opacity, vw: window.innerWidth, vh: window.innerHeight, elAtCenter: (document.elementFromPoint(r.left + r.width/2, r.top + r.height/2) || {}).tagName});
     ...    ARGUMENTS    ${target_element}
     Log    Target element diagnostic before click: ${diag}
+    Wait Until Element Is Visible    ${target_element}    timeout=5s
     Click Element    ${target_element}
 
 _Click Line Action
@@ -1522,7 +1829,6 @@ Reset Test Account
     [Arguments]    ${account_id}
     Navigate To Account    ${account_id}
     Click Highlights Panel Action    Reset Account
-    Sleep    5s    reason=Allow Reset Account flow to initialize
     Advance Through Flow Screens
     Dismiss Toast If Present
     Capture Step Screenshot    account_reset
@@ -1535,7 +1841,6 @@ Create Opportunity From Account
     Click Highlights Panel Action    New Opportunity
     Wait For Modal
     Save Modal
-    Sleep    3s    reason=Allow Opportunity creation to complete
     SalesforceAPI.Validate Salesforce Id    ${account_id}
     ${opp_id}=    Wait For Related Record Via API
     ...    SELECT Id FROM Opportunity WHERE AccountId = '${account_id}' ORDER BY CreatedDate DESC LIMIT 1
@@ -1549,9 +1854,7 @@ Create Quote From Opportunity
     [Arguments]    ${opportunity_id}
     Navigate To Opportunity    ${opportunity_id}
     Click Highlights Panel Action    New Quote
-    Sleep    5s    reason=Allow Flow to initialize
     Save Modal    Save
-    Sleep    3s    reason=Allow Quote creation to complete
     SalesforceAPI.Validate Salesforce Id    ${opportunity_id}
     ${q_id}=    Wait For Related Record Via API
     ...    SELECT Id FROM Quote WHERE OpportunityId = '${opportunity_id}' ORDER BY CreatedDate DESC LIMIT 1
@@ -1568,10 +1871,9 @@ Add Products Via Browse Catalogs
     Select Catalog By Name    ${catalog_name}
     Search Product In Catalog    ${product_name}
     Add Product By Name    ${product_name}
-    Sleep    2s    reason=Allow product addition to register
     Click Save Quote In Catalog
     Capture Step Screenshot    products_added
-    Sleep    5s    reason=Allow pricing to process
+    Wait For Quote Line For Product    ${quote_id}    ${product_name}
 
 Create Order From Quote
     [Documentation]    Creates a single Order from a Quote via the Create Order flow.
@@ -1580,7 +1882,6 @@ Create Order From Quote
     [Arguments]    ${quote_id}
     Navigate To Quote    ${quote_id}
     Click Highlights Panel Action    Create Order
-    Sleep    5s    reason=Allow CreateOrder flow to initialize
     Select Order Creation Method
     Advance Through Flow Screens
     Dismiss Toast If Present
@@ -1606,8 +1907,9 @@ Confirm Modal Action
     ...    Retries for up to 15 seconds to allow the modal to render.
     ...    Used for standard Aura confirmation dialogs (e.g. "Activate order?").
     [Arguments]    ${button_label}=Activate
+    ${before}=    Get Dialog Signature
     Wait Until Keyword Succeeds    15s    2s    _Click Modal Footer Button    ${button_label}
-    Sleep    3s    reason=Allow action to process
+    Wait For Dialog To Change    ${before}    caller=Confirm Modal Action
 
 _Click Modal Footer Button
     [Documentation]    Internal keyword — finds and clicks a button inside a modal footer via JS.
@@ -1652,7 +1954,7 @@ Wait For Record Page And Get Id
     [Documentation]    Waits for a record page to load and extracts the record Id from the URL.
     [Arguments]    ${sobject}    ${timeout}=30s
     Wait Until Keyword Succeeds    ${timeout}    3s    _Page Url Should Contain Record    ${sobject}
-    Sleep    ${LIGHTNING_RENDER_WAIT}    reason=Allow page to finish rendering
+    Wait Until Page Is Settled    caller=Wait For Record Page And Get Id
     ${id}=    Get Record Id From Url
     RETURN    ${id}
 
@@ -1728,7 +2030,6 @@ Dismiss Toast If Present
     ...            }
     ...        }
     ...    })()
-    Sleep    0.5s
 
 # ── Recording / Debug ───────────────────────────────────────────────
 

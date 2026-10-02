@@ -208,6 +208,33 @@ with tempfile.TemporaryDirectory() as tmp:
     rc, out, text = run(S.e2e, e2e_env, e2e_root, "e6")
     check("e2e: a malformed summary file exits 2", rc == 2 and "malformed e2e summary" in out, out)
 
+    settle_root = os.path.join(tmp, "e2e_settle")
+    settle_dir = f"{base}/e2e/1-robot_e2e"
+    write(settle_root, f"{settle_dir}/e2e-summary.json", summ({"pass": 1, "flaky": 0, "fail": 0, "skip": 0}))
+    rc, out, text = run(S.e2e, e2e_env, settle_root, "e7")
+    check("e2e: no per-attempt outputs -> no SETTLE_TIMEOUT section (nothing to count)",
+          rc == 0 and "SETTLE_TIMEOUT" not in text, text)
+    warn = ('<msg time="2026-09-29T10:00:00.000000" level="WARN">SETTLE_TIMEOUT caller={} waited=15s</msg>')
+    # Robot writes every WARN twice: in the keyword body and again in <errors>; only the latter counts.
+    first_xml = ("<robot><suite><test><kw>" + warn.format("Save Modal:dialog-changed") + "</kw></test></suite>"
+                 "<errors>" + warn.format("Save Modal:dialog-changed") + warn.format("Save Modal:dialog-changed")
+                 + warn.format("Navigate To App") + "</errors></robot>")
+    write(settle_root, f"{settle_dir}/first.xml", first_xml)
+    write(settle_root, f"{settle_dir}/rerun/rerun.xml",
+          "<robot><errors>" + warn.format("Click Browse Catalogs") + "</errors></robot>")
+    write(settle_root, f"{settle_dir}/output.xml", first_xml + first_xml)  # merged output is never read
+    rc, out, text = run(S.e2e, e2e_env, settle_root, "e8")
+    check("e2e: SETTLE_TIMEOUT is counted per attempt and caller (names with spaces, <errors> copy only)",
+          rc == 0 and "first attempt 3, rerun 1." in text and "- first attempt: `Save Modal:dialog-changed` x2" in text
+          and "- first attempt: `Navigate To App` x1" in text and "- rerun: `Click Browse Catalogs` x1" in text, text)
+    check("e2e: a first-attempt SETTLE_TIMEOUT is warned, not failed",
+          "::warning::3 e2e best-effort wait(s) timed out on the first attempt" in out and rc == 0, out)
+    write(settle_root, f"{settle_dir}/first.xml", "<robot><errors></errors></robot>")
+    (Path(settle_root) / settle_dir / "rerun" / "rerun.xml").unlink()
+    rc, out, text = run(S.e2e, e2e_env, settle_root, "e9")
+    check("e2e: outputs with no SETTLE_TIMEOUT report 0 and no warning",
+          rc == 0 and "first attempt 0, rerun 0." in text and "::warning::" not in out, text + out)
+
     print("summary: report (gh injected)")
     calls = []
 

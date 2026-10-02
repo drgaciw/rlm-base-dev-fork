@@ -123,6 +123,31 @@ def _load_e2e(root):
     return found
 
 
+# The e2e resource (robot/rlm-base/resources/E2ECommon.robot) logs a WARN
+# `SETTLE_TIMEOUT caller=<keyword> waited=<t>` when a best-effort wait times out instead of failing.
+SETTLE_RE = re.compile(r'<msg[^>]*level="WARN"[^>]*>SETTLE_TIMEOUT caller=([^<]+?) waited=')
+
+
+def settle_timeouts(results):
+    """({"first attempt": {caller: n}, "rerun": {caller: n}}, files read) from the per-attempt
+    outputs. The merged output.xml would count both attempts twice, and Robot writes each WARN
+    twice within one file (test body and <errors>), so only the <errors> copy is counted."""
+    found = {"first attempt": {}, "rerun": {}}
+    seen = 0
+    for label, name in (("first attempt", "first.xml"), ("rerun", "rerun.xml")):
+        for path in sorted(glob.glob(results + "/e2e/**/" + name, recursive=True)):
+            try:
+                with open(path, encoding="utf-8") as fh:
+                    text = fh.read()
+            except (OSError, UnicodeDecodeError) as exc:
+                print(f"::warning::cannot read {path} to count SETTLE_TIMEOUT: {exc}")
+                continue
+            seen += 1
+            for caller in SETTLE_RE.findall(text.partition("<errors>")[2]):
+                found[label][caller] = found[label].get(caller, 0) + 1
+    return found, seen
+
+
 def e2e(env, root="."):
     """prepare-rlm-org.yml "Robot e2e summary"."""
     results = os.path.join(root, "robot/rlm-base/results")
@@ -168,6 +193,19 @@ def e2e(env, root="."):
         lines += ["", f"Quarantine (non-blocking, step {q}): pass {qt['pass']}, flaky {qt['flaky']}, fail {qt['fail']}, skip {qt['skip']}."]
     else:
         lines += ["", f"Quarantine (non-blocking): no quarantined tests ran (step {q})."]
+
+    settle, settle_files = settle_timeouts(results)
+    if settle_files:
+        first, rerun = (sum(settle[k].values()) for k in ("first attempt", "rerun"))
+        lines += [
+            "",
+            "SETTLE_TIMEOUT (best-effort waits that timed out; a strict wait or assertion follows each): "
+            f"first attempt {first}, rerun {rerun}.",
+        ]
+        for label, callers in settle.items():
+            lines += [f"- {label}: `{c}` x{n}" for c, n in sorted(callers.items())]
+        if first:
+            print(f"::warning::{first} e2e best-effort wait(s) timed out on the first attempt (SETTLE_TIMEOUT)")
 
     outcome = env.get("OUTCOME_E2E", "") or "skipped"
     lines += ["", f"e2e step outcome: {outcome}."]
