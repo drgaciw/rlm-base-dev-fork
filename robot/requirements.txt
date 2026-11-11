@@ -13,7 +13,7 @@
 # CumulusCI selenium pin") fails the build if selenium is not 4.x, SeleniumLibrary
 # is below 6.9, or `pip check` reports anything beyond those two conflicts.
 # Re-check monthly whether a newer CumulusCI lifted its pin (test plan section 7).
-robotframework>=7.5,<8
+robotframework>=7.5.1,<8
 robotframework-seleniumlibrary>=6.9.0,<7
 selenium>=4.49.0,<5
 webdriver-manager>=4.1.2,<5
